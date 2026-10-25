@@ -55,4 +55,4 @@ Since this project grows step-by-step, contributors, ideas, and pull requests ar
 
 ## 📄 License
 
-This project is licensed under the **AGPL-3.0 License** / **MIT License** *(insert desired license here)*.
+This project is licensed under the **AGPL-3.0 License**.
