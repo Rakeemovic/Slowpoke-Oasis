@@ -1,0 +1,188 @@
+// Package api exposes the ledger functions over HTTP as JSON.
+//
+// Authentication is not implemented yet. The acting user is read from the
+// X-User-ID header. This is a development placeholder and must be replaced
+// before the app is shared with anyone.
+package api
+
+import (
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"log"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/ledger"
+)
+
+const maxBodyBytes = 1 << 20 // 1 MiB
+
+// Server holds the dependencies of the HTTP handlers.
+type Server struct {
+	store *ledger.Store
+	now   func() time.Time
+}
+
+// NewServer returns a Server that uses the given store.
+func NewServer(store *ledger.Store) *Server {
+	return &Server{store: store, now: time.Now}
+}
+
+// Routes returns the HTTP handler with all endpoints registered.
+func (s *Server) Routes() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /ledgers/{ledger}/transactions", s.createTransaction)
+	mux.HandleFunc("GET /ledgers/{ledger}/transactions", s.listTransactions)
+	mux.HandleFunc("DELETE /ledgers/{ledger}/transactions/{id}", s.deleteTransaction)
+	return mux
+}
+
+// transactionRequest is the JSON body for creating a transaction.
+type transactionRequest struct {
+	Type             string `json:"type"`
+	CategoryID       string `json:"category_id"`
+	PotID            string `json:"pot_id"`
+	CounterpartPotID string `json:"counterpart_pot_id"`
+	AmountCents      int64  `json:"amount_cents"`
+	BookedOn         string `json:"booked_on"`
+	Note             string `json:"note"`
+}
+
+// transactionResponse is the JSON representation of a stored transaction.
+type transactionResponse struct {
+	ID               string `json:"id"`
+	LedgerID         string `json:"ledger_id"`
+	UserID           string `json:"user_id"`
+	Type             string `json:"type"`
+	CategoryID       string `json:"category_id,omitempty"`
+	PotID            string `json:"pot_id"`
+	CounterpartPotID string `json:"counterpart_pot_id,omitempty"`
+	AmountCents      int64  `json:"amount_cents"`
+	BookedOn         string `json:"booked_on"`
+	Note             string `json:"note,omitempty"`
+}
+
+// POST /ledgers/{ledger}/transactions
+func (s *Server) createTransaction(w http.ResponseWriter, r *http.Request) {
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		writeError(w, http.StatusUnauthorized, "missing X-User-ID header")
+		return
+	}
+
+	var req transactionRequest
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	id, err := s.store.CreateTransaction(r.Context(), ledger.NewTransaction{
+		LedgerID:         r.PathValue("ledger"),
+		UserID:           userID,
+		Type:             ledger.TxType(req.Type),
+		CategoryID:       req.CategoryID,
+		PotID:            req.PotID,
+		CounterpartPotID: req.CounterpartPotID,
+		AmountCents:      req.AmountCents,
+		BookedOn:         req.BookedOn,
+		Note:             req.Note,
+	}, s.now())
+	if err != nil {
+		s.writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
+}
+
+// GET /ledgers/{ledger}/transactions?pot_id=&from=&to=
+func (s *Server) listTransactions(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	items, err := s.store.ListTransactions(r.Context(), ledger.ListFilter{
+		LedgerID: r.PathValue("ledger"),
+		PotID:    q.Get("pot_id"),
+		From:     q.Get("from"),
+		To:       q.Get("to"),
+	})
+	if err != nil {
+		s.writeStoreError(w, err)
+		return
+	}
+
+	out := make([]transactionResponse, 0, len(items))
+	for _, t := range items {
+		out = append(out, transactionResponse{
+			ID:               t.ID,
+			LedgerID:         t.LedgerID,
+			UserID:           t.UserID,
+			Type:             string(t.Type),
+			CategoryID:       t.CategoryID,
+			PotID:            t.PotID,
+			CounterpartPotID: t.CounterpartPotID,
+			AmountCents:      t.AmountCents,
+			BookedOn:         t.BookedOn,
+			Note:             t.Note,
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// DELETE /ledgers/{ledger}/transactions/{id}
+func (s *Server) deleteTransaction(w http.ResponseWriter, r *http.Request) {
+	err := s.store.DeleteTransaction(r.Context(), r.PathValue("ledger"), r.PathValue("id"), s.now())
+	if err != nil {
+		s.writeStoreError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// validationErrors are caused by the client's input and map to 400.
+var validationErrors = []error{
+	ledger.ErrLedgerRequired,
+	ledger.ErrInvalidType,
+	ledger.ErrAmountNotPositive,
+	ledger.ErrInvalidDate,
+	ledger.ErrCategoryRequired,
+	ledger.ErrCategoryForbidden,
+	ledger.ErrCounterpartRequired,
+	ledger.ErrCounterpartForbidden,
+	ledger.ErrSamePot,
+	ledger.ErrNoteTooLong,
+}
+
+// writeStoreError maps errors from the ledger package to HTTP status codes.
+func (s *Server) writeStoreError(w http.ResponseWriter, err error) {
+	for _, v := range validationErrors {
+		if errors.Is(err, v) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+
+	switch {
+	case errors.Is(err, ledger.ErrTransactionNotFound), errors.Is(err, sql.ErrNoRows):
+		writeError(w, http.StatusNotFound, "not found")
+	case strings.Contains(err.Error(), "constraint failed"):
+		// Database rules such as foreign keys and CHECK constraints.
+		writeError(w, http.StatusUnprocessableEntity, "the request violates a data rule")
+	default:
+		log.Printf("internal error: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+	}
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Printf("write response: %v", err)
+	}
+}
+
+func writeError(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg})
+}
