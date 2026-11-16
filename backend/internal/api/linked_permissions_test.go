@@ -26,7 +26,7 @@ func TestOwnerCannotDeleteALegThatLivesInAnotherPersonalLedger(t *testing.T) {
 
 	rec = doToken(t, h, http.MethodPost, "/households/"+householdID+"/members", aliceToken,
 		map[string]any{"username": "bob"})
-	if rec.Code != http.StatusCreated {
+	if rec.Code != http.StatusNoContent {
 		t.Fatalf("add bob: status %d, body %s", rec.Code, rec.Body)
 	}
 
@@ -76,8 +76,11 @@ func TestMemberDeletesBothLegsOfOwnTransfer(t *testing.T) {
 	rec = doToken(t, h, http.MethodPost, "/households", aliceToken, map[string]any{"name": "Haus"})
 	householdID := decodeID(t, rec.Body.Bytes())
 	householdLedger := decodeField(t, rec.Body.Bytes(), "ledger_id")
-	doToken(t, h, http.MethodPost, "/households/"+householdID+"/members", aliceToken,
+	rec = doToken(t, h, http.MethodPost, "/households/"+householdID+"/members", aliceToken,
 		map[string]any{"username": "bob"})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("add bob: status %d, body %s", rec.Code, rec.Body)
+	}
 
 	rec = doToken(t, h, http.MethodPost, "/transfers", bobToken, map[string]any{
 		"from_ledger_id": bobLedger, "to_ledger_id": householdLedger,
