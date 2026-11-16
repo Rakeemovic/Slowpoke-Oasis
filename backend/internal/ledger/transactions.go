@@ -1,13 +1,8 @@
-// Package ledger contains the business rules for ledgers, pots and transactions.
 package ledger
 
 import (
 	"context"
-	"crypto/rand"
-	"database/sql"
-	"encoding/hex"
 	"errors"
-	"fmt"
 	"time"
 	"unicode/utf8"
 )
@@ -25,11 +20,14 @@ const (
 	TypeTransferIn  TxType = "transfer_in"
 )
 
+// maxNoteLength is the longest note a transaction can have (rule X9).
+const maxNoteLength = 500
+
 // Validation errors. Callers can compare them with errors.Is.
 var (
 	ErrInvalidType          = errors.New("invalid transaction type")
 	ErrAmountNotPositive    = errors.New("amount must be greater than zero")
-	ErrInvalidDate          = errors.New("booked_on must be a date in the format YYYY-MM-DD")
+	ErrInvalidDate          = errors.New("dates must have the format YYYY-MM-DD")
 	ErrCategoryRequired     = errors.New("expenses and income need a category")
 	ErrCategoryForbidden    = errors.New("transfers cannot have a category")
 	ErrCounterpartRequired  = errors.New("transfers need a counterpart pot")
@@ -75,27 +73,31 @@ func (in NewTransaction) Validate() error {
 	default:
 		return ErrInvalidType
 	}
+	return validateBooking(in.AmountCents, in.BookedOn, in.Note)
+}
 
-	if in.AmountCents <= 0 {
+// validateBooking checks the rules that every booking shares, whatever its
+// type: a positive amount (X1), a valid date (X8) and a short note (X9).
+func validateBooking(amountCents int64, bookedOn, note string) error {
+	if amountCents <= 0 {
 		return ErrAmountNotPositive
 	}
-	if _, err := time.Parse("2006-01-02", in.BookedOn); err != nil {
+	if !validDate(bookedOn) {
 		return ErrInvalidDate
 	}
-	if utf8.RuneCountInString(in.Note) > 500 {
+	if utf8.RuneCountInString(note) > maxNoteLength {
 		return ErrNoteTooLong
 	}
 	return nil
 }
 
-// Store persists ledger data.
-type Store struct {
-	db *sql.DB
-}
-
-// New returns a Store backed by db.
-func New(db *sql.DB) *Store {
-	return &Store{db: db}
+// storedAmount returns the amount with the sign the database expects:
+// negative for expenses, positive otherwise (rule X2).
+func (in NewTransaction) storedAmount() int64 {
+	if in.Type == TypeExpense {
+		return -in.AmountCents
+	}
+	return in.AmountCents
 }
 
 // CreateTransaction validates the input, resolves the default pot if none is
@@ -108,69 +110,37 @@ func (s *Store) CreateTransaction(ctx context.Context, in NewTransaction, now ti
 		return "", err
 	}
 
-	potID := in.PotID
-	if potID == "" {
-		err := s.db.QueryRowContext(ctx,
-			`SELECT id FROM pot WHERE ledger_id = ? AND is_default = 1`, in.LedgerID,
-		).Scan(&potID)
-		if err != nil {
-			return "", fmt.Errorf("resolve default pot: %w", err)
-		}
+	potID, err := resolvePot(ctx, s.db, in.LedgerID, in.PotID)
+	if err != nil {
+		return "", err
 	}
-
-	if err := s.ensurePotActive(ctx, in.LedgerID, potID); err != nil {
+	if err := ensurePotActive(ctx, s.db, in.LedgerID, potID); err != nil {
 		return "", err
 	}
 	if in.CounterpartPotID != "" {
-		if err := s.ensurePotActive(ctx, in.LedgerID, in.CounterpartPotID); err != nil {
+		if err := ensurePotActive(ctx, s.db, in.LedgerID, in.CounterpartPotID); err != nil {
 			return "", err
 		}
 	}
 	if in.Type != TypeTransfer {
-		if err := s.ensureCategoryKind(ctx, in.LedgerID, in.CategoryID, in.Type); err != nil {
+		if err := ensureCategoryKind(ctx, s.db, in.LedgerID, in.CategoryID, in.Type); err != nil {
 			return "", err
 		}
 	}
 
-	amount := in.AmountCents
-	if in.Type == TypeExpense {
-		amount = -amount
-	}
-
-	id, err := newID()
-	if err != nil {
-		return "", err
-	}
-
-	ts := now.UTC().Format(time.RFC3339)
+	id := newID()
+	ts := timestamp(now)
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO transactions
 			(id, ledger_id, user_id, type, category_id, pot_id, counterpart_pot_id,
 			 amount_cents, booked_on, note, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, in.LedgerID, in.UserID, string(in.Type),
+		id, in.LedgerID, in.UserID, in.Type,
 		nullIfEmpty(in.CategoryID), potID, nullIfEmpty(in.CounterpartPotID),
-		amount, in.BookedOn, nullIfEmpty(in.Note), ts, ts,
+		in.storedAmount(), in.BookedOn, nullIfEmpty(in.Note), ts, ts,
 	)
 	if err != nil {
 		return "", err
 	}
 	return id, nil
-}
-
-// nullIfEmpty maps an empty string to SQL NULL.
-func nullIfEmpty(s string) any {
-	if s == "" {
-		return nil
-	}
-	return s
-}
-
-// newID returns a random 128-bit identifier as hex.
-func newID() (string, error) {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
 }

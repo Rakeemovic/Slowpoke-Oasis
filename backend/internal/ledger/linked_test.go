@@ -142,3 +142,48 @@ func TestLinkedTransferFailsForUnknownTargetPot(t *testing.T) {
 		t.Fatal("transfer into a pot of another ledger was accepted")
 	}
 }
+
+// When the last member leaves, the household and its ledger are deleted. The
+// personal side of an earlier transfer into the household stays (rule X16).
+func TestDeletedLedgerLeavesTheOtherLegWithoutLink(t *testing.T) {
+	db, s := setup(t)
+	ctx := context.Background()
+
+	householdID, sharedID, err := s.CreateHousehold(ctx, "u1", "Flat", time.Now())
+	if err != nil {
+		t.Fatalf("create household: %v", err)
+	}
+	outID, _, err := s.CreateLinkedTransfer(ctx, LinkedTransfer{
+		UserID:       "u1",
+		FromLedgerID: "l1",
+		ToLedgerID:   sharedID,
+		AmountCents:  5000,
+		BookedOn:     "2026-11-16",
+	}, time.Now())
+	if err != nil {
+		t.Fatalf("create linked transfer: %v", err)
+	}
+
+	if err := s.LeaveHousehold(ctx, householdID, "u1"); err != nil {
+		t.Fatalf("last member leaves: %v", err)
+	}
+
+	var linked sql.NullString
+	if err := db.QueryRow(`SELECT linked_transaction_id FROM transactions WHERE id = ?`, outID).Scan(&linked); err != nil {
+		t.Fatalf("the personal leg should still exist: %v", err)
+	}
+	if linked.Valid {
+		t.Errorf("link = %q, want none: the other leg is gone", linked.String)
+	}
+	if got := balances(t, s, "l1")["p-default"]; got != -5000 {
+		t.Errorf("source balance = %d, want -5000: the money did leave", got)
+	}
+
+	// The remaining leg behaves like any other booking of its author.
+	if err := s.DeleteTransaction(ctx, "l1", outID, "u1", time.Now()); err != nil {
+		t.Fatalf("delete remaining leg: %v", err)
+	}
+	if err := s.RestoreTransaction(ctx, "l1", outID, time.Now()); err != nil {
+		t.Fatalf("restore remaining leg: %v", err)
+	}
+}

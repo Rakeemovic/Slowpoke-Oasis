@@ -4,12 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
-	"time"
 )
 
 // Errors for pots, planned amounts and the rules that connect them to transactions.
 var (
+	ErrPotNotFound           = errors.New("pot not found")
 	ErrInvalidTarget         = errors.New("target_cents must not be negative (0 means no target)")
 	ErrTargetDateNeedsTarget = errors.New("a target date needs a target amount")
 	ErrInvalidAmount         = errors.New("amount_cents must not be negative")
@@ -68,7 +69,7 @@ func validateTarget(target int64, date string) error {
 	if target == 0 {
 		return ErrTargetDateNeedsTarget
 	}
-	if _, err := time.Parse("2006-01-02", date); err != nil {
+	if !validDate(date) {
 		return ErrInvalidDate
 	}
 	return nil
@@ -83,14 +84,11 @@ func (s *Store) CreatePot(ctx context.Context, in NewPot) (string, error) {
 	if err := validateTarget(in.TargetCents, in.TargetDate); err != nil {
 		return "", err
 	}
-	id, err := newID()
-	if err != nil {
-		return "", err
-	}
+	id := newID()
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO pot (id, ledger_id, name, kind, is_default, target_cents, target_date, archived)
 		VALUES (?, ?, ?, 'one_time', 0, ?, ?, 0)`,
-		id, in.LedgerID, name, nullInt(in.TargetCents), nullIfEmpty(in.TargetDate),
+		id, in.LedgerID, name, nullIfZero(in.TargetCents), nullIfEmpty(in.TargetDate),
 	)
 	if err != nil {
 		return "", nameError(err)
@@ -102,6 +100,13 @@ func (s *Store) CreatePot(ctx context.Context, in NewPot) (string, error) {
 // each pot follows the rules in docs/data-model.md: incoming transfers and
 // income, minus expenses and outgoing transfers. Deleted rows are ignored.
 func (s *Store) ListPots(ctx context.Context, ledgerID string) ([]Pot, error) {
+	// Read the plans first: the store uses a single connection, so one result
+	// set must be finished before the next query starts.
+	planned, err := s.plannedAmounts(ctx, ledgerID)
+	if err != nil {
+		return nil, err
+	}
+
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT p.id, p.name, p.kind, p.is_default, p.archived,
 		       COALESCE(p.target_cents, 0), COALESCE(p.target_date, ''),
@@ -118,54 +123,42 @@ func (s *Store) ListPots(ctx context.Context, ledgerID string) ([]Pot, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
 	var pots []Pot
 	for rows.Next() {
-		var p Pot
-		var isDefault, archived int
-		if err := rows.Scan(&p.ID, &p.Name, &p.Kind, &isDefault, &archived,
+		p := Pot{LedgerID: ledgerID}
+		if err := rows.Scan(&p.ID, &p.Name, &p.Kind, &p.IsDefault, &p.Archived,
 			&p.TargetCents, &p.TargetDate, &p.BalanceCents); err != nil {
-			rows.Close()
 			return nil, err
 		}
-		p.LedgerID = ledgerID
-		p.IsDefault = isDefault == 1
-		p.Archived = archived == 1
+		p.Planned = planned[p.ID]
 		pots = append(pots, p)
 	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, err
-	}
-	// Close before the next query: the store uses a single connection.
-	rows.Close()
-
-	for i := range pots {
-		lines, err := s.plannedAmounts(ctx, pots[i].ID)
-		if err != nil {
-			return nil, err
-		}
-		pots[i].Planned = lines
-	}
-	return pots, nil
+	return pots, rows.Err()
 }
 
-// plannedAmounts returns the planned amounts of one pot, ordered by category.
-func (s *Store) plannedAmounts(ctx context.Context, potID string) ([]PotLine, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT category_id, amount_cents FROM pot_line WHERE pot_id = ? ORDER BY category_id`, potID)
+// plannedAmounts returns the planned amounts of all pots of a ledger by pot
+// ID, each list ordered by category.
+func (s *Store) plannedAmounts(ctx context.Context, ledgerID string) (map[string][]PotLine, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT pot_id, category_id, amount_cents
+		FROM pot_line
+		WHERE pot_id IN (SELECT id FROM pot WHERE ledger_id = ?)
+		ORDER BY pot_id, category_id`, ledgerID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var out []PotLine
+	out := map[string][]PotLine{}
 	for rows.Next() {
+		var potID string
 		var l PotLine
-		if err := rows.Scan(&l.CategoryID, &l.AmountCents); err != nil {
+		if err := rows.Scan(&potID, &l.CategoryID, &l.AmountCents); err != nil {
 			return nil, err
 		}
-		out = append(out, l)
+		out[potID] = append(out[potID], l)
 	}
 	return out, rows.Err()
 }
@@ -173,63 +166,56 @@ func (s *Store) plannedAmounts(ctx context.Context, potID string) ([]PotLine, er
 // UpdatePot renames, changes the target, or archives a pot. The default pot
 // can be renamed and given a target but never archived (rule T2).
 func (s *Store) UpdatePot(ctx context.Context, ledgerID, potID string, u PotUpdate) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback() // no effect after a successful Commit
-
-	var name string
-	var isDefault, archived int
-	var target sql.NullInt64
-	var date sql.NullString
-	err = tx.QueryRowContext(ctx, `
-		SELECT name, is_default, archived, target_cents, target_date
-		FROM pot WHERE id = ? AND ledger_id = ?`, potID, ledgerID,
-	).Scan(&name, &isDefault, &archived, &target, &date)
-	if err != nil {
-		return err // sql.ErrNoRows when the pot does not exist in this ledger
-	}
-
-	newName := name
-	if u.Name != nil {
-		n, err := cleanName(*u.Name)
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		var name string
+		var isDefault, archived bool
+		var target sql.NullInt64
+		var date sql.NullString
+		err := tx.QueryRowContext(ctx, `
+			SELECT name, is_default, archived, target_cents, target_date
+			FROM pot WHERE id = ? AND ledger_id = ?`, potID, ledgerID,
+		).Scan(&name, &isDefault, &archived, &target, &date)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrPotNotFound
+		}
 		if err != nil {
 			return err
 		}
-		newName = n
-	}
-	newTarget := target.Int64
-	if u.TargetCents != nil {
-		newTarget = *u.TargetCents
-	}
-	newDate := date.String
-	if u.TargetDate != nil {
-		newDate = strings.TrimSpace(*u.TargetDate)
-	}
-	if u.TargetCents != nil && *u.TargetCents == 0 {
-		newDate = "" // removing the target also removes its date
-	}
-	newArchived := archived == 1
-	if u.Archived != nil {
-		newArchived = *u.Archived
-	}
 
-	if err := validateTarget(newTarget, newDate); err != nil {
-		return err
-	}
-	if isDefault == 1 && newArchived {
-		return ErrDefaultPotProtected
-	}
+		if u.Name != nil {
+			if name, err = cleanName(*u.Name); err != nil {
+				return err
+			}
+		}
+		newTarget := target.Int64
+		if u.TargetCents != nil {
+			newTarget = *u.TargetCents
+		}
+		newDate := date.String
+		if u.TargetDate != nil {
+			newDate = strings.TrimSpace(*u.TargetDate)
+		}
+		if u.TargetCents != nil && *u.TargetCents == 0 {
+			newDate = "" // removing the target also removes its date
+		}
+		if u.Archived != nil {
+			archived = *u.Archived
+		}
 
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE pot SET name = ?, target_cents = ?, target_date = ?, archived = ?
-		WHERE id = ? AND ledger_id = ?`,
-		newName, nullInt(newTarget), nullIfEmpty(newDate), boolInt(newArchived), potID, ledgerID,
-	); err != nil {
+		if err := validateTarget(newTarget, newDate); err != nil {
+			return err
+		}
+		if isDefault && archived {
+			return ErrDefaultPotProtected
+		}
+
+		_, err = tx.ExecContext(ctx, `
+			UPDATE pot SET name = ?, target_cents = ?, target_date = ?, archived = ?
+			WHERE id = ? AND ledger_id = ?`,
+			name, nullIfZero(newTarget), nullIfEmpty(newDate), archived, potID, ledgerID,
+		)
 		return nameError(err)
-	}
-	return tx.Commit()
+	})
 }
 
 // SetPlannedAmount sets the planned amount of a category in a pot (rule P1).
@@ -256,21 +242,30 @@ func (s *Store) DeletePlannedAmount(ctx context.Context, ledgerID, potID, catego
 	if err != nil {
 		return err
 	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
+	return requireAffected(res, ErrPotLineNotFound)
+}
+
+// resolvePot returns potID, or the default pot of the ledger if potID is empty
+// (rule X5).
+func resolvePot(ctx context.Context, q queryer, ledgerID, potID string) (string, error) {
+	if potID != "" {
+		return potID, nil
 	}
-	if n == 0 {
-		return ErrPotLineNotFound
+	var id string
+	err := q.QueryRowContext(ctx,
+		`SELECT id FROM pot WHERE ledger_id = ? AND is_default = 1`, ledgerID,
+	).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("default pot of ledger %q: %w", ledgerID, ErrPotNotFound)
 	}
-	return nil
+	return id, err
 }
 
 // ensurePotActive rejects transactions for archived pots (rule T5). A missing
 // pot is left to the foreign key check.
-func (s *Store) ensurePotActive(ctx context.Context, ledgerID, potID string) error {
-	var archived int
-	err := s.db.QueryRowContext(ctx,
+func ensurePotActive(ctx context.Context, q queryer, ledgerID, potID string) error {
+	var archived bool
+	err := q.QueryRowContext(ctx,
 		`SELECT archived FROM pot WHERE id = ? AND ledger_id = ?`, potID, ledgerID,
 	).Scan(&archived)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -279,7 +274,7 @@ func (s *Store) ensurePotActive(ctx context.Context, ledgerID, potID string) err
 	if err != nil {
 		return err
 	}
-	if archived == 1 {
+	if archived {
 		return ErrPotArchived
 	}
 	return nil
@@ -287,9 +282,9 @@ func (s *Store) ensurePotActive(ctx context.Context, ledgerID, potID string) err
 
 // ensureCategoryKind checks that income uses income categories and expenses
 // use expense categories (rule K3). An unknown category is left to the foreign key.
-func (s *Store) ensureCategoryKind(ctx context.Context, ledgerID, categoryID string, typ TxType) error {
-	var isIncome int
-	err := s.db.QueryRowContext(ctx,
+func ensureCategoryKind(ctx context.Context, q queryer, ledgerID, categoryID string, typ TxType) error {
+	var isIncome bool
+	err := q.QueryRowContext(ctx,
 		`SELECT is_income FROM category WHERE id = ? AND ledger_id = ?`, categoryID, ledgerID,
 	).Scan(&isIncome)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -298,23 +293,8 @@ func (s *Store) ensureCategoryKind(ctx context.Context, ledgerID, categoryID str
 	if err != nil {
 		return err
 	}
-	if (isIncome == 1) != (typ == TypeIncome) {
+	if isIncome != (typ == TypeIncome) {
 		return ErrCategoryKindMismatch
 	}
 	return nil
-}
-
-// nullInt maps 0 to SQL NULL, used for optional targets.
-func nullInt(v int64) any {
-	if v == 0 {
-		return nil
-	}
-	return v
-}
-
-func boolInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
 }

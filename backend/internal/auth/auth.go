@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/mail"
+	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/store"
 )
 
 // sessionTTL is how long a login stays valid.
@@ -63,15 +64,21 @@ func (s *Service) SetMailer(m mail.Sender) {
 	s.mailer = m
 }
 
+// foldUsername brings a login name into the form it is stored and compared in.
+func foldUsername(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
+}
+
 // normalizeUsername lowercases and checks a login name.
 // Only ASCII letters, digits and underscores are allowed.
 func normalizeUsername(name string) (string, error) {
-	u := strings.ToLower(strings.TrimSpace(name))
+	u := foldUsername(name)
 	if l := utf8.RuneCountInString(u); l < 3 || l > 32 {
 		return "", ErrInvalidUsername
 	}
 	for _, c := range u {
-		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_') {
+		allowed := c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_'
+		if !allowed {
 			return "", ErrInvalidUsername
 		}
 	}
@@ -87,6 +94,20 @@ func normalizeEmail(email string) (string, error) {
 	return e, nil
 }
 
+// validatePassword checks the length of a new password.
+func validatePassword(password string) error {
+	if l := utf8.RuneCountInString(password); l < 8 || l > 256 {
+		return ErrInvalidPassword
+	}
+	return nil
+}
+
+// timestamp formats a point in time the way it is stored: RFC 3339 in UTC.
+// All stored timestamps share this format, so string order is time order.
+func timestamp(t time.Time) string {
+	return t.UTC().Format(time.RFC3339)
+}
+
 // Register creates an account and returns the new user ID.
 // The email address is required and used for password resets.
 // The display name defaults to the username.
@@ -99,29 +120,21 @@ func (s *Service) Register(ctx context.Context, username, email, password, displ
 	if err != nil {
 		return "", err
 	}
-	if l := utf8.RuneCountInString(password); l < 8 || l > 256 {
-		return "", ErrInvalidPassword
+	if err := validatePassword(password); err != nil {
+		return "", err
 	}
 	name := strings.TrimSpace(displayName)
 	if name == "" {
 		name = u
 	}
 
-	hash, err := hashPassword(password)
-	if err != nil {
-		return "", err
-	}
-	id, err := randomHex(16)
-	if err != nil {
-		return "", err
-	}
-
+	id := randomHex(16)
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO user (id, name, username, email, password_hash, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)`,
-		id, name, u, e, hash, s.now().UTC().Format(time.RFC3339),
+		id, name, u, e, hashPassword(password), timestamp(s.now()),
 	)
-	if err != nil {
+	if store.IsUniqueViolation(err) {
 		// Both unique indexes are named, so the error says which value clashed.
 		switch {
 		case strings.Contains(err.Error(), "user_email_unique"):
@@ -129,6 +142,8 @@ func (s *Service) Register(ctx context.Context, username, email, password, displ
 		case strings.Contains(err.Error(), "user_username_unique"):
 			return "", ErrUsernameTaken
 		}
+	}
+	if err != nil {
 		return "", err
 	}
 	return id, nil
@@ -137,7 +152,7 @@ func (s *Service) Register(ctx context.Context, username, email, password, displ
 // Login checks the credentials and returns a new session token.
 // Wrong usernames and wrong passwords produce the same error.
 func (s *Service) Login(ctx context.Context, username, password string) (string, error) {
-	u := strings.ToLower(strings.TrimSpace(username))
+	u := foldUsername(username)
 	now := s.now()
 	// Checked for every name, known or not, so the limit reveals nothing.
 	if s.loginFailures.blocked(u, now) {
@@ -168,16 +183,12 @@ func (s *Service) Login(ctx context.Context, username, password string) (string,
 // CreateSession starts a session for a user and returns the token.
 // The token is shown to the client once; only its hash is stored.
 func (s *Service) CreateSession(ctx context.Context, userID string) (string, error) {
-	token, err := newToken()
-	if err != nil {
-		return "", err
-	}
-
-	now := s.now().UTC()
-	_, err = s.db.ExecContext(ctx, `
+	token := newToken()
+	now := s.now()
+	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO session (token_hash, user_id, created_at, expires_at)
 		VALUES (?, ?, ?, ?)`,
-		hashToken(token), userID, now.Format(time.RFC3339), now.Add(sessionTTL).Format(time.RFC3339),
+		hashToken(token), userID, timestamp(now), timestamp(now.Add(sessionTTL)),
 	)
 	if err != nil {
 		return "", err
@@ -194,7 +205,7 @@ func (s *Service) UserForToken(ctx context.Context, token string) (string, error
 	err := s.db.QueryRowContext(ctx, `
 		SELECT user_id FROM session
 		WHERE token_hash = ? AND expires_at > ?`,
-		hashToken(token), s.now().UTC().Format(time.RFC3339),
+		hashToken(token), timestamp(s.now()),
 	).Scan(&userID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrUnauthenticated
@@ -213,19 +224,43 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 
 // FindUserID returns the ID of the user with the given username.
 func (s *Service) FindUserID(ctx context.Context, username string) (string, error) {
-	u := strings.ToLower(strings.TrimSpace(username))
 	var id string
-	err := s.db.QueryRowContext(ctx, `SELECT id FROM user WHERE lower(username) = ?`, u).Scan(&id)
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id FROM user WHERE lower(username) = ?`, foldUsername(username),
+	).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrUserNotFound
 	}
 	return id, err
 }
 
-// DeleteAccount removes a user after checking the password. The removeData
-// callback runs in the same transaction as the user deletion, so either all
-// data is removed or nothing is. Sessions are removed by the database cascade.
-func (s *Service) DeleteAccount(ctx context.Context, userID, password string, removeData func(ctx context.Context, tx *sql.Tx) error) error {
+// PurgeExpired removes sessions and password reset codes that are no longer
+// valid. It returns how many rows were removed.
+func (s *Service) PurgeExpired(ctx context.Context) (int64, error) {
+	now := timestamp(s.now())
+	var removed int64
+	for _, table := range []string{"session", "password_reset"} {
+		res, err := s.db.ExecContext(ctx, `DELETE FROM `+table+` WHERE expires_at <= ?`, now)
+		if err != nil {
+			return removed, err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return removed, err
+		}
+		removed += n
+	}
+	return removed, nil
+}
+
+// RemoveDataFunc removes everything a user owns outside the auth tables. It
+// runs inside the transaction that deletes the account.
+type RemoveDataFunc func(ctx context.Context, tx *sql.Tx, userID string) error
+
+// DeleteAccount removes a user after checking the password. removeData runs in
+// the same transaction as the user deletion, so either all data is removed or
+// nothing is. Sessions and reset codes are removed by the database cascade.
+func (s *Service) DeleteAccount(ctx context.Context, userID, password string, removeData RemoveDataFunc) error {
 	var hash sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT password_hash FROM user WHERE id = ?`, userID).Scan(&hash)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -244,7 +279,7 @@ func (s *Service) DeleteAccount(ctx context.Context, userID, password string, re
 	}
 	defer tx.Rollback() // no effect after a successful Commit
 
-	if err := removeData(ctx, tx); err != nil {
+	if err := removeData(ctx, tx, userID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM user WHERE id = ?`, userID); err != nil {
@@ -261,18 +296,15 @@ func hashToken(token string) string {
 }
 
 // newToken returns 32 random bytes, encoded for use in a URL or a mail.
-func newToken() (string, error) {
+func newToken() string {
 	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(raw), nil
+	rand.Read(raw) // never fails: crypto/rand aborts the program instead
+	return base64.RawURLEncoding.EncodeToString(raw)
 }
 
-func randomHex(n int) (string, error) {
+// randomHex returns n random bytes as hex.
+func randomHex(n int) string {
 	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
+	rand.Read(b) // never fails, see newToken
+	return hex.EncodeToString(b)
 }

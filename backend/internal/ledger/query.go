@@ -9,6 +9,7 @@ import (
 // Errors for reading and deleting transactions.
 var (
 	ErrLedgerRequired      = errors.New("a ledger ID is required")
+	ErrLedgerNotFound      = errors.New("ledger not found")
 	ErrTransactionNotFound = errors.New("transaction not found")
 )
 
@@ -25,6 +26,18 @@ type Transaction struct {
 	AmountCents      int64
 	BookedOn         string
 	Note             string
+}
+
+// transactionColumns lists the columns of a Transaction for a query that
+// names the transactions table t. scanTargets returns the matching targets.
+const transactionColumns = `
+	t.id, t.ledger_id, t.user_id, t.type,
+	COALESCE(t.category_id, ''), t.pot_id, COALESCE(t.counterpart_pot_id, ''),
+	t.amount_cents, t.booked_on, COALESCE(t.note, '')`
+
+func (t *Transaction) scanTargets() []any {
+	return []any{&t.ID, &t.LedgerID, &t.UserID, &t.Type, &t.CategoryID,
+		&t.PotID, &t.CounterpartPotID, &t.AmountCents, &t.BookedOn, &t.Note}
 }
 
 // ListFilter selects transactions of one ledger. Empty optional fields mean
@@ -45,36 +58,22 @@ func (s *Store) ListTransactions(ctx context.Context, f ListFilter) ([]Transacti
 	if f.LedgerID == "" {
 		return nil, ErrLedgerRequired
 	}
-	for _, d := range []string{f.From, f.To} {
-		if d == "" {
-			continue
-		}
-		if _, err := time.Parse("2006-01-02", d); err != nil {
-			return nil, ErrInvalidDate
-		}
+	if err := validateRange(f.From, f.To); err != nil {
+		return nil, err
 	}
 
-	query := `
-		SELECT id, ledger_id, user_id, type,
-		       COALESCE(category_id, ''), pot_id, COALESCE(counterpart_pot_id, ''),
-		       amount_cents, booked_on, COALESCE(note, '')
-		FROM transactions
-		WHERE ledger_id = ? AND deleted_at IS NULL`
+	query := `SELECT ` + transactionColumns + `
+		FROM transactions t
+		WHERE t.ledger_id = ? AND t.deleted_at IS NULL`
 	args := []any{f.LedgerID}
 
 	if f.PotID != "" {
-		query += ` AND pot_id = ?`
+		query += ` AND t.pot_id = ?`
 		args = append(args, f.PotID)
 	}
-	if f.From != "" {
-		query += ` AND booked_on >= ?`
-		args = append(args, f.From)
-	}
-	if f.To != "" {
-		query += ` AND booked_on <= ?`
-		args = append(args, f.To)
-	}
-	query += ` ORDER BY booked_on DESC, created_at DESC`
+	rc, rargs := rangeClause(f.From, f.To)
+	query += rc + ` ORDER BY t.booked_on DESC, t.created_at DESC`
+	args = append(args, rargs...)
 	if f.Limit > 0 {
 		query += ` LIMIT ? OFFSET ?`
 		args = append(args, f.Limit, f.Offset)
@@ -89,40 +88,36 @@ func (s *Store) ListTransactions(ctx context.Context, f ListFilter) ([]Transacti
 	var out []Transaction
 	for rows.Next() {
 		var t Transaction
-		var typ string
-		if err := rows.Scan(&t.ID, &t.LedgerID, &t.UserID, &typ, &t.CategoryID,
-			&t.PotID, &t.CounterpartPotID, &t.AmountCents, &t.BookedOn, &t.Note); err != nil {
+		if err := rows.Scan(t.scanTargets()...); err != nil {
 			return nil, err
 		}
-		t.Type = TxType(typ)
 		out = append(out, t)
 	}
 	return out, rows.Err()
 }
 
+// selfAndLinkedLeg is a WHERE condition that matches a transaction of a
+// ledger and, for a transfer between ledgers, its other leg (rule X14), so
+// both legs are always deleted and restored together. It takes the
+// transaction ID and the ledger ID, twice each.
+const selfAndLinkedLeg = `(
+	(id = ? AND ledger_id = ?)
+	OR id IN (SELECT linked_transaction_id FROM transactions
+	          WHERE id = ? AND ledger_id = ? AND linked_transaction_id IS NOT NULL)
+)`
+
 // DeleteTransaction soft-deletes a transaction (rule X10): it sets deleted_at
 // and deleted_by and keeps the row until the cleanup job removes it after 30 days.
 func (s *Store) DeleteTransaction(ctx context.Context, ledgerID, id, userID string, now time.Time) error {
-	ts := now.UTC().Format(time.RFC3339)
+	ts := timestamp(now)
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE transactions
 		SET deleted_at = ?, deleted_by = ?, updated_at = ?
-		WHERE deleted_at IS NULL AND (
-		    (id = ? AND ledger_id = ?)
-		    OR id IN (SELECT linked_transaction_id FROM transactions
-		              WHERE id = ? AND ledger_id = ? AND linked_transaction_id IS NOT NULL)
-		)`,
+		WHERE deleted_at IS NULL AND `+selfAndLinkedLeg,
 		ts, userID, ts, id, ledgerID, id, ledgerID,
 	)
 	if err != nil {
 		return err
 	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrTransactionNotFound
-	}
-	return nil
+	return requireAffected(res, ErrTransactionNotFound)
 }

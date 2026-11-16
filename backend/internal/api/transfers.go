@@ -50,13 +50,7 @@ func (s *Server) createLinkedTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, ledgerID := range []string{req.FromLedgerID, req.ToLedgerID} {
-		allowed, err := s.store.CanAccessLedger(r.Context(), userID, ledgerID)
-		if err != nil {
-			s.writeStoreError(w, err)
-			return
-		}
-		if !allowed {
-			writeError(w, http.StatusNotFound, "not found")
+		if !s.canAccessLedger(w, r, userID, ledgerID) {
 			return
 		}
 	}
@@ -72,7 +66,7 @@ func (s *Server) createLinkedTransfer(w http.ResponseWriter, r *http.Request) {
 		Note:         req.Note,
 	}, s.now())
 	if err != nil {
-		s.writeStoreError(w, err)
+		fail(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"out_id": outID, "in_id": inID})

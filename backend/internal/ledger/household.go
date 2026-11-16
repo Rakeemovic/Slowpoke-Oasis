@@ -4,9 +4,21 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"strings"
 	"time"
+
+	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/store"
 )
+
+// Roles of a household member. Owners may add and remove other members.
+const (
+	RoleOwner  = "owner"
+	RoleMember = "member"
+)
+
+// FormerMemberID is the placeholder user that replaces a departed member in
+// household transactions (rule X12). It is created by migration 0003 and has
+// no username or password, so nobody can log in as it.
+const FormerMemberID = "former-member"
 
 // Errors for household membership.
 var (
@@ -29,54 +41,26 @@ func (s *Store) CreateHousehold(ctx context.Context, ownerID, name string, now t
 	if err != nil {
 		return "", "", err
 	}
-	householdID, err := newID()
-	if err != nil {
-		return "", "", err
-	}
-	ledgerID, err := newID()
-	if err != nil {
-		return "", "", err
-	}
-	potID, err := newID()
-	if err != nil {
-		return "", "", err
-	}
-	ts := now.UTC().Format(time.RFC3339)
+	householdID := newID()
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	var ledgerID string
+	err = s.inTx(ctx, func(tx *sql.Tx) (err error) {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO household (id, name, created_at) VALUES (?, ?, ?)`,
+			householdID, n, timestamp(now),
+		); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO household_member (household_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)`,
+			householdID, ownerID, RoleOwner, timestamp(now),
+		); err != nil {
+			return err
+		}
+		ledgerID, err = insertLedger(ctx, tx, ledgerOwner{HouseholdID: householdID}, n, 1, now)
+		return err
+	})
 	if err != nil {
-		return "", "", err
-	}
-	defer tx.Rollback() // no effect after a successful Commit
-
-	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO household (id, name, created_at) VALUES (?, ?, ?)`,
-		householdID, n, ts,
-	); err != nil {
-		return "", "", err
-	}
-	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO household_member (household_id, user_id, role, joined_at)
-		 VALUES (?, ?, 'owner', strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`,
-		householdID, ownerID,
-	); err != nil {
-		return "", "", err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO ledger (id, name, household_id, payday_day, currency, created_at)
-		VALUES (?, ?, ?, 1, 'EUR', ?)`,
-		ledgerID, n, householdID, ts,
-	); err != nil {
-		return "", "", err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO pot (id, ledger_id, name, kind, is_default)
-		VALUES (?, ?, 'Monthly', 'monthly', 1)`,
-		potID, ledgerID,
-	); err != nil {
-		return "", "", err
-	}
-	if err := tx.Commit(); err != nil {
 		return "", "", err
 	}
 	return householdID, ledgerID, nil
@@ -110,8 +94,13 @@ func (s *Store) ListHouseholds(ctx context.Context, userID string) ([]Household,
 
 // HouseholdRole returns the role of a user in a household, or ErrNotMember.
 func (s *Store) HouseholdRole(ctx context.Context, userID, householdID string) (string, error) {
+	return memberRole(ctx, s.db, householdID, userID)
+}
+
+// memberRole returns the role of a user in a household, or ErrNotMember.
+func memberRole(ctx context.Context, q queryer, householdID, userID string) (string, error) {
 	var role string
-	err := s.db.QueryRowContext(ctx,
+	err := q.QueryRowContext(ctx,
 		`SELECT role FROM household_member WHERE household_id = ? AND user_id = ?`,
 		householdID, userID,
 	).Scan(&role)
@@ -125,61 +114,47 @@ func (s *Store) HouseholdRole(ctx context.Context, userID, householdID string) (
 func (s *Store) AddHouseholdMember(ctx context.Context, householdID, userID string) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO household_member (household_id, user_id, role, joined_at)
-		 VALUES (?, ?, 'member', strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`,
-		householdID, userID,
+		 VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`,
+		householdID, userID, RoleMember,
 	)
-	if err != nil && strings.Contains(err.Error(), "UNIQUE") {
+	if store.IsUniqueViolation(err) {
 		return ErrAlreadyMember
 	}
 	return err
 }
 
-// LeaveHousehold removes a user from a household. The user's bookings stay
-// in the household under the placeholder (rule X12). See LeaveHouseholdTx.
-func (s *Store) LeaveHousehold(ctx context.Context, householdID, userID string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback() // no effect after a successful Commit
-
-	if err := LeaveHouseholdTx(ctx, tx, householdID, userID); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
-// LeaveHouseholdTx removes a user from a household inside an existing transaction.
+// LeaveHousehold removes a user from a household. It returns ErrMemberNotFound
+// if the user is not a member.
 //
 //   - The user's bookings and deletions in the household are handed over to the
 //     placeholder, so they stay visible to the other members (rule X12).
 //   - If the user was the last member, the household and its ledger are deleted.
 //   - If the user was an owner, the longest-standing member becomes owner.
-func LeaveHouseholdTx(ctx context.Context, tx *sql.Tx, householdID, userID string) error {
-	var role string
-	err := tx.QueryRowContext(ctx,
-		`SELECT role FROM household_member WHERE household_id = ? AND user_id = ?`,
-		householdID, userID,
-	).Scan(&role)
-	if errors.Is(err, sql.ErrNoRows) {
+func (s *Store) LeaveHousehold(ctx context.Context, householdID, userID string) error {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		return leaveHousehold(ctx, tx, householdID, userID)
+	})
+}
+
+// leaveHousehold is LeaveHousehold inside an existing transaction.
+func leaveHousehold(ctx context.Context, tx *sql.Tx, householdID, userID string) error {
+	role, err := memberRole(ctx, tx, householdID, userID)
+	if errors.Is(err, ErrNotMember) {
 		return ErrMemberNotFound
 	}
 	if err != nil {
 		return err
 	}
 
-	scope := `ledger_id IN (SELECT id FROM ledger WHERE household_id = ?)`
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE transactions SET user_id = ? WHERE user_id = ? AND `+scope,
-		FormerMemberID, userID, householdID,
-	); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE transactions SET deleted_by = ? WHERE deleted_by = ? AND `+scope,
-		FormerMemberID, userID, householdID,
-	); err != nil {
-		return err
+	// Hand the user's traces in the household over to the placeholder.
+	for _, column := range []string{"user_id", "deleted_by"} {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE transactions SET `+column+` = ?
+			WHERE `+column+` = ? AND ledger_id IN (SELECT id FROM ledger WHERE household_id = ?)`,
+			FormerMemberID, userID, householdID,
+		); err != nil {
+			return err
+		}
 	}
 
 	if _, err := tx.ExecContext(ctx,
@@ -196,46 +171,47 @@ func LeaveHouseholdTx(ctx context.Context, tx *sql.Tx, householdID, userID strin
 		return err
 	}
 	if remaining == 0 {
-		return deleteHouseholdTx(ctx, tx, householdID)
+		return deleteHousehold(ctx, tx, householdID)
 	}
 
-	if role == "owner" {
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE household_member SET role = 'owner'
+	if role == RoleOwner {
+		// The longest-standing member takes over. Members who joined in the
+		// same second keep the order in which they were added.
+		_, err := tx.ExecContext(ctx, `
+			UPDATE household_member SET role = ?
 			WHERE household_id = ?
 			  AND rowid = (SELECT rowid FROM household_member WHERE household_id = ?
 			               ORDER BY joined_at, rowid LIMIT 1)`,
-			householdID, householdID,
-		); err != nil {
-			return err
-		}
+			RoleOwner, householdID, householdID,
+		)
+		return err
 	}
 	return nil
 }
 
-// LeaveAllHouseholdsTx removes a user from all households. It is used when an
+// leaveAllHouseholds removes a user from all households. It is used when an
 // account is deleted.
-func LeaveAllHouseholdsTx(ctx context.Context, tx *sql.Tx, userID string) error {
+func leaveAllHouseholds(ctx context.Context, tx *sql.Tx, userID string) error {
 	ids, err := queryIDs(ctx, tx, `SELECT household_id FROM household_member WHERE user_id = ?`, userID)
 	if err != nil {
 		return err
 	}
 	for _, id := range ids {
-		if err := LeaveHouseholdTx(ctx, tx, id, userID); err != nil {
+		if err := leaveHousehold(ctx, tx, id, userID); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// deleteHouseholdTx removes a household with its ledgers. It is only used when
+// deleteHousehold removes a household with its ledgers. It is only used when
 // the last member has left, so no one can access the data any more.
-func deleteHouseholdTx(ctx context.Context, tx *sql.Tx, householdID string) error {
+func deleteHousehold(ctx context.Context, tx *sql.Tx, householdID string) error {
 	ids, err := queryIDs(ctx, tx, `SELECT id FROM ledger WHERE household_id = ?`, householdID)
 	if err != nil {
 		return err
 	}
-	if err := deleteLedgersTx(ctx, tx, ids); err != nil {
+	if err := deleteLedgers(ctx, tx, ids); err != nil {
 		return err
 	}
 	_, err = tx.ExecContext(ctx, `DELETE FROM household WHERE id = ?`, householdID)

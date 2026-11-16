@@ -1,56 +1,6 @@
 package api
 
-import (
-	"net/http"
-
-	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/ledger"
-)
-
-// transactionPatchRequest is the JSON body for changing a transaction.
-// Fields that are left out stay unchanged.
-type transactionPatchRequest struct {
-	Type             *string `json:"type"`
-	CategoryID       *string `json:"category_id"`
-	PotID            *string `json:"pot_id"`
-	CounterpartPotID *string `json:"counterpart_pot_id"`
-	AmountCents      *int64  `json:"amount_cents"`
-	BookedOn         *string `json:"booked_on"`
-	Note             *string `json:"note"`
-}
-
-// PATCH /ledgers/{ledger}/transactions/{id}
-func (s *Server) updateTransaction(w http.ResponseWriter, r *http.Request) {
-	userID, ok := s.requireLedgerAccess(w, r)
-	if !ok {
-		return
-	}
-	var req transactionPatchRequest
-	if !decodeJSON(w, r, &req) {
-		return
-	}
-	if err := s.store.AuthorizeTransactionChange(r.Context(), userID, r.PathValue("ledger"), r.PathValue("id"), ledger.ActionEdit); err != nil {
-		s.writeStoreError(w, err)
-		return
-	}
-	patch := ledger.TransactionPatch{
-		CategoryID:       req.CategoryID,
-		PotID:            req.PotID,
-		CounterpartPotID: req.CounterpartPotID,
-		AmountCents:      req.AmountCents,
-		BookedOn:         req.BookedOn,
-		Note:             req.Note,
-	}
-	if req.Type != nil {
-		t := ledger.TxType(*req.Type)
-		patch.Type = &t
-	}
-	err := s.store.UpdateTransaction(r.Context(), r.PathValue("ledger"), r.PathValue("id"), patch, s.now())
-	if err != nil {
-		s.writeStoreError(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
+import "net/http"
 
 // planLineResponse compares plan and actual for one category.
 type planLineResponse struct {
@@ -72,12 +22,12 @@ func (s *Server) potSummary(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	from, to, err := s.store.ResolvePeriod(r.Context(), ledgerID, q.Get("month"), q.Get("from"), q.Get("to"))
 	if err != nil {
-		s.writeStoreError(w, err)
+		fail(w, err)
 		return
 	}
 	sum, err := s.store.PotSummary(r.Context(), ledgerID, r.PathValue("pot"), from, to)
 	if err != nil {
-		s.writeStoreError(w, err)
+		fail(w, err)
 		return
 	}
 
@@ -121,12 +71,12 @@ func (s *Server) analytics(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	from, to, err := s.store.ResolvePeriod(r.Context(), ledgerID, q.Get("month"), q.Get("from"), q.Get("to"))
 	if err != nil {
-		s.writeStoreError(w, err)
+		fail(w, err)
 		return
 	}
 	totals, err := s.store.CategoryTotals(r.Context(), ledgerID, from, to)
 	if err != nil {
-		s.writeStoreError(w, err)
+		fail(w, err)
 		return
 	}
 

@@ -1,16 +1,10 @@
 package api
 
 import (
-	"context"
-	"database/sql"
-	"errors"
-	"log"
 	"net/http"
 	"strings"
 
-	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/auth"
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/ledger"
-	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/mail"
 )
 
 // bearerToken returns the token from "Authorization: Bearer <token>", or "".
@@ -31,13 +25,8 @@ func (s *Server) requireUser(w http.ResponseWriter, r *http.Request) (string, bo
 		return "", false
 	}
 	userID, err := s.accounts.UserForToken(r.Context(), token)
-	if errors.Is(err, auth.ErrUnauthenticated) {
-		writeError(w, http.StatusUnauthorized, err.Error())
-		return "", false
-	}
 	if err != nil {
-		log.Printf("token lookup: %v", err)
-		writeError(w, http.StatusInternalServerError, "internal error")
+		fail(w, err)
 		return "", false
 	}
 	return userID, true
@@ -45,22 +34,32 @@ func (s *Server) requireUser(w http.ResponseWriter, r *http.Request) (string, bo
 
 // requireLedgerAccess checks that the logged-in user may use the ledger in the
 // path. It writes 401 without a valid login and 404 when the ledger is unknown
-// or belongs to someone else, so that foreign IDs are not revealed.
+// or belongs to someone else.
 func (s *Server) requireLedgerAccess(w http.ResponseWriter, r *http.Request) (string, bool) {
 	userID, ok := s.requireUser(w, r)
 	if !ok {
 		return "", false
 	}
-	allowed, err := s.store.CanAccessLedger(r.Context(), userID, r.PathValue("ledger"))
-	if err != nil {
-		s.writeStoreError(w, err)
-		return "", false
-	}
-	if !allowed {
-		writeError(w, http.StatusNotFound, "not found")
+	if !s.canAccessLedger(w, r, userID, r.PathValue("ledger")) {
 		return "", false
 	}
 	return userID, true
+}
+
+// canAccessLedger reports whether the user may use a ledger. If not, it writes
+// the response: 404 for unknown ledgers and for ledgers of other people alike,
+// so that foreign IDs are not revealed.
+func (s *Server) canAccessLedger(w http.ResponseWriter, r *http.Request, userID, ledgerID string) bool {
+	allowed, err := s.store.CanAccessLedger(r.Context(), userID, ledgerID)
+	if err != nil {
+		fail(w, err)
+		return false
+	}
+	if !allowed {
+		fail(w, ledger.ErrLedgerNotFound)
+		return false
+	}
+	return true
 }
 
 // POST /auth/register
@@ -76,10 +75,39 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := s.accounts.Register(r.Context(), req.Username, req.Email, req.Password, req.DisplayName)
 	if err != nil {
-		writeAuthError(w, err)
+		fail(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
+}
+
+// POST /auth/login
+func (s *Server) login(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	token, err := s.accounts.Login(r.Context(), req.Username, req.Password)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"token": token})
+}
+
+// POST /auth/logout
+func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireUser(w, r); !ok {
+		return
+	}
+	if err := s.accounts.Logout(r.Context(), bearerToken(r)); err != nil {
+		fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // POST /auth/password-reset
@@ -93,7 +121,7 @@ func (s *Server) requestPasswordReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.accounts.RequestPasswordReset(r.Context(), req.Email); err != nil {
-		writeAuthError(w, err)
+		fail(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusAccepted)
@@ -110,45 +138,15 @@ func (s *Server) confirmPasswordReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.accounts.ConfirmPasswordReset(r.Context(), req.Token, req.NewPassword); err != nil {
-		writeAuthError(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// POST /auth/login
-func (s *Server) login(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
-	if !decodeJSON(w, r, &req) {
-		return
-	}
-	token, err := s.accounts.Login(r.Context(), req.Username, req.Password)
-	if err != nil {
-		writeAuthError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"token": token})
-}
-
-// POST /auth/logout
-func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireUser(w, r); !ok {
-		return
-	}
-	if err := s.accounts.Logout(r.Context(), bearerToken(r)); err != nil {
-		log.Printf("logout: %v", err)
-		writeError(w, http.StatusInternalServerError, "internal error")
+		fail(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // DELETE /auth/account
-// Requires the current password. Removes all personal ledgers and the user
-// immediately; sessions are removed with the user.
+// Requires the current password. Removes the user with all personal ledgers
+// and household memberships immediately; sessions are removed with the user.
 func (s *Server) deleteAccount(w http.ResponseWriter, r *http.Request) {
 	userID, ok := s.requireUser(w, r)
 	if !ok {
@@ -160,42 +158,9 @@ func (s *Server) deleteAccount(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	err := s.accounts.DeleteAccount(r.Context(), userID, req.Password,
-		func(ctx context.Context, tx *sql.Tx) error {
-			if err := ledger.DeletePersonalLedgersTx(ctx, tx, userID); err != nil {
-				return err
-			}
-			return ledger.LeaveAllHouseholdsTx(ctx, tx, userID)
-		})
-	switch {
-	case errors.Is(err, auth.ErrWrongPassword):
-		writeError(w, http.StatusForbidden, err.Error())
-	case errors.Is(err, auth.ErrUnauthenticated):
-		writeError(w, http.StatusUnauthorized, err.Error())
-	case err != nil:
-		log.Printf("delete account: %v", err)
-		writeError(w, http.StatusInternalServerError, "internal error")
-	default:
-		w.WriteHeader(http.StatusNoContent)
+	if err := s.accounts.DeleteAccount(r.Context(), userID, req.Password, ledger.RemoveUserData); err != nil {
+		fail(w, err)
+		return
 	}
-}
-
-// writeAuthError maps errors from the auth package to HTTP status codes.
-func writeAuthError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, auth.ErrInvalidUsername), errors.Is(err, auth.ErrInvalidPassword),
-		errors.Is(err, auth.ErrInvalidEmail), errors.Is(err, auth.ErrInvalidResetToken):
-		writeError(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, auth.ErrUsernameTaken), errors.Is(err, auth.ErrEmailTaken):
-		writeError(w, http.StatusConflict, err.Error())
-	case errors.Is(err, auth.ErrInvalidCredentials):
-		writeError(w, http.StatusUnauthorized, err.Error())
-	case errors.Is(err, auth.ErrTooManyAttempts):
-		writeError(w, http.StatusTooManyRequests, err.Error())
-	case errors.Is(err, mail.ErrNotConfigured):
-		writeError(w, http.StatusServiceUnavailable, err.Error())
-	default:
-		log.Printf("auth: %v", err)
-		writeError(w, http.StatusInternalServerError, "internal error")
-	}
+	w.WriteHeader(http.StatusNoContent)
 }

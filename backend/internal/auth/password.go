@@ -24,17 +24,15 @@ const (
 
 // hashPassword returns an encoded Argon2id hash with a random salt.
 // Format: argon2id$<memory>$<time>$<threads>$<salt>$<key>
-func hashPassword(password string) (string, error) {
+func hashPassword(password string) string {
 	salt := make([]byte, argonSaltLen)
-	if _, err := rand.Read(salt); err != nil {
-		return "", err
-	}
+	rand.Read(salt) // never fails: crypto/rand aborts the program instead
 	key := argon2.IDKey([]byte(password), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
 	return fmt.Sprintf("argon2id$%d$%d$%d$%s$%s",
 		argonMemory, argonTime, argonThreads,
 		base64.RawStdEncoding.EncodeToString(salt),
 		base64.RawStdEncoding.EncodeToString(key),
-	), nil
+	)
 }
 
 // verifyPassword reports whether password matches an encoded hash.
@@ -59,4 +57,4 @@ func verifyPassword(password, encoded string) bool {
 
 // dummyHash is checked during logins for unknown usernames, so that the
 // response takes about as long as for a real account.
-var dummyHash, _ = hashPassword("timing-equalizer")
+var dummyHash = hashPassword("timing-equalizer")

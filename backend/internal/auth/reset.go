@@ -6,7 +6,6 @@ import (
 	"errors"
 	"log"
 	"time"
-	"unicode/utf8"
 
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/mail"
 )
@@ -37,7 +36,7 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) error 
 	s.resetRequests.record(e, now)
 
 	var userID string
-	err = s.db.QueryRowContext(ctx, `SELECT id FROM user WHERE email = ?`, e).Scan(&userID)
+	err = s.db.QueryRowContext(ctx, `SELECT id FROM user WHERE lower(email) = ?`, e).Scan(&userID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -45,10 +44,35 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) error 
 		return err
 	}
 
-	token, err := newToken()
-	if err != nil {
+	// The code is stored before the mail goes out, so the database is not
+	// kept busy while the mail server answers.
+	token := newToken()
+	if err := s.storeResetCode(ctx, userID, token); err != nil {
 		return err
 	}
+	// Sending can take seconds. Doing it in the background keeps the response
+	// time the same for registered and unknown addresses, and a mail error
+	// cannot be used to tell them apart either. The sender has its own timeout.
+	go s.sendResetMail(context.WithoutCancel(ctx), e, token)
+	return nil
+}
+
+// sendResetMail delivers a reset code. If that fails, nobody received the code,
+// so it must not stay valid: it is removed and the failure is logged without
+// the address.
+func (s *Service) sendResetMail(ctx context.Context, to, token string) {
+	err := s.mailer.Send(ctx, to, "Passwort zurücksetzen", resetMailBody(token))
+	if err == nil {
+		return
+	}
+	_, delErr := s.db.ExecContext(ctx, `DELETE FROM password_reset WHERE token_hash = ?`, hashToken(token))
+	log.Printf("send reset email: %v", errors.Join(err, delErr))
+}
+
+// storeResetCode saves the hash of a new reset code for a user. It replaces
+// any earlier code of that user and clears expired codes of all users.
+func (s *Service) storeResetCode(ctx context.Context, userID, token string) error {
+	now := s.now()
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -56,54 +80,40 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) error 
 	}
 	defer tx.Rollback() // no effect after a successful Commit
 
-	// Only the newest code of an account is valid, and expired codes are removed.
-	if _, err := tx.ExecContext(ctx, `DELETE FROM password_reset WHERE expires_at < ? OR user_id = ?`,
-		now.UTC().Format(time.RFC3339), userID); err != nil {
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM password_reset WHERE expires_at <= ? OR user_id = ?`, timestamp(now), userID,
+	); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO password_reset (token_hash, user_id, created_at, expires_at)
 		VALUES (?, ?, ?, ?)`,
-		hashToken(token), userID, now.UTC().Format(time.RFC3339), now.Add(resetTTL).UTC().Format(time.RFC3339),
+		hashToken(token), userID, timestamp(now), timestamp(now.Add(resetTTL)),
 	); err != nil {
 		return err
 	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
+	return tx.Commit()
+}
 
-	body := "Hallo,\n\n" +
+// resetMailBody returns the text of the email that carries a reset code.
+func resetMailBody(token string) string {
+	return "Hallo,\n\n" +
 		"mit diesem Code kannst du dein Passwort zurücksetzen:\n\n" +
 		"Dein Code: " + token + "\n\n" +
 		"Der Code ist 30 Minuten gültig und kann nur einmal verwendet werden. " +
 		"Wenn du kein neues Passwort angefordert hast, kannst du diese E-Mail ignorieren.\n"
-	// Sending can take seconds. Doing it in the background keeps the response
-	// time the same for registered and unknown addresses, and a mail error
-	// cannot be used to tell them apart either.
-	go s.sendMail(e, "Passwort zurücksetzen", body)
-	return nil
-}
-
-// sendMail sends one email and logs failures. The address is not logged.
-func (s *Service) sendMail(to, subject, body string) {
-	if err := s.mailer.Send(context.Background(), to, subject, body); err != nil {
-		log.Printf("send email: %v", err)
-	}
 }
 
 // ConfirmPasswordReset sets a new password if the reset code is valid. The code
 // is used up, and all existing logins of the account end.
 func (s *Service) ConfirmPasswordReset(ctx context.Context, token, newPassword string) error {
-	if l := utf8.RuneCountInString(newPassword); l < 8 || l > 256 {
-		return ErrInvalidPassword
+	if err := validatePassword(newPassword); err != nil {
+		return err
 	}
 	if token == "" {
 		return ErrInvalidResetToken
 	}
-	hash, err := hashPassword(newPassword)
-	if err != nil {
-		return err
-	}
+	hash := hashPassword(newPassword)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -111,31 +121,31 @@ func (s *Service) ConfirmPasswordReset(ctx context.Context, token, newPassword s
 	}
 	defer tx.Rollback() // no effect after a successful Commit
 
-	var userID, expiresAt string
+	var userID string
 	err = tx.QueryRowContext(ctx, `
-		SELECT user_id, expires_at FROM password_reset WHERE token_hash = ?`,
-		hashToken(token),
-	).Scan(&userID, &expiresAt)
+		SELECT user_id FROM password_reset WHERE token_hash = ? AND expires_at > ?`,
+		hashToken(token), timestamp(s.now()),
+	).Scan(&userID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrInvalidResetToken
 	}
 	if err != nil {
 		return err
 	}
-	// Both times are UTC in the same RFC 3339 format, so string order is time order.
-	if expiresAt <= s.now().UTC().Format(time.RFC3339) {
-		return ErrInvalidResetToken
-	}
 
-	if _, err := tx.ExecContext(ctx, `UPDATE user SET password_hash = ? WHERE id = ?`, hash, userID); err != nil {
-		return err
+	statements := []struct {
+		query string
+		args  []any
+	}{
+		{`UPDATE user SET password_hash = ? WHERE id = ?`, []any{hash, userID}},
+		{`DELETE FROM password_reset WHERE user_id = ?`, []any{userID}},
+		// Anyone who knew the old password loses access with it.
+		{`DELETE FROM session WHERE user_id = ?`, []any{userID}},
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM password_reset WHERE user_id = ?`, userID); err != nil {
-		return err
-	}
-	// Anyone who knew the old password loses access with it.
-	if _, err := tx.ExecContext(ctx, `DELETE FROM session WHERE user_id = ?`, userID); err != nil {
-		return err
+	for _, st := range statements {
+		if _, err := tx.ExecContext(ctx, st.query, st.args...); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
