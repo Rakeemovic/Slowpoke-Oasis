@@ -38,6 +38,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /ledgers/{ledger}/transactions/{id}", s.deleteTransaction)
 	mux.HandleFunc("GET /ledgers/{ledger}/transactions/deleted", s.listDeletedTransactions)
 	mux.HandleFunc("POST /ledgers/{ledger}/transactions/{id}/restore", s.restoreTransaction)
+	mux.HandleFunc("PATCH /ledgers/{ledger}/transactions/{id}", s.updateTransaction)
+	mux.HandleFunc("GET /ledgers/{ledger}/pots/{pot}/summary", s.potSummary)
+	mux.HandleFunc("GET /ledgers/{ledger}/analytics", s.analytics)
 	mux.HandleFunc("POST /households", s.createHousehold)
 	mux.HandleFunc("GET /households", s.listHouseholds)
 	mux.HandleFunc("POST /households/{household}/members", s.addHouseholdMember)
@@ -181,6 +184,8 @@ var validationErrors = []error{
 	ledger.ErrTargetDateNeedsTarget,
 	ledger.ErrInvalidAmount,
 	ledger.ErrCategoryKindMismatch,
+	ledger.ErrInvalidMonth,
+	ledger.ErrInvalidPeriod,
 }
 
 // writeStoreError maps errors from the ledger package to HTTP status codes.
