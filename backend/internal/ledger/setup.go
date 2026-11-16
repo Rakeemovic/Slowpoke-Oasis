@@ -2,17 +2,21 @@ package ledger
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"strings"
 	"time"
 	"unicode/utf8"
 )
 
-// Errors for creating users, ledgers and categories.
+// Errors for creating ledgers and categories.
 var (
 	ErrInvalidName   = errors.New("name must have between 1 and 50 characters")
 	ErrInvalidPayday = errors.New("payday_day must be a day between 1 and 31")
 )
+
+// defaultPotName is the name of the monthly pot every ledger starts with.
+const defaultPotName = "Monthly"
 
 // cleanName trims a name and checks its length.
 func cleanName(name string) (string, error) {
@@ -21,6 +25,39 @@ func cleanName(name string) (string, error) {
 		return "", ErrInvalidName
 	}
 	return n, nil
+}
+
+// validPayday reports whether day can be a payday (rule L2).
+func validPayday(day int) bool {
+	return day >= 1 && day <= 31
+}
+
+// ledgerOwner says who a new ledger belongs to: exactly one of the fields is
+// set (rule L1).
+type ledgerOwner struct {
+	UserID      string
+	HouseholdID string
+}
+
+// insertLedger creates a ledger together with its default monthly pot (rule
+// L4) and returns the ledger ID. It runs in tx, so both exist or neither does.
+func insertLedger(ctx context.Context, tx *sql.Tx, owner ledgerOwner, name string, paydayDay int, now time.Time) (string, error) {
+	ledgerID := newID()
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO ledger (id, name, user_id, household_id, payday_day, currency, created_at)
+		VALUES (?, ?, ?, ?, ?, 'EUR', ?)`,
+		ledgerID, name, nullIfEmpty(owner.UserID), nullIfEmpty(owner.HouseholdID), paydayDay, timestamp(now),
+	); err != nil {
+		return "", err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO pot (id, ledger_id, name, kind, is_default)
+		VALUES (?, ?, ?, 'monthly', 1)`,
+		newID(), ledgerID, defaultPotName,
+	); err != nil {
+		return "", err
+	}
+	return ledgerID, nil
 }
 
 // CreatePersonalLedger creates a ledger owned by a user together with its
@@ -33,45 +70,16 @@ func (s *Store) CreatePersonalLedger(ctx context.Context, userID, name string, p
 	if paydayDay == 0 {
 		paydayDay = 1
 	}
-	if paydayDay < 1 || paydayDay > 31 {
+	if !validPayday(paydayDay) {
 		return "", ErrInvalidPayday
 	}
 
-	ledgerID, err := newID()
-	if err != nil {
-		return "", err
-	}
-	potID, err := newID()
-	if err != nil {
-		return "", err
-	}
-	ts := now.UTC().Format(time.RFC3339)
-
-	// Ledger and default pot are created together or not at all.
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return "", err
-	}
-	defer tx.Rollback() // no effect after a successful Commit
-
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO ledger (id, name, user_id, payday_day, currency, created_at)
-		VALUES (?, ?, ?, ?, 'EUR', ?)`,
-		ledgerID, n, userID, paydayDay, ts,
-	); err != nil {
-		return "", err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO pot (id, ledger_id, name, kind, is_default)
-		VALUES (?, ?, 'Monthly', 'monthly', 1)`,
-		potID, ledgerID,
-	); err != nil {
-		return "", err
-	}
-	if err := tx.Commit(); err != nil {
-		return "", err
-	}
-	return ledgerID, nil
+	var ledgerID string
+	err = s.inTx(ctx, func(tx *sql.Tx) (err error) {
+		ledgerID, err = insertLedger(ctx, tx, ledgerOwner{UserID: userID}, n, paydayDay, now)
+		return err
+	})
+	return ledgerID, err
 }
 
 // CreateCategory adds a category to a ledger and returns its ID.
@@ -81,17 +89,10 @@ func (s *Store) CreateCategory(ctx context.Context, ledgerID, name string, isInc
 	if err != nil {
 		return "", err
 	}
-	id, err := newID()
-	if err != nil {
-		return "", err
-	}
-	income := 0
-	if isIncome {
-		income = 1
-	}
+	id := newID()
 	if _, err := s.db.ExecContext(ctx,
 		`INSERT INTO category (id, ledger_id, name, is_income) VALUES (?, ?, ?, ?)`,
-		id, ledgerID, n, income,
+		id, ledgerID, n, isIncome,
 	); err != nil {
 		return "", nameError(err)
 	}

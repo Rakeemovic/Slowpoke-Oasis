@@ -37,81 +37,48 @@ func (s *Store) CreateLinkedTransfer(ctx context.Context, in LinkedTransfer, now
 	if in.FromLedgerID == in.ToLedgerID {
 		return "", "", ErrSameLedger
 	}
-
-	fromPot, err := s.resolvePot(ctx, in.FromLedgerID, in.FromPotID)
-	if err != nil {
-		return "", "", err
-	}
-	toPot, err := s.resolvePot(ctx, in.ToLedgerID, in.ToPotID)
-	if err != nil {
+	if err := validateBooking(in.AmountCents, in.BookedOn, in.Note); err != nil {
 		return "", "", err
 	}
 
-	// The same checks as for a normal transfer (amount, date, note).
-	check := NewTransaction{
-		LedgerID:         in.FromLedgerID,
-		UserID:           in.UserID,
-		Type:             TypeTransfer,
-		PotID:            fromPot,
-		CounterpartPotID: toPot,
-		AmountCents:      in.AmountCents,
-		BookedOn:         in.BookedOn,
-		Note:             in.Note,
-	}
-	if err := check.Validate(); err != nil {
-		return "", "", err
-	}
-	if err := s.ensurePotActive(ctx, in.FromLedgerID, fromPot); err != nil {
-		return "", "", err
-	}
-	if err := s.ensurePotActive(ctx, in.ToLedgerID, toPot); err != nil {
-		return "", "", err
-	}
+	outID, inID := newID(), newID()
+	ts := timestamp(now)
 
-	outID, err := newID()
-	if err != nil {
-		return "", "", err
-	}
-	inID, err := newID()
-	if err != nil {
-		return "", "", err
-	}
-	ts := now.UTC().Format(time.RFC3339)
+	err := s.inTx(ctx, func(tx *sql.Tx) error {
+		// insertLeg books one side. The legs reference each other, so the
+		// foreign keys between them are only checked at commit.
+		insertLeg := func(id, linkedID, ledgerID, potID string, typ TxType, amount int64) error {
+			potID, err := resolvePot(ctx, tx, ledgerID, potID)
+			if err != nil {
+				return err
+			}
+			if err := ensurePotActive(ctx, tx, ledgerID, potID); err != nil {
+				return err
+			}
+			_, err = tx.ExecContext(ctx, `
+				INSERT INTO transactions (id, ledger_id, user_id, type, pot_id, amount_cents,
+				                          booked_on, note, created_at, updated_at, linked_transaction_id)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				id, ledgerID, in.UserID, typ, potID, amount,
+				in.BookedOn, nullIfEmpty(in.Note), ts, ts, linkedID,
+			)
+			return err
+		}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+		if err := insertLeg(outID, inID, in.FromLedgerID, in.FromPotID, TypeTransferOut, -in.AmountCents); err != nil {
+			return err
+		}
+		return insertLeg(inID, outID, in.ToLedgerID, in.ToPotID, TypeTransferIn, in.AmountCents)
+	})
 	if err != nil {
-		return "", "", err
-	}
-	defer tx.Rollback() // no effect after a successful Commit
-
-	// The legs reference each other, so the foreign keys are checked at commit.
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO transactions (id, ledger_id, user_id, type, pot_id, amount_cents,
-		                          booked_on, note, created_at, updated_at, linked_transaction_id)
-		VALUES (?, ?, ?, 'transfer_out', ?, ?, ?, ?, ?, ?, ?)`,
-		outID, in.FromLedgerID, in.UserID, fromPot, -in.AmountCents,
-		in.BookedOn, nullIfEmpty(in.Note), ts, ts, inID,
-	); err != nil {
-		return "", "", err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO transactions (id, ledger_id, user_id, type, pot_id, amount_cents,
-		                          booked_on, note, created_at, updated_at, linked_transaction_id)
-		VALUES (?, ?, ?, 'transfer_in', ?, ?, ?, ?, ?, ?, ?)`,
-		inID, in.ToLedgerID, in.UserID, toPot, in.AmountCents,
-		in.BookedOn, nullIfEmpty(in.Note), ts, ts, outID,
-	); err != nil {
-		return "", "", err
-	}
-	if err := tx.Commit(); err != nil {
 		return "", "", err
 	}
 	return outID, inID, nil
 }
 
 // LinkedPartner returns the ledger and ID of the other leg of a linked transfer,
-// including a soft-deleted one. For a transaction that is not linked, both
-// results are empty.
+// including a soft-deleted one. For a transaction that is not linked, or whose
+// other leg was removed with its ledger (rule X16), both results are empty.
 func (s *Store) LinkedPartner(ctx context.Context, ledgerID, id string) (string, string, error) {
 	var partnerLedgerID, partnerID string
 	err := s.db.QueryRowContext(ctx, `
@@ -125,16 +92,4 @@ func (s *Store) LinkedPartner(ctx context.Context, ledgerID, id string) (string,
 		return "", "", nil
 	}
 	return partnerLedgerID, partnerID, err
-}
-
-// resolvePot returns potID, or the default pot of the ledger if potID is empty.
-func (s *Store) resolvePot(ctx context.Context, ledgerID, potID string) (string, error) {
-	if potID != "" {
-		return potID, nil
-	}
-	var id string
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id FROM pot WHERE ledger_id = ? AND is_default = 1`, ledgerID,
-	).Scan(&id)
-	return id, err
 }

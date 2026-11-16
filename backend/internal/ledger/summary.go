@@ -40,31 +40,19 @@ type CategoryTotal struct {
 	TotalCents int64
 }
 
-// rangeClause adds an inclusive booked_on range to a query.
-func rangeClause(from, to string) (string, []any) {
-	clause := ""
-	var args []any
-	if from != "" {
-		clause += ` AND booked_on >= ?`
-		args = append(args, from)
-	}
-	if to != "" {
-		clause += ` AND booked_on <= ?`
-		args = append(args, to)
-	}
-	return clause, args
-}
-
 // PotSummary returns the planned and actual amounts of a pot per category, and
 // the transfers into and out of the pot, for the given date range.
 func (s *Store) PotSummary(ctx context.Context, ledgerID, potID, from, to string) (PotSummary, error) {
 	out := PotSummary{PotID: potID, From: from, To: to}
 
-	var one int
+	var exists bool
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT 1 FROM pot WHERE id = ? AND ledger_id = ?`, potID, ledgerID,
-	).Scan(&one); err != nil {
-		return PotSummary{}, err // sql.ErrNoRows maps to 404
+		`SELECT EXISTS (SELECT 1 FROM pot WHERE id = ? AND ledger_id = ?)`, potID, ledgerID,
+	).Scan(&exists); err != nil {
+		return PotSummary{}, err
+	}
+	if !exists {
+		return PotSummary{}, ErrPotNotFound
 	}
 
 	rc, rargs := rangeClause(from, to)
@@ -93,12 +81,10 @@ func (s *Store) PotSummary(ctx context.Context, ledgerID, potID, from, to string
 
 	for rows.Next() {
 		var l CategoryLine
-		var income int
 		var net int64
-		if err := rows.Scan(&l.CategoryID, &l.Name, &income, &l.PlannedCents, &net); err != nil {
+		if err := rows.Scan(&l.CategoryID, &l.Name, &l.IsIncome, &l.PlannedCents, &net); err != nil {
 			return PotSummary{}, err
 		}
-		l.IsIncome = income == 1
 		if l.IsIncome {
 			l.ActualCents = net
 			l.DifferenceCents = net - l.PlannedCents
@@ -111,6 +97,7 @@ func (s *Store) PotSummary(ctx context.Context, ledgerID, potID, from, to string
 	if err := rows.Err(); err != nil {
 		return PotSummary{}, err
 	}
+	// Close before the next query: the store uses a single connection.
 	rows.Close()
 
 	transferArgs := append([]any{potID, potID, ledgerID, potID, potID}, rargs...)
@@ -158,16 +145,12 @@ func (s *Store) CategoryTotals(ctx context.Context, ledgerID, from, to string) (
 	var out []CategoryTotal
 	for rows.Next() {
 		var t CategoryTotal
-		var income int
-		var sum int64
-		if err := rows.Scan(&t.CategoryID, &t.Name, &income, &t.Count, &sum); err != nil {
+		if err := rows.Scan(&t.CategoryID, &t.Name, &t.IsIncome, &t.Count, &t.TotalCents); err != nil {
 			return nil, err
 		}
-		t.IsIncome = income == 1
 		if !t.IsIncome {
-			sum = -sum
+			t.TotalCents = -t.TotalCents // expenses are stored negative
 		}
-		t.TotalCents = sum
 		out = append(out, t)
 	}
 	return out, rows.Err()

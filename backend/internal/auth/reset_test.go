@@ -212,3 +212,80 @@ func TestResetCodeIsStoredOnlyAsHash(t *testing.T) {
 		t.Fatalf("stored value %q is not the hash of the code", stored)
 	}
 }
+
+// failingMailer stands in for a mail server that cannot be reached.
+type failingMailer struct{}
+
+func (failingMailer) Send(context.Context, string, string, string) error {
+	return errors.New("mail server unreachable")
+}
+
+func TestFailedMailLeavesNoResetCode(t *testing.T) {
+	db, s := newService(t)
+	s.SetMailer(failingMailer{})
+	ctx := context.Background()
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	// The mail is sent in the background, so the request itself succeeds and
+	// does not reveal that the address is registered.
+	if err := s.RequestPasswordReset(ctx, "bob@example.com"); err != nil {
+		t.Fatalf("request reset: %v", err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		var codes int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM password_reset`).Scan(&codes); err != nil {
+			t.Fatalf("count codes: %v", err)
+		}
+		if codes == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%d reset codes left, want 0: nobody received the code", codes)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestPurgeExpiredRemovesOnlyOldSessionsAndCodes(t *testing.T) {
+	s, _, clock := newResetService(t)
+	ctx := context.Background()
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	oldSession, err := s.Login(ctx, "bob", "correct horse battery")
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	if err := s.RequestPasswordReset(ctx, "bob@example.com"); err != nil {
+		t.Fatalf("request reset: %v", err)
+	}
+
+	// Nothing has expired yet.
+	if n, err := s.PurgeExpired(ctx); err != nil || n != 0 {
+		t.Fatalf("purge right away: removed %d, err %v, want 0 and nil", n, err)
+	}
+
+	// One day before the first session expires, the reset code is long gone.
+	*clock = clock.Add(sessionTTL - 24*time.Hour)
+	newSession, err := s.Login(ctx, "bob", "correct horse battery")
+	if err != nil {
+		t.Fatalf("second login: %v", err)
+	}
+	if n, err := s.PurgeExpired(ctx); err != nil || n != 1 {
+		t.Fatalf("purge after 29 days: removed %d, err %v, want 1 (the reset code)", n, err)
+	}
+
+	*clock = clock.Add(48 * time.Hour)
+	if n, err := s.PurgeExpired(ctx); err != nil || n != 1 {
+		t.Fatalf("purge after 31 days: removed %d, err %v, want 1 (the first session)", n, err)
+	}
+	if _, err := s.UserForToken(ctx, oldSession); !errors.Is(err, ErrUnauthenticated) {
+		t.Errorf("expired session: got %v, want ErrUnauthenticated", err)
+	}
+	if _, err := s.UserForToken(ctx, newSession); err != nil {
+		t.Errorf("the newer session should still be valid: %v", err)
+	}
+}

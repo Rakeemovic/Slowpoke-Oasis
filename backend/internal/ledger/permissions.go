@@ -53,7 +53,7 @@ func (s *Store) AuthorizeTransactionChange(ctx context.Context, userID, ledgerID
 	}
 
 	isAuthor := author == userID
-	isOwner := personalOwner || role == "owner"
+	isOwner := personalOwner || role == RoleOwner
 	orphaned := author == FormerMemberID
 
 	allowed := false

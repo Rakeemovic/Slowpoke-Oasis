@@ -1,6 +1,6 @@
 # Validation Rules
 
-Each rule is enforced either by the database (CHECK, UNIQUE, NOT NULL, foreign keys, triggers) or by the application. The database enforcement is in `backend/migrations/0001_init.sql`. The data model is described in [data-model.md](data-model.md).
+Each rule is enforced either by the database (CHECK, UNIQUE, NOT NULL, foreign keys, triggers) or by the application. The database enforcement is in the migrations under `backend/migrations/`, starting with `0001_init.sql`. The data model is described in [data-model.md](data-model.md).
 
 ## Ledger
 
@@ -42,8 +42,8 @@ Each rule is enforced either by the database (CHECK, UNIQUE, NOT NULL, foreign k
 |---|---|---|
 | X1 | `amount_cents` is not 0. | DB |
 | X2 | Sign by type: `expense` negative, `income` positive, `transfer` positive. Input is always a positive amount, and the app sets the sign. | DB |
-| X3 | `expense` and `income`: `category_id` is required, `counterpart_pot_id` is empty. | DB |
-| X4 | `transfer`: `category_id` is empty, `counterpart_pot_id` is required and differs from `pot_id`. Both pots belong to the same ledger. | DB |
+| X3 | `expense` and `income`: `category_id` is required, `counterpart_pot_id` and `linked_transaction_id` are empty. | DB |
+| X4 | `transfer`: `category_id` and `linked_transaction_id` are empty, `counterpart_pot_id` is required and differs from `pot_id`. Both pots belong to the same ledger. | DB |
 | X5 | `pot_id` is required. If none is given, the ledger's default pot is used. | DB (NOT NULL) + App |
 | X6 | The category belongs to the same ledger as the transaction. | DB (composite foreign key) |
 | X7 | Personal ledger: `user_id` is the owner. Household ledger: `user_id` is a member of the household. | App |
@@ -51,6 +51,22 @@ Each rule is enforced either by the database (CHECK, UNIQUE, NOT NULL, foreign k
 | X9 | `note` has at most 500 characters. | DB |
 | X10 | Deletion is a soft delete via `deleted_at`. A background job removes transactions permanently 30 days after deletion. Deleting an account removes all of its data immediately. | App (job) |
 | X11 | The absolute value of `amount_cents` is at most 10,000,000,000 (100 million EUR). | DB |
+| X12 | When a member leaves a household or deletes the account, the member's bookings and deletions in the household are handed over to the placeholder user `former-member`. They stay visible to the other members. | App |
+| X13 | `deleted_by` records who deleted a transaction. It is only set while the transaction is soft-deleted. | DB (CHECK) + App |
+| X14 | A transfer between two ledgers is booked as two legs: `transfer_out` (negative) in the source ledger and `transfer_in` (positive) in the target ledger. The legs have no category and no counterpart pot and point at each other with `linked_transaction_id`. They are created, deleted and restored together and cannot be edited. | DB (CHECK) + App |
+| X15 | New accounts need an email address. It is unique, case-insensitive, and used for password resets. | App + DB (unique index) |
+| X16 | When a ledger is deleted, the other leg of a transfer into or out of it stays in its own ledger and loses its link. From then on it is deleted and restored on its own. | DB (`ON DELETE SET NULL`) |
+
+## Permissions
+
+Every member of a household may read its ledger and book in it. Changing an existing transaction is restricted. In a household the owner is the household owner; a personal ledger is always owned by its user.
+
+| Action | Allowed for |
+|---|---|
+| Edit a transaction | The author and the owner of the ledger. |
+| Delete or restore a transaction | The author. The owner may also delete or restore bookings of a departed member (X12), because nobody else could. |
+| Add a household member | The household owner. |
+| Remove a household member | The household owner. Every member may leave by removing themselves. |
 
 ## Notes
 

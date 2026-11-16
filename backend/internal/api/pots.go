@@ -44,7 +44,7 @@ func (s *Server) createPot(w http.ResponseWriter, r *http.Request) {
 		TargetDate:  req.TargetDate,
 	})
 	if err != nil {
-		s.writeStoreError(w, err)
+		fail(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
@@ -57,7 +57,7 @@ func (s *Server) listPots(w http.ResponseWriter, r *http.Request) {
 	}
 	pots, err := s.store.ListPots(r.Context(), r.PathValue("ledger"))
 	if err != nil {
-		s.writeStoreError(w, err)
+		fail(w, err)
 		return
 	}
 
@@ -105,7 +105,7 @@ func (s *Server) updatePot(w http.ResponseWriter, r *http.Request) {
 		Archived:    req.Archived,
 	})
 	if err != nil {
-		s.writeStoreError(w, err)
+		fail(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -125,7 +125,7 @@ func (s *Server) setPlannedAmount(w http.ResponseWriter, r *http.Request) {
 	err := s.store.SetPlannedAmount(r.Context(), r.PathValue("ledger"), r.PathValue("pot"),
 		r.PathValue("category"), req.AmountCents)
 	if err != nil {
-		s.writeStoreError(w, err)
+		fail(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -138,7 +138,7 @@ func (s *Server) deletePlannedAmount(w http.ResponseWriter, r *http.Request) {
 	}
 	err := s.store.DeletePlannedAmount(r.Context(), r.PathValue("ledger"), r.PathValue("pot"), r.PathValue("category"))
 	if err != nil {
-		s.writeStoreError(w, err)
+		fail(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"time"
 )
 
@@ -17,46 +18,8 @@ type TransactionPatch struct {
 	Note             *string
 }
 
-// UpdateTransaction applies a patch to a transaction that is not soft-deleted.
-//
-// The result is checked with the same rules as a new transaction. The author
-// stays the same. Archived pots reject a transaction only when it moves into
-// them (rule T5), so existing bookings can still be corrected.
-func (s *Store) UpdateTransaction(ctx context.Context, ledgerID, id string, p TransactionPatch, now time.Time) error {
-	var (
-		userID, typ, potID, counterpart string
-		categoryID, note                sql.NullString
-		amount                          int64
-		bookedOn                        string
-	)
-	err := s.db.QueryRowContext(ctx, `
-		SELECT user_id, type, category_id, pot_id, COALESCE(counterpart_pot_id, ''),
-		       amount_cents, booked_on, note
-		FROM transactions
-		WHERE id = ? AND ledger_id = ? AND deleted_at IS NULL`,
-		id, ledgerID,
-	).Scan(&userID, &typ, &categoryID, &potID, &counterpart, &amount, &bookedOn, &note)
-	if err == sql.ErrNoRows {
-		return ErrTransactionNotFound
-	}
-	if err != nil {
-		return err
-	}
-	if typ == string(TypeTransferOut) || typ == string(TypeTransferIn) {
-		return ErrLinkedTransaction
-	}
-
-	in := NewTransaction{
-		LedgerID:         ledgerID,
-		UserID:           userID,
-		Type:             TxType(typ),
-		CategoryID:       categoryID.String,
-		PotID:            potID,
-		CounterpartPotID: counterpart,
-		AmountCents:      abs64(amount),
-		BookedOn:         bookedOn,
-		Note:             note.String,
-	}
+// apply returns in with the fields of the patch that are set.
+func (p TransactionPatch) apply(in NewTransaction) NewTransaction {
 	if p.Type != nil {
 		in.Type = *p.Type
 	}
@@ -78,64 +41,72 @@ func (s *Store) UpdateTransaction(ctx context.Context, ledgerID, id string, p Tr
 	if p.Note != nil {
 		in.Note = *p.Note
 	}
-
-	if err := in.Validate(); err != nil {
-		return err
-	}
-	if in.PotID == "" {
-		if err := s.db.QueryRowContext(ctx,
-			`SELECT id FROM pot WHERE ledger_id = ? AND is_default = 1`, ledgerID,
-		).Scan(&in.PotID); err != nil {
-			return err
-		}
-	}
-
-	if in.PotID != potID {
-		if err := s.ensurePotActive(ctx, ledgerID, in.PotID); err != nil {
-			return err
-		}
-	}
-	if in.CounterpartPotID != "" && in.CounterpartPotID != counterpart {
-		if err := s.ensurePotActive(ctx, ledgerID, in.CounterpartPotID); err != nil {
-			return err
-		}
-	}
-	if in.Type != TypeTransfer && (in.Type != TxType(typ) || in.CategoryID != categoryID.String) {
-		if err := s.ensureCategoryKind(ctx, ledgerID, in.CategoryID, in.Type); err != nil {
-			return err
-		}
-	}
-
-	stored := in.AmountCents
-	if in.Type == TypeExpense {
-		stored = -stored
-	}
-
-	res, err := s.db.ExecContext(ctx, `
-		UPDATE transactions
-		SET type = ?, category_id = ?, pot_id = ?, counterpart_pot_id = ?,
-		    amount_cents = ?, booked_on = ?, note = ?, updated_at = ?
-		WHERE id = ? AND ledger_id = ? AND deleted_at IS NULL`,
-		string(in.Type), nullIfEmpty(in.CategoryID), in.PotID, nullIfEmpty(in.CounterpartPotID),
-		stored, in.BookedOn, nullIfEmpty(in.Note), now.UTC().Format(time.RFC3339),
-		id, ledgerID,
-	)
-	if err != nil {
-		return err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrTransactionNotFound
-	}
-	return nil
+	return in
 }
 
-func abs64(v int64) int64 {
-	if v < 0 {
-		return -v
-	}
-	return v
+// UpdateTransaction applies a patch to a transaction that is not soft-deleted.
+//
+// The result is checked with the same rules as a new transaction. The author
+// stays the same. Archived pots reject a transaction only when it moves into
+// them (rule T5), so existing bookings can still be corrected.
+//
+// Reading, checking and writing happen in one database transaction, so two
+// changes to the same booking cannot overwrite each other half-way.
+func (s *Store) UpdateTransaction(ctx context.Context, ledgerID, id string, p TransactionPatch, now time.Time) error {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		// The stored amount is signed; the input form is always positive.
+		old := NewTransaction{LedgerID: ledgerID}
+		err := tx.QueryRowContext(ctx, `
+			SELECT user_id, type, COALESCE(category_id, ''), pot_id, COALESCE(counterpart_pot_id, ''),
+			       abs(amount_cents), booked_on, COALESCE(note, '')
+			FROM transactions
+			WHERE id = ? AND ledger_id = ? AND deleted_at IS NULL`,
+			id, ledgerID,
+		).Scan(&old.UserID, &old.Type, &old.CategoryID, &old.PotID, &old.CounterpartPotID,
+			&old.AmountCents, &old.BookedOn, &old.Note)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrTransactionNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if old.Type == TypeTransferOut || old.Type == TypeTransferIn {
+			return ErrLinkedTransaction
+		}
+
+		in := p.apply(old)
+		if err := in.Validate(); err != nil {
+			return err
+		}
+		if in.PotID, err = resolvePot(ctx, tx, ledgerID, in.PotID); err != nil {
+			return err
+		}
+
+		if in.PotID != old.PotID {
+			if err := ensurePotActive(ctx, tx, ledgerID, in.PotID); err != nil {
+				return err
+			}
+		}
+		if in.CounterpartPotID != "" && in.CounterpartPotID != old.CounterpartPotID {
+			if err := ensurePotActive(ctx, tx, ledgerID, in.CounterpartPotID); err != nil {
+				return err
+			}
+		}
+		if in.Type != TypeTransfer && (in.Type != old.Type || in.CategoryID != old.CategoryID) {
+			if err := ensureCategoryKind(ctx, tx, ledgerID, in.CategoryID, in.Type); err != nil {
+				return err
+			}
+		}
+
+		_, err = tx.ExecContext(ctx, `
+			UPDATE transactions
+			SET type = ?, category_id = ?, pot_id = ?, counterpart_pot_id = ?,
+			    amount_cents = ?, booked_on = ?, note = ?, updated_at = ?
+			WHERE id = ? AND ledger_id = ?`,
+			in.Type, nullIfEmpty(in.CategoryID), in.PotID, nullIfEmpty(in.CounterpartPotID),
+			in.storedAmount(), in.BookedOn, nullIfEmpty(in.Note), timestamp(now),
+			id, ledgerID,
+		)
+		return err
+	})
 }

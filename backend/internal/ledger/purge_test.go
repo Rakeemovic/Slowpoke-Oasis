@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 )
@@ -42,14 +43,15 @@ func TestPurgeRemovesOnlyTransactionsDeletedMoreThan30DaysAgo(t *testing.T) {
 	}
 }
 
-func TestDeletePersonalLedgersRemovesEverythingOfTheUser(t *testing.T) {
+func TestRemoveUserDataRemovesEverythingOfTheUser(t *testing.T) {
 	db, s := setup(t)
 	ctx := context.Background()
 	createExpense(t, s, "p-default", "2026-11-16", 100)
 	mustExec(t, db, `INSERT INTO pot_line (pot_id, ledger_id, category_id, amount_cents) VALUES ('p-default', 'l1', 'c-food', 5000)`)
 
-	if err := s.DeletePersonalLedgers(ctx, "u1"); err != nil {
-		t.Fatalf("delete ledgers: %v", err)
+	err := s.inTx(ctx, func(tx *sql.Tx) error { return RemoveUserData(ctx, tx, "u1") })
+	if err != nil {
+		t.Fatalf("remove user data: %v", err)
 	}
 
 	for _, table := range []string{"ledger", "pot", "category", "transactions", "pot_line"} {

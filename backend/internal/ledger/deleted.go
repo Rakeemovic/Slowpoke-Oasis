@@ -5,6 +5,15 @@ import (
 	"time"
 )
 
+// retentionDays is how long soft-deleted transactions stay in the database (rule X10).
+const retentionDays = 30
+
+// retentionCutoff returns the timestamp before which soft-deleted transactions
+// are no longer kept.
+func retentionCutoff(now time.Time) string {
+	return timestamp(now.AddDate(0, 0, -retentionDays))
+}
+
 // DeletedTransaction is a soft-deleted transaction that can still be restored.
 // The names are shown to the household, so everyone can see who booked and who
 // deleted the transaction (rule X13). Departed members appear as the placeholder.
@@ -23,9 +32,7 @@ func (s *Store) ListDeletedTransactions(ctx context.Context, ledgerID string, no
 		return nil, ErrLedgerRequired
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT t.id, t.ledger_id, t.user_id, t.type,
-		       COALESCE(t.category_id, ''), t.pot_id, COALESCE(t.counterpart_pot_id, ''),
-		       t.amount_cents, t.booked_on, COALESCE(t.note, ''),
+		SELECT `+transactionColumns+`,
 		       t.deleted_at, COALESCE(t.deleted_by, ''),
 		       COALESCE(booker.name, ''), COALESCE(deleter.name, '')
 		FROM transactions t
@@ -43,13 +50,10 @@ func (s *Store) ListDeletedTransactions(ctx context.Context, ledgerID string, no
 	var out []DeletedTransaction
 	for rows.Next() {
 		var d DeletedTransaction
-		var typ string
-		if err := rows.Scan(&d.ID, &d.LedgerID, &d.UserID, &typ, &d.CategoryID,
-			&d.PotID, &d.CounterpartPotID, &d.AmountCents, &d.BookedOn, &d.Note,
-			&d.DeletedAt, &d.DeletedBy, &d.BookedByName, &d.DeletedByName); err != nil {
+		targets := append(d.scanTargets(), &d.DeletedAt, &d.DeletedBy, &d.BookedByName, &d.DeletedByName)
+		if err := rows.Scan(targets...); err != nil {
 			return nil, err
 		}
-		d.Type = TxType(typ)
 		out = append(out, d)
 	}
 	return out, rows.Err()
@@ -58,26 +62,14 @@ func (s *Store) ListDeletedTransactions(ctx context.Context, ledgerID string, no
 // RestoreTransaction undoes a soft delete. It only works within the retention
 // period, because older deletions may already have been purged.
 func (s *Store) RestoreTransaction(ctx context.Context, ledgerID, id string, now time.Time) error {
-	ts := now.UTC().Format(time.RFC3339)
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE transactions
 		SET deleted_at = NULL, deleted_by = NULL, updated_at = ?
-		WHERE deleted_at IS NOT NULL AND deleted_at >= ? AND (
-		    (id = ? AND ledger_id = ?)
-		    OR id IN (SELECT linked_transaction_id FROM transactions
-		              WHERE id = ? AND ledger_id = ? AND linked_transaction_id IS NOT NULL)
-		)`,
-		ts, retentionCutoff(now), id, ledgerID, id, ledgerID,
+		WHERE deleted_at IS NOT NULL AND deleted_at >= ? AND `+selfAndLinkedLeg,
+		timestamp(now), retentionCutoff(now), id, ledgerID, id, ledgerID,
 	)
 	if err != nil {
 		return err
 	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrTransactionNotFound
-	}
-	return nil
+	return requireAffected(res, ErrTransactionNotFound)
 }
