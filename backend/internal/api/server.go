@@ -41,6 +41,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /ledgers/{ledger}/transactions/{id}", s.updateTransaction)
 	mux.HandleFunc("GET /ledgers/{ledger}/pots/{pot}/summary", s.potSummary)
 	mux.HandleFunc("GET /ledgers/{ledger}/analytics", s.analytics)
+	mux.HandleFunc("POST /transfers", s.createLinkedTransfer)
 	mux.HandleFunc("POST /households", s.createHousehold)
 	mux.HandleFunc("GET /households", s.listHouseholds)
 	mux.HandleFunc("POST /households/{household}/members", s.addHouseholdMember)
@@ -189,6 +190,7 @@ var validationErrors = []error{
 	ledger.ErrCategoryKindMismatch,
 	ledger.ErrInvalidMonth,
 	ledger.ErrInvalidPeriod,
+	ledger.ErrSameLedger,
 }
 
 // writeStoreError maps errors from the ledger package to HTTP status codes.
@@ -205,6 +207,8 @@ func (s *Server) writeStoreError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "not found")
 	case errors.Is(err, ledger.ErrNotAllowed):
 		writeError(w, http.StatusForbidden, err.Error())
+	case errors.Is(err, ledger.ErrLinkedTransaction):
+		writeError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, ledger.ErrPotArchived), errors.Is(err, ledger.ErrDefaultPotProtected):
 		writeError(w, http.StatusConflict, err.Error())
 	case strings.Contains(err.Error(), "constraint failed"):

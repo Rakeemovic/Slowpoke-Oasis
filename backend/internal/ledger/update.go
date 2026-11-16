@@ -42,6 +42,9 @@ func (s *Store) UpdateTransaction(ctx context.Context, ledgerID, id string, p Tr
 	if err != nil {
 		return err
 	}
+	if typ == string(TypeTransferOut) || typ == string(TypeTransferIn) {
+		return ErrLinkedTransaction
+	}
 
 	in := NewTransaction{
 		LedgerID:         ledgerID,
