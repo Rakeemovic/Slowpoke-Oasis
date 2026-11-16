@@ -159,6 +159,16 @@ func TestErrorStatuses(t *testing.T) {
 			want: http.StatusUnauthorized,
 		},
 		{
+			name: "list without token", method: http.MethodGet,
+			path: "/ledgers/l1/transactions", user: "",
+			want: http.StatusUnauthorized,
+		},
+		{
+			name: "delete without token", method: http.MethodDelete,
+			path: "/ledgers/l1/transactions/anything", user: "",
+			want: http.StatusUnauthorized,
+		},
+		{
 			name: "unknown JSON field", method: http.MethodPost,
 			path: "/ledgers/l1/transactions", user: "u1",
 			body: map[string]any{"type": "expense", "unknown": 1},
