@@ -116,10 +116,13 @@ func (s *Store) PotSummary(ctx context.Context, ledgerID, potID, from, to string
 	transferArgs := append([]any{potID, potID, ledgerID, potID, potID}, rargs...)
 	var in, outgoing sql.NullInt64
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT SUM(CASE WHEN counterpart_pot_id = ? THEN amount_cents END),
-		       SUM(CASE WHEN pot_id = ? THEN amount_cents END)
+		SELECT SUM(CASE WHEN type = 'transfer' AND counterpart_pot_id = ? THEN amount_cents
+		                WHEN type = 'transfer_in' THEN amount_cents END),
+		       SUM(CASE WHEN type = 'transfer' AND pot_id = ? THEN amount_cents
+		                WHEN type = 'transfer_out' THEN -amount_cents END)
 		FROM transactions
-		WHERE ledger_id = ? AND type = 'transfer' AND deleted_at IS NULL
+		WHERE ledger_id = ? AND deleted_at IS NULL
+		  AND type IN ('transfer', 'transfer_in', 'transfer_out')
 		  AND (pot_id = ? OR counterpart_pot_id = ?)`+rc,
 		transferArgs...,
 	).Scan(&in, &outgoing); err != nil {

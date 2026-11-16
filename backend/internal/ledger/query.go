@@ -100,8 +100,12 @@ func (s *Store) DeleteTransaction(ctx context.Context, ledgerID, id, userID stri
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE transactions
 		SET deleted_at = ?, deleted_by = ?, updated_at = ?
-		WHERE id = ? AND ledger_id = ? AND deleted_at IS NULL`,
-		ts, userID, ts, id, ledgerID,
+		WHERE deleted_at IS NULL AND (
+		    (id = ? AND ledger_id = ?)
+		    OR id IN (SELECT linked_transaction_id FROM transactions
+		              WHERE id = ? AND ledger_id = ? AND linked_transaction_id IS NOT NULL)
+		)`,
+		ts, userID, ts, id, ledgerID, id, ledgerID,
 	)
 	if err != nil {
 		return err

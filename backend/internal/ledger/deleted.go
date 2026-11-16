@@ -62,9 +62,12 @@ func (s *Store) RestoreTransaction(ctx context.Context, ledgerID, id string, now
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE transactions
 		SET deleted_at = NULL, deleted_by = NULL, updated_at = ?
-		WHERE id = ? AND ledger_id = ?
-		  AND deleted_at IS NOT NULL AND deleted_at >= ?`,
-		ts, id, ledgerID, retentionCutoff(now),
+		WHERE deleted_at IS NOT NULL AND deleted_at >= ? AND (
+		    (id = ? AND ledger_id = ?)
+		    OR id IN (SELECT linked_transaction_id FROM transactions
+		              WHERE id = ? AND ledger_id = ? AND linked_transaction_id IS NOT NULL)
+		)`,
+		ts, retentionCutoff(now), id, ledgerID, id, ledgerID,
 	)
 	if err != nil {
 		return err

@@ -106,7 +106,8 @@ func (s *Store) ListPots(ctx context.Context, ledgerID string) ([]Pot, error) {
 		SELECT p.id, p.name, p.kind, p.is_default, p.archived,
 		       COALESCE(p.target_cents, 0), COALESCE(p.target_date, ''),
 		       (SELECT COALESCE(SUM(t.amount_cents), 0) FROM transactions t
-		         WHERE t.pot_id = p.id AND t.type IN ('expense', 'income') AND t.deleted_at IS NULL)
+		         WHERE t.pot_id = p.id AND t.deleted_at IS NULL
+		           AND t.type IN ('expense', 'income', 'transfer_out', 'transfer_in'))
 		     - (SELECT COALESCE(SUM(t.amount_cents), 0) FROM transactions t
 		         WHERE t.pot_id = p.id AND t.type = 'transfer' AND t.deleted_at IS NULL)
 		     + (SELECT COALESCE(SUM(t.amount_cents), 0) FROM transactions t

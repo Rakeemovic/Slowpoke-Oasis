@@ -19,6 +19,10 @@ const (
 	TypeExpense  TxType = "expense"
 	TypeIncome   TxType = "income"
 	TypeTransfer TxType = "transfer"
+	// The two legs of a transfer between ledgers (rule X14). They are created
+	// by CreateLinkedTransfer only and cannot be entered directly.
+	TypeTransferOut TxType = "transfer_out"
+	TypeTransferIn  TxType = "transfer_in"
 )
 
 // Validation errors. Callers can compare them with errors.Is.
