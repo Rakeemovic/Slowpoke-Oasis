@@ -37,6 +37,11 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /ledgers/{ledger}/transactions", s.listTransactions)
 	mux.HandleFunc("DELETE /ledgers/{ledger}/transactions/{id}", s.deleteTransaction)
 	mux.HandleFunc("POST /users", s.createUser)
+	mux.HandleFunc("POST /ledgers/{ledger}/pots", s.createPot)
+	mux.HandleFunc("GET /ledgers/{ledger}/pots", s.listPots)
+	mux.HandleFunc("PATCH /ledgers/{ledger}/pots/{pot}", s.updatePot)
+	mux.HandleFunc("PUT /ledgers/{ledger}/pots/{pot}/lines/{category}", s.setPlannedAmount)
+	mux.HandleFunc("DELETE /ledgers/{ledger}/pots/{pot}/lines/{category}", s.deletePlannedAmount)
 	mux.HandleFunc("POST /users/{user}/ledgers", s.createPersonalLedger)
 	mux.HandleFunc("POST /ledgers/{ledger}/categories", s.createCategory)
 	return mux
@@ -157,6 +162,10 @@ var validationErrors = []error{
 	ledger.ErrNoteTooLong,
 	ledger.ErrInvalidName,
 	ledger.ErrInvalidPayday,
+	ledger.ErrInvalidTarget,
+	ledger.ErrTargetDateNeedsTarget,
+	ledger.ErrInvalidAmount,
+	ledger.ErrCategoryKindMismatch,
 }
 
 // writeStoreError maps errors from the ledger package to HTTP status codes.
@@ -169,8 +178,10 @@ func (s *Server) writeStoreError(w http.ResponseWriter, err error) {
 	}
 
 	switch {
-	case errors.Is(err, ledger.ErrTransactionNotFound), errors.Is(err, sql.ErrNoRows):
+	case errors.Is(err, ledger.ErrTransactionNotFound), errors.Is(err, ledger.ErrPotLineNotFound), errors.Is(err, sql.ErrNoRows):
 		writeError(w, http.StatusNotFound, "not found")
+	case errors.Is(err, ledger.ErrPotArchived), errors.Is(err, ledger.ErrDefaultPotProtected):
+		writeError(w, http.StatusConflict, err.Error())
 	case strings.Contains(err.Error(), "constraint failed"):
 		// Database rules such as foreign keys and CHECK constraints.
 		writeError(w, http.StatusUnprocessableEntity, "the request violates a data rule")
