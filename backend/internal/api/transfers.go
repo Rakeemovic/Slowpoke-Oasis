@@ -1,10 +1,29 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/ledger"
 )
+
+// authorizeLegChange checks a delete or restore of a transaction. For a leg of
+// a linked transfer, the user must be allowed to change both legs. Otherwise a
+// leg in someone else's personal ledger would change along with the household
+// leg the user may act on.
+func (s *Server) authorizeLegChange(ctx context.Context, userID, ledgerID, id string, action ledger.TransactionAction) error {
+	if err := s.store.AuthorizeTransactionChange(ctx, userID, ledgerID, id, action); err != nil {
+		return err
+	}
+	partnerLedgerID, partnerID, err := s.store.LinkedPartner(ctx, ledgerID, id)
+	if err != nil {
+		return err
+	}
+	if partnerID == "" {
+		return nil
+	}
+	return s.store.AuthorizeTransactionChange(ctx, userID, partnerLedgerID, partnerID, action)
+}
 
 // linkedTransferRequest is the JSON body for a transfer between two ledgers.
 // An empty pot ID means the default pot of that ledger.

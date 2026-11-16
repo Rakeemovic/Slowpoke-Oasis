@@ -93,7 +93,7 @@ func (s *Store) CreateCategory(ctx context.Context, ledgerID, name string, isInc
 		`INSERT INTO category (id, ledger_id, name, is_income) VALUES (?, ?, ?, ?)`,
 		id, ledgerID, n, income,
 	); err != nil {
-		return "", err
+		return "", nameError(err)
 	}
 	return id, nil
 }

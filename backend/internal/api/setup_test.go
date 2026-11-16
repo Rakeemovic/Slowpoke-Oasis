@@ -122,8 +122,8 @@ func TestSetupValidationStatuses(t *testing.T) {
 	}
 
 	rec = do(t, h, http.MethodPost, "/ledgers/l1/categories", "u1", map[string]any{"name": "Groceries"})
-	if rec.Code != http.StatusUnprocessableEntity {
-		t.Errorf("duplicate category: status = %d, want 422", rec.Code)
+	if rec.Code != http.StatusConflict {
+		t.Errorf("duplicate category: status = %d, want 409", rec.Code)
 	}
 }
 

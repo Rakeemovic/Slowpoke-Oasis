@@ -34,6 +34,9 @@ type ListFilter struct {
 	PotID    string
 	From     string
 	To       string
+	// Limit and Offset page through the result. A limit of 0 returns everything.
+	Limit  int
+	Offset int
 }
 
 // ListTransactions returns the non-deleted transactions of a ledger that match
@@ -72,6 +75,10 @@ func (s *Store) ListTransactions(ctx context.Context, f ListFilter) ([]Transacti
 		args = append(args, f.To)
 	}
 	query += ` ORDER BY booked_on DESC, created_at DESC`
+	if f.Limit > 0 {
+		query += ` LIMIT ? OFFSET ?`
+		args = append(args, f.Limit, f.Offset)
+	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {

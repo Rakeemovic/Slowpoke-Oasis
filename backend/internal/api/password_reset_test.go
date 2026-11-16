@@ -4,7 +4,9 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/auth"
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/ledger"
@@ -12,13 +14,39 @@ import (
 )
 
 // captureMailer keeps the bodies of sent emails instead of sending them.
+// Sending happens in the background, so tests use waitForMails.
 type captureMailer struct {
+	mu     sync.Mutex
 	bodies []string
 }
 
 func (m *captureMailer) Send(_ context.Context, _, _, body string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.bodies = append(m.bodies, body)
 	return nil
+}
+
+// count returns how many mails have been sent so far.
+func (m *captureMailer) count() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.bodies)
+}
+
+// waitForMails waits until n mails have arrived and returns their bodies.
+func waitForMails(t *testing.T, m *captureMailer, n int) []string {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for m.count() < n {
+		if time.Now().After(deadline) {
+			t.Fatalf("got fewer than %d mails", n)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]string(nil), m.bodies...)
 }
 
 // newResetHandler returns routes with an empty database and a mailer that records mails.
@@ -65,7 +93,7 @@ func TestPasswordResetOverHTTP(t *testing.T) {
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("request: status %d, want 202", rec.Code)
 	}
-	code := resetCodeFromMail(t, mailer.bodies[0])
+	code := resetCodeFromMail(t, waitForMails(t, mailer, 1)[0])
 
 	rec = doToken(t, h, http.MethodPost, "/auth/password-reset/confirm", "", map[string]any{
 		"token": code, "new_password": "a new password",
@@ -102,8 +130,9 @@ func TestPasswordResetAnswersTheSameForUnknownAddress(t *testing.T) {
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("status %d, want 202 so that registered addresses stay hidden", rec.Code)
 	}
-	if len(mailer.bodies) != 0 {
-		t.Fatalf("%d mails sent for an unknown address, want 0", len(mailer.bodies))
+	time.Sleep(50 * time.Millisecond) // give a wrong background send time to happen
+	if mailer.count() != 0 {
+		t.Fatalf("%d mails sent for an unknown address, want 0", mailer.count())
 	}
 }
 
@@ -133,5 +162,22 @@ func TestPasswordResetNeedsMailSetup(t *testing.T) {
 	rec := doToken(t, h, http.MethodPost, "/auth/password-reset", "", map[string]any{"email": "alice@example.com"})
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status %d, want 503", rec.Code)
+	}
+}
+
+func TestLoginReturnsTooManyRequestsAfterRepeatedFailures(t *testing.T) {
+	h, _ := newResetHandler(t)
+	register(t, h, "bob")
+
+	for i := 0; i < 10; i++ {
+		doToken(t, h, http.MethodPost, "/auth/login", "", map[string]any{
+			"username": "bob", "password": "wrong password",
+		})
+	}
+	rec := doToken(t, h, http.MethodPost, "/auth/login", "", map[string]any{
+		"username": "bob", "password": "correct horse battery",
+	})
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status %d, want 429", rec.Code)
 	}
 }

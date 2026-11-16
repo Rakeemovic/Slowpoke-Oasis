@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"time"
 )
@@ -106,6 +107,24 @@ func (s *Store) CreateLinkedTransfer(ctx context.Context, in LinkedTransfer, now
 		return "", "", err
 	}
 	return outID, inID, nil
+}
+
+// LinkedPartner returns the ledger and ID of the other leg of a linked transfer,
+// including a soft-deleted one. For a transaction that is not linked, both
+// results are empty.
+func (s *Store) LinkedPartner(ctx context.Context, ledgerID, id string) (string, string, error) {
+	var partnerLedgerID, partnerID string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT p.ledger_id, p.id
+		FROM transactions t
+		JOIN transactions p ON p.id = t.linked_transaction_id
+		WHERE t.id = ? AND t.ledger_id = ?`,
+		id, ledgerID,
+	).Scan(&partnerLedgerID, &partnerID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", nil
+	}
+	return partnerLedgerID, partnerID, err
 }
 
 // resolvePot returns potID, or the default pot of the ledger if potID is empty.

@@ -193,7 +193,7 @@ func (s *Server) restoreTransaction(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	err := s.store.AuthorizeTransactionChange(r.Context(), userID, r.PathValue("ledger"), r.PathValue("id"), ledger.ActionDelete)
+	err := s.authorizeLegChange(r.Context(), userID, r.PathValue("ledger"), r.PathValue("id"), ledger.ActionDelete)
 	if err == nil {
 		err = s.store.RestoreTransaction(r.Context(), r.PathValue("ledger"), r.PathValue("id"), s.now())
 	}

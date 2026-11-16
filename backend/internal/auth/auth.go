@@ -26,7 +26,8 @@ var (
 	ErrInvalidPassword    = errors.New("password must have between 8 and 256 characters")
 	ErrInvalidEmail       = errors.New("email address is not valid")
 	ErrUsernameTaken      = errors.New("username is already taken")
-	ErrEmailTaken         = errors.New("email address is already registered")
+	ErrEmailTaken         = errors.New("username or email address is already in use")
+	ErrTooManyAttempts    = errors.New("too many attempts, please wait a while and try again")
 	ErrInvalidCredentials = errors.New("wrong username or password")
 	ErrUnauthenticated    = errors.New("not logged in or session expired")
 	ErrWrongPassword      = errors.New("wrong password")
@@ -39,15 +40,22 @@ var emailPattern = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
 // Service handles registration, login, sessions and password resets.
 type Service struct {
-	db     *sql.DB
-	now    func() time.Time
-	mailer mail.Sender
+	db            *sql.DB
+	now           func() time.Time
+	mailer        mail.Sender
+	loginFailures *limiter
+	resetRequests *limiter
 }
 
 // New returns a Service backed by db. Without a mailer, password resets fail
 // with mail.ErrNotConfigured.
 func New(db *sql.DB) *Service {
-	return &Service{db: db, now: time.Now}
+	return &Service{
+		db:            db,
+		now:           time.Now,
+		loginFailures: newLimiter(maxFailedLogins, loginWindow),
+		resetRequests: newLimiter(maxResetRequests, resetWindow),
+	}
 }
 
 // SetMailer sets the sender for password reset emails.
@@ -130,6 +138,11 @@ func (s *Service) Register(ctx context.Context, username, email, password, displ
 // Wrong usernames and wrong passwords produce the same error.
 func (s *Service) Login(ctx context.Context, username, password string) (string, error) {
 	u := strings.ToLower(strings.TrimSpace(username))
+	now := s.now()
+	// Checked for every name, known or not, so the limit reveals nothing.
+	if s.loginFailures.blocked(u, now) {
+		return "", ErrTooManyAttempts
+	}
 
 	var userID string
 	var hash sql.NullString
@@ -138,14 +151,17 @@ func (s *Service) Login(ctx context.Context, username, password string) (string,
 	).Scan(&userID, &hash)
 	if errors.Is(err, sql.ErrNoRows) {
 		verifyPassword(password, dummyHash) // equalize the response time
+		s.loginFailures.record(u, now)
 		return "", ErrInvalidCredentials
 	}
 	if err != nil {
 		return "", err
 	}
 	if !hash.Valid || !verifyPassword(password, hash.String) {
+		s.loginFailures.record(u, now)
 		return "", ErrInvalidCredentials
 	}
+	s.loginFailures.reset(u)
 	return s.CreateSession(ctx, userID)
 }
 

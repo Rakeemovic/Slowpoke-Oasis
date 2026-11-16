@@ -93,7 +93,7 @@ func (s *Store) CreatePot(ctx context.Context, in NewPot) (string, error) {
 		id, in.LedgerID, name, nullInt(in.TargetCents), nullIfEmpty(in.TargetDate),
 	)
 	if err != nil {
-		return "", err
+		return "", nameError(err)
 	}
 	return id, nil
 }
@@ -227,7 +227,7 @@ func (s *Store) UpdatePot(ctx context.Context, ledgerID, potID string, u PotUpda
 		WHERE id = ? AND ledger_id = ?`,
 		newName, nullInt(newTarget), nullIfEmpty(newDate), boolInt(newArchived), potID, ledgerID,
 	); err != nil {
-		return err
+		return nameError(err)
 	}
 	return tx.Commit()
 }

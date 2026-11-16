@@ -120,17 +120,24 @@ func (s *Server) createTransaction(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
 }
 
-// GET /ledgers/{ledger}/transactions?pot_id=&from=&to=
+// GET /ledgers/{ledger}/transactions?pot_id=&from=&to=&limit=&offset=
 func (s *Server) listTransactions(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireLedgerAccess(w, r); !ok {
 		return
 	}
 	q := r.URL.Query()
+	limit, offset, pageErr := parsePaging(q)
+	if pageErr != nil {
+		writeError(w, http.StatusBadRequest, pageErr.Error())
+		return
+	}
 	items, err := s.store.ListTransactions(r.Context(), ledger.ListFilter{
 		LedgerID: r.PathValue("ledger"),
 		PotID:    q.Get("pot_id"),
 		From:     q.Get("from"),
 		To:       q.Get("to"),
+		Limit:    limit,
+		Offset:   offset,
 	})
 	if err != nil {
 		s.writeStoreError(w, err)
@@ -161,7 +168,7 @@ func (s *Server) deleteTransaction(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	err := s.store.AuthorizeTransactionChange(r.Context(), userID, r.PathValue("ledger"), r.PathValue("id"), ledger.ActionDelete)
+	err := s.authorizeLegChange(r.Context(), userID, r.PathValue("ledger"), r.PathValue("id"), ledger.ActionDelete)
 	if err == nil {
 		err = s.store.DeleteTransaction(r.Context(), r.PathValue("ledger"), r.PathValue("id"), userID, s.now())
 	}
@@ -211,7 +218,8 @@ func (s *Server) writeStoreError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, ledger.ErrLinkedTransaction):
 		writeError(w, http.StatusConflict, err.Error())
-	case errors.Is(err, ledger.ErrPotArchived), errors.Is(err, ledger.ErrDefaultPotProtected):
+	case errors.Is(err, ledger.ErrPotArchived), errors.Is(err, ledger.ErrDefaultPotProtected),
+		errors.Is(err, ledger.ErrNameTaken):
 		writeError(w, http.StatusConflict, err.Error())
 	case strings.Contains(err.Error(), "constraint failed"):
 		// Database rules such as foreign keys and CHECK constraints.
