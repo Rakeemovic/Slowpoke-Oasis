@@ -11,7 +11,8 @@ import (
 // addSecondLedger adds ledger l2 with its own default pot (p-l2) to the test data.
 func addSecondLedger(t *testing.T, db *sql.DB) {
 	t.Helper()
-	addSecondLedger(t, db)
+	mustExec(t, db, `INSERT INTO ledger (id, name, user_id, created_at) VALUES ('l2', 'Gilde', 'u1', '2026-01-01T00:00:00Z')`)
+	mustExec(t, db, `INSERT INTO pot (id, ledger_id, name, kind, is_default) VALUES ('p-l2', 'l2', 'Gemeinschaftskonto', 'monthly', 1)`)
 }
 
 func TestLinkedTransferMovesMoneyBetweenLedgers(t *testing.T) {
