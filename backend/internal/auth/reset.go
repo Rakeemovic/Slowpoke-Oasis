@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log"
 	"time"
 	"unicode/utf8"
 
@@ -18,7 +19,8 @@ var ErrInvalidResetToken = errors.New("reset code is invalid or has expired")
 
 // RequestPasswordReset emails a reset code to the address if an account uses it.
 // It returns nil in both cases, so the answer does not reveal which addresses
-// are registered. Only a malformed address or a missing mail setup is an error.
+// are registered. Only a malformed address, too many requests or a missing mail
+// setup are errors.
 func (s *Service) RequestPasswordReset(ctx context.Context, email string) error {
 	e, err := normalizeEmail(email)
 	if err != nil {
@@ -27,6 +29,12 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) error 
 	if s.mailer == nil {
 		return mail.ErrNotConfigured
 	}
+	// Counted for every address, registered or not, so the limit reveals nothing.
+	now := s.now()
+	if s.resetRequests.blocked(e, now) {
+		return ErrTooManyAttempts
+	}
+	s.resetRequests.record(e, now)
 
 	var userID string
 	err = s.db.QueryRowContext(ctx, `SELECT id FROM user WHERE email = ?`, e).Scan(&userID)
@@ -41,25 +49,26 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) error 
 	if err != nil {
 		return err
 	}
-	now := s.now().UTC()
 
-	// The mail and the stored code belong together: if sending fails, the
-	// transaction is rolled back and no unusable code is left behind.
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback() // no effect after a successful Commit
 
+	// Only the newest code of an account is valid, and expired codes are removed.
 	if _, err := tx.ExecContext(ctx, `DELETE FROM password_reset WHERE expires_at < ? OR user_id = ?`,
-		now.Format(time.RFC3339), userID); err != nil {
+		now.UTC().Format(time.RFC3339), userID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO password_reset (token_hash, user_id, created_at, expires_at)
 		VALUES (?, ?, ?, ?)`,
-		hashToken(token), userID, now.Format(time.RFC3339), now.Add(resetTTL).Format(time.RFC3339),
+		hashToken(token), userID, now.UTC().Format(time.RFC3339), now.Add(resetTTL).UTC().Format(time.RFC3339),
 	); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 
@@ -68,10 +77,18 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) error 
 		"Dein Code: " + token + "\n\n" +
 		"Der Code ist 30 Minuten gültig und kann nur einmal verwendet werden. " +
 		"Wenn du kein neues Passwort angefordert hast, kannst du diese E-Mail ignorieren.\n"
-	if err := s.mailer.Send(ctx, e, "Passwort zurücksetzen", body); err != nil {
-		return err
+	// Sending can take seconds. Doing it in the background keeps the response
+	// time the same for registered and unknown addresses, and a mail error
+	// cannot be used to tell them apart either.
+	go s.sendMail(e, "Passwort zurücksetzen", body)
+	return nil
+}
+
+// sendMail sends one email and logs failures. The address is not logged.
+func (s *Service) sendMail(to, subject, body string) {
+	if err := s.mailer.Send(context.Background(), to, subject, body); err != nil {
+		log.Printf("send email: %v", err)
 	}
-	return tx.Commit()
 }
 
 // ConfirmPasswordReset sets a new password if the reset code is valid. The code

@@ -56,7 +56,8 @@ func (s *Store) CreateHousehold(ctx context.Context, ownerID, name string, now t
 		return "", "", err
 	}
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO household_member (household_id, user_id, role) VALUES (?, ?, 'owner')`,
+		`INSERT INTO household_member (household_id, user_id, role, joined_at)
+		 VALUES (?, ?, 'owner', strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`,
 		householdID, ownerID,
 	); err != nil {
 		return "", "", err
@@ -123,7 +124,8 @@ func (s *Store) HouseholdRole(ctx context.Context, userID, householdID string) (
 // AddHouseholdMember adds a user to a household as a regular member.
 func (s *Store) AddHouseholdMember(ctx context.Context, householdID, userID string) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO household_member (household_id, user_id, role) VALUES (?, ?, 'member')`,
+		`INSERT INTO household_member (household_id, user_id, role, joined_at)
+		 VALUES (?, ?, 'member', strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`,
 		householdID, userID,
 	)
 	if err != nil && strings.Contains(err.Error(), "UNIQUE") {
@@ -201,7 +203,8 @@ func LeaveHouseholdTx(ctx context.Context, tx *sql.Tx, householdID, userID strin
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE household_member SET role = 'owner'
 			WHERE household_id = ?
-			  AND rowid = (SELECT MIN(rowid) FROM household_member WHERE household_id = ?)`,
+			  AND rowid = (SELECT rowid FROM household_member WHERE household_id = ?
+			               ORDER BY joined_at, rowid LIMIT 1)`,
 			householdID, householdID,
 		); err != nil {
 			return err

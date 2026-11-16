@@ -190,6 +190,8 @@ func writeAuthError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		writeError(w, http.StatusUnauthorized, err.Error())
+	case errors.Is(err, auth.ErrTooManyAttempts):
+		writeError(w, http.StatusTooManyRequests, err.Error())
 	case errors.Is(err, mail.ErrNotConfigured):
 		writeError(w, http.StatusServiceUnavailable, err.Error())
 	default:
