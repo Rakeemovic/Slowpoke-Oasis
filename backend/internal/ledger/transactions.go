@@ -114,6 +114,20 @@ func (s *Store) CreateTransaction(ctx context.Context, in NewTransaction, now ti
 		}
 	}
 
+	if err := s.ensurePotActive(ctx, in.LedgerID, potID); err != nil {
+		return "", err
+	}
+	if in.CounterpartPotID != "" {
+		if err := s.ensurePotActive(ctx, in.LedgerID, in.CounterpartPotID); err != nil {
+			return "", err
+		}
+	}
+	if in.Type != TypeTransfer {
+		if err := s.ensureCategoryKind(ctx, in.LedgerID, in.CategoryID, in.Type); err != nil {
+			return "", err
+		}
+	}
+
 	amount := in.AmountCents
 	if in.Type == TypeExpense {
 		amount = -amount

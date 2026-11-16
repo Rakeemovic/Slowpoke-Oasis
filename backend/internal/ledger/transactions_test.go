@@ -27,6 +27,7 @@ func setup(t *testing.T) (*sql.DB, *Store) {
 	mustExec(t, db, `INSERT INTO pot (id, ledger_id, name, kind, is_default) VALUES ('p-default', 'l1', 'Monthly', 'monthly', 1)`)
 	mustExec(t, db, `INSERT INTO pot (id, ledger_id, name, kind) VALUES ('p-holiday', 'l1', 'Holiday', 'one_time')`)
 	mustExec(t, db, `INSERT INTO category (id, ledger_id, name) VALUES ('c-food', 'l1', 'Groceries')`)
+	mustExec(t, db, `INSERT INTO category (id, ledger_id, name, is_income) VALUES ('c-salary', 'l1', 'Salary', 1)`)
 
 	return db, New(db)
 }
@@ -75,6 +76,7 @@ func TestIncomeIsStoredPositive(t *testing.T) {
 
 	in := baseExpense()
 	in.Type = TypeIncome
+	in.CategoryID = "c-salary"
 	id, err := s.CreateTransaction(context.Background(), in, time.Now())
 	if err != nil {
 		t.Fatalf("create: %v", err)
