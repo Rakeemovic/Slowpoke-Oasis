@@ -1,12 +1,15 @@
 package api
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"log"
 	"net/http"
 	"strings"
 
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/auth"
+	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/ledger"
 )
 
 // bearerToken returns the token from "Authorization: Bearer <token>", or "".
@@ -105,6 +108,37 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// DELETE /auth/account
+// Requires the current password. Removes all personal ledgers and the user
+// immediately; sessions are removed with the user.
+func (s *Server) deleteAccount(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Password string `json:"password"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	err := s.accounts.DeleteAccount(r.Context(), userID, req.Password,
+		func(ctx context.Context, tx *sql.Tx) error {
+			return ledger.DeletePersonalLedgersTx(ctx, tx, userID)
+		})
+	switch {
+	case errors.Is(err, auth.ErrWrongPassword):
+		writeError(w, http.StatusForbidden, err.Error())
+	case errors.Is(err, auth.ErrUnauthenticated):
+		writeError(w, http.StatusUnauthorized, err.Error())
+	case err != nil:
+		log.Printf("delete account: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
 }
 
 // writeAuthError maps errors from the auth package to HTTP status codes.
