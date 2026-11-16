@@ -20,11 +20,16 @@ type transactionPatchRequest struct {
 
 // PATCH /ledgers/{ledger}/transactions/{id}
 func (s *Server) updateTransaction(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireLedgerAccess(w, r); !ok {
+	userID, ok := s.requireLedgerAccess(w, r)
+	if !ok {
 		return
 	}
 	var req transactionPatchRequest
 	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if err := s.store.AuthorizeTransactionChange(r.Context(), userID, r.PathValue("ledger"), r.PathValue("id"), ledger.ActionEdit); err != nil {
+		s.writeStoreError(w, err)
 		return
 	}
 	patch := ledger.TransactionPatch{

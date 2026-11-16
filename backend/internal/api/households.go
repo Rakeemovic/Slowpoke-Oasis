@@ -189,10 +189,14 @@ func (s *Server) listDeletedTransactions(w http.ResponseWriter, r *http.Request)
 
 // POST /ledgers/{ledger}/transactions/{id}/restore
 func (s *Server) restoreTransaction(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireLedgerAccess(w, r); !ok {
+	userID, ok := s.requireLedgerAccess(w, r)
+	if !ok {
 		return
 	}
-	err := s.store.RestoreTransaction(r.Context(), r.PathValue("ledger"), r.PathValue("id"), s.now())
+	err := s.store.AuthorizeTransactionChange(r.Context(), userID, r.PathValue("ledger"), r.PathValue("id"), ledger.ActionDelete)
+	if err == nil {
+		err = s.store.RestoreTransaction(r.Context(), r.PathValue("ledger"), r.PathValue("id"), s.now())
+	}
 	if err != nil {
 		s.writeStoreError(w, err)
 		return
