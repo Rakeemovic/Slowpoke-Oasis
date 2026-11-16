@@ -10,6 +10,7 @@ import (
 
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/auth"
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/ledger"
+	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/mail"
 )
 
 // bearerToken returns the token from "Authorization: Bearer <token>", or "".
@@ -66,18 +67,53 @@ func (s *Server) requireLedgerAccess(w http.ResponseWriter, r *http.Request) (st
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username    string `json:"username"`
+		Email       string `json:"email"`
 		Password    string `json:"password"`
 		DisplayName string `json:"display_name"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	id, err := s.accounts.Register(r.Context(), req.Username, req.Password, req.DisplayName)
+	id, err := s.accounts.Register(r.Context(), req.Username, req.Email, req.Password, req.DisplayName)
 	if err != nil {
 		writeAuthError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
+}
+
+// POST /auth/password-reset
+// Answers 202 for every well-formed address, so the answer does not reveal
+// which addresses are registered. The code is sent by email.
+func (s *Server) requestPasswordReset(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email string `json:"email"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if err := s.accounts.RequestPasswordReset(r.Context(), req.Email); err != nil {
+		writeAuthError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// POST /auth/password-reset/confirm
+// Sets a new password with the code from the email. All logins end.
+func (s *Server) confirmPasswordReset(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Token       string `json:"token"`
+		NewPassword string `json:"new_password"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if err := s.accounts.ConfirmPasswordReset(r.Context(), req.Token, req.NewPassword); err != nil {
+		writeAuthError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // POST /auth/login
@@ -147,12 +183,15 @@ func (s *Server) deleteAccount(w http.ResponseWriter, r *http.Request) {
 // writeAuthError maps errors from the auth package to HTTP status codes.
 func writeAuthError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, auth.ErrInvalidUsername), errors.Is(err, auth.ErrInvalidPassword):
+	case errors.Is(err, auth.ErrInvalidUsername), errors.Is(err, auth.ErrInvalidPassword),
+		errors.Is(err, auth.ErrInvalidEmail), errors.Is(err, auth.ErrInvalidResetToken):
 		writeError(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, auth.ErrUsernameTaken):
+	case errors.Is(err, auth.ErrUsernameTaken), errors.Is(err, auth.ErrEmailTaken):
 		writeError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		writeError(w, http.StatusUnauthorized, err.Error())
+	case errors.Is(err, mail.ErrNotConfigured):
+		writeError(w, http.StatusServiceUnavailable, err.Error())
 	default:
 		log.Printf("auth: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")

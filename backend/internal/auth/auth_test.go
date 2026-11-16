@@ -23,7 +23,7 @@ func TestRegisterThenLoginReturnsUsableToken(t *testing.T) {
 	_, s := newService(t)
 	ctx := context.Background()
 
-	userID, err := s.Register(ctx, "Bob_1", "correct horse battery", "Bob")
+	userID, err := s.Register(ctx, "Bob_1", "bob@example.com", "correct horse battery", "Bob")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestRegisterThenLoginReturnsUsableToken(t *testing.T) {
 func TestWrongPasswordAndUnknownUserGiveTheSameError(t *testing.T) {
 	_, s := newService(t)
 	ctx := context.Background()
-	if _, err := s.Register(ctx, "bob", "correct horse battery", ""); err != nil {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 
@@ -58,10 +58,10 @@ func TestWrongPasswordAndUnknownUserGiveTheSameError(t *testing.T) {
 func TestUsernamesAreUniqueIgnoringCase(t *testing.T) {
 	_, s := newService(t)
 	ctx := context.Background()
-	if _, err := s.Register(ctx, "bob", "correct horse battery", ""); err != nil {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
 		t.Fatalf("register: %v", err)
 	}
-	if _, err := s.Register(ctx, "BOB", "another password", ""); !errors.Is(err, ErrUsernameTaken) {
+	if _, err := s.Register(ctx, "BOB", "other@example.com", "another password", ""); !errors.Is(err, ErrUsernameTaken) {
 		t.Errorf("err = %v, want ErrUsernameTaken", err)
 	}
 }
@@ -70,13 +70,13 @@ func TestInvalidRegistrationInput(t *testing.T) {
 	_, s := newService(t)
 	ctx := context.Background()
 
-	if _, err := s.Register(ctx, "ab", "correct horse battery", ""); !errors.Is(err, ErrInvalidUsername) {
+	if _, err := s.Register(ctx, "ab", "bob@example.com", "correct horse battery", ""); !errors.Is(err, ErrInvalidUsername) {
 		t.Errorf("short username: err = %v, want ErrInvalidUsername", err)
 	}
-	if _, err := s.Register(ctx, "bob smith", "correct horse battery", ""); !errors.Is(err, ErrInvalidUsername) {
+	if _, err := s.Register(ctx, "bob smith", "bob@example.com", "correct horse battery", ""); !errors.Is(err, ErrInvalidUsername) {
 		t.Errorf("username with space: err = %v, want ErrInvalidUsername", err)
 	}
-	if _, err := s.Register(ctx, "bob", "short", ""); !errors.Is(err, ErrInvalidPassword) {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "short", ""); !errors.Is(err, ErrInvalidPassword) {
 		t.Errorf("short password: err = %v, want ErrInvalidPassword", err)
 	}
 }
@@ -84,7 +84,7 @@ func TestInvalidRegistrationInput(t *testing.T) {
 func TestPasswordIsNotStoredInPlainText(t *testing.T) {
 	db, s := newService(t)
 	ctx := context.Background()
-	if _, err := s.Register(ctx, "bob", "correct horse battery", ""); err != nil {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 
@@ -100,7 +100,7 @@ func TestPasswordIsNotStoredInPlainText(t *testing.T) {
 func TestSessionTokenIsStoredOnlyAsHash(t *testing.T) {
 	db, s := newService(t)
 	ctx := context.Background()
-	if _, err := s.Register(ctx, "bob", "correct horse battery", ""); err != nil {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	token, err := s.Login(ctx, "bob", "correct horse battery")
@@ -120,7 +120,7 @@ func TestSessionTokenIsStoredOnlyAsHash(t *testing.T) {
 func TestLogoutInvalidatesToken(t *testing.T) {
 	_, s := newService(t)
 	ctx := context.Background()
-	if _, err := s.Register(ctx, "bob", "correct horse battery", ""); err != nil {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	token, err := s.Login(ctx, "bob", "correct horse battery")
@@ -139,7 +139,7 @@ func TestLogoutInvalidatesToken(t *testing.T) {
 func TestExpiredSessionIsRejected(t *testing.T) {
 	db, s := newService(t)
 	ctx := context.Background()
-	if _, err := s.Register(ctx, "bob", "correct horse battery", ""); err != nil {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	token, err := s.Login(ctx, "bob", "correct horse battery")

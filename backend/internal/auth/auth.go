@@ -9,9 +9,12 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/mail"
 )
 
 // sessionTTL is how long a login stays valid.
@@ -21,22 +24,35 @@ const sessionTTL = 30 * 24 * time.Hour
 var (
 	ErrInvalidUsername    = errors.New("username must be 3 to 32 characters: lowercase letters, digits or underscore")
 	ErrInvalidPassword    = errors.New("password must have between 8 and 256 characters")
+	ErrInvalidEmail       = errors.New("email address is not valid")
 	ErrUsernameTaken      = errors.New("username is already taken")
+	ErrEmailTaken         = errors.New("email address is already registered")
 	ErrInvalidCredentials = errors.New("wrong username or password")
 	ErrUnauthenticated    = errors.New("not logged in or session expired")
 	ErrWrongPassword      = errors.New("wrong password")
 	ErrUserNotFound       = errors.New("user not found")
 )
 
-// Service handles registration, login and sessions.
+// emailPattern is a deliberately simple check: something@something.something.
+// Whether the address really receives mail is only shown by a reset email.
+var emailPattern = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
+
+// Service handles registration, login, sessions and password resets.
 type Service struct {
-	db  *sql.DB
-	now func() time.Time
+	db     *sql.DB
+	now    func() time.Time
+	mailer mail.Sender
 }
 
-// New returns a Service backed by db.
+// New returns a Service backed by db. Without a mailer, password resets fail
+// with mail.ErrNotConfigured.
 func New(db *sql.DB) *Service {
 	return &Service{db: db, now: time.Now}
+}
+
+// SetMailer sets the sender for password reset emails.
+func (s *Service) SetMailer(m mail.Sender) {
+	s.mailer = m
 }
 
 // normalizeUsername lowercases and checks a login name.
@@ -54,10 +70,24 @@ func normalizeUsername(name string) (string, error) {
 	return u, nil
 }
 
+// normalizeEmail lowercases and checks an email address.
+func normalizeEmail(email string) (string, error) {
+	e := strings.ToLower(strings.TrimSpace(email))
+	if len(e) > 254 || !emailPattern.MatchString(e) {
+		return "", ErrInvalidEmail
+	}
+	return e, nil
+}
+
 // Register creates an account and returns the new user ID.
+// The email address is required and used for password resets.
 // The display name defaults to the username.
-func (s *Service) Register(ctx context.Context, username, password, displayName string) (string, error) {
+func (s *Service) Register(ctx context.Context, username, email, password, displayName string) (string, error) {
 	u, err := normalizeUsername(username)
+	if err != nil {
+		return "", err
+	}
+	e, err := normalizeEmail(email)
 	if err != nil {
 		return "", err
 	}
@@ -79,12 +109,16 @@ func (s *Service) Register(ctx context.Context, username, password, displayName 
 	}
 
 	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO user (id, name, username, password_hash, created_at)
-		VALUES (?, ?, ?, ?, ?)`,
-		id, name, u, hash, s.now().UTC().Format(time.RFC3339),
+		INSERT INTO user (id, name, username, email, password_hash, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		id, name, u, e, hash, s.now().UTC().Format(time.RFC3339),
 	)
 	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE") {
+		// Both unique indexes are named, so the error says which value clashed.
+		switch {
+		case strings.Contains(err.Error(), "user_email_unique"):
+			return "", ErrEmailTaken
+		case strings.Contains(err.Error(), "user_username_unique"):
 			return "", ErrUsernameTaken
 		}
 		return "", err
@@ -118,14 +152,13 @@ func (s *Service) Login(ctx context.Context, username, password string) (string,
 // CreateSession starts a session for a user and returns the token.
 // The token is shown to the client once; only its hash is stored.
 func (s *Service) CreateSession(ctx context.Context, userID string) (string, error) {
-	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
+	token, err := newToken()
+	if err != nil {
 		return "", err
 	}
-	token := base64.RawURLEncoding.EncodeToString(raw)
 
 	now := s.now().UTC()
-	_, err := s.db.ExecContext(ctx, `
+	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO session (token_hash, user_id, created_at, expires_at)
 		VALUES (?, ?, ?, ?)`,
 		hashToken(token), userID, now.Format(time.RFC3339), now.Add(sessionTTL).Format(time.RFC3339),
@@ -209,6 +242,15 @@ func (s *Service) DeleteAccount(ctx context.Context, userID, password string, re
 func hashToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
+}
+
+// newToken returns 32 random bytes, encoded for use in a URL or a mail.
+func newToken() (string, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(raw), nil
 }
 
 func randomHex(n int) (string, error) {

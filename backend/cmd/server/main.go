@@ -11,6 +11,7 @@ import (
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/api"
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/auth"
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/ledger"
+	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/mail"
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/store"
 )
 
@@ -36,6 +37,34 @@ func main() {
 	ledgers := ledger.New(db)
 	go ledgers.RunPurgeLoop(context.Background(), purgeInterval)
 
+	accounts := auth.New(db)
+	if sender, ok := smtpFromEnv(); ok {
+		accounts.SetMailer(sender)
+	} else {
+		log.Printf("SMTP_HOST is not set: password reset is disabled")
+	}
+
 	log.Printf("listening on %s, database %s", addr, dbPath)
-	log.Fatal(http.ListenAndServe(addr, api.NewServer(ledgers, auth.New(db)).Routes()))
+	log.Fatal(http.ListenAndServe(addr, api.NewServer(ledgers, accounts).Routes()))
+}
+
+// smtpFromEnv reads the mail server settings from the environment. The server
+// works with a hosted provider or a self-hosted mail server, as long as it is
+// reachable over SMTP. Without SMTP_HOST, password resets are disabled.
+func smtpFromEnv() (mail.SMTPSender, bool) {
+	host := os.Getenv("SMTP_HOST")
+	if host == "" {
+		return mail.SMTPSender{}, false
+	}
+	port := os.Getenv("SMTP_PORT")
+	if port == "" {
+		port = "587"
+	}
+	return mail.SMTPSender{
+		Host:     host,
+		Port:     port,
+		Username: os.Getenv("SMTP_USER"),
+		Password: os.Getenv("SMTP_PASSWORD"),
+		From:     os.Getenv("SMTP_FROM"),
+	}, true
 }
