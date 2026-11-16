@@ -25,11 +25,13 @@ func TestListReturnsOnlyTheRequestedLedger(t *testing.T) {
 	db, s := setup(t)
 	mustExec(t, db, `INSERT INTO ledger (id, name, user_id, created_at) VALUES ('l2', 'Other', 'u1', '2026-01-01T00:00:00Z')`)
 	mustExec(t, db, `INSERT INTO pot (id, ledger_id, name, kind, is_default) VALUES ('p-other', 'l2', 'Monthly', 'monthly', 1)`)
+	mustExec(t, db, `INSERT INTO category (id, ledger_id, name) VALUES ('c-other', 'l2', 'Groceries')`)
 	createExpense(t, s, "p-default", "2026-11-16", 100)
 
 	in := baseExpense()
 	in.LedgerID = "l2"
 	in.PotID = "p-other"
+	in.CategoryID = "c-other" // categories belong to a ledger, so use one from l2
 	if _, err := s.CreateTransaction(context.Background(), in, time.Now()); err != nil {
 		t.Fatalf("create in l2: %v", err)
 	}
