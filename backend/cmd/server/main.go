@@ -2,15 +2,20 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/api"
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/auth"
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/ledger"
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/store"
 )
+
+// purgeInterval is how often soft-deleted transactions past their retention are removed.
+const purgeInterval = time.Hour
 
 func main() {
 	dbPath := os.Getenv("DB_PATH")
@@ -28,6 +33,9 @@ func main() {
 	}
 	defer db.Close()
 
+	ledgers := ledger.New(db)
+	go ledgers.RunPurgeLoop(context.Background(), purgeInterval)
+
 	log.Printf("listening on %s, database %s", addr, dbPath)
-	log.Fatal(http.ListenAndServe(addr, api.NewServer(ledger.New(db), auth.New(db)).Routes()))
+	log.Fatal(http.ListenAndServe(addr, api.NewServer(ledgers, auth.New(db)).Routes()))
 }
