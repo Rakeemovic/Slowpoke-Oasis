@@ -23,26 +23,6 @@ func cleanName(name string) (string, error) {
 	return n, nil
 }
 
-// CreateUser stores a new user and returns its ID.
-func (s *Store) CreateUser(ctx context.Context, name string, now time.Time) (string, error) {
-	n, err := cleanName(name)
-	if err != nil {
-		return "", err
-	}
-	id, err := newID()
-	if err != nil {
-		return "", err
-	}
-	_, err = s.db.ExecContext(ctx,
-		`INSERT INTO user (id, name, created_at) VALUES (?, ?, ?)`,
-		id, n, now.UTC().Format(time.RFC3339),
-	)
-	if err != nil {
-		return "", err
-	}
-	return id, nil
-}
-
 // CreatePersonalLedger creates a ledger owned by a user together with its
 // default monthly pot (rule L4). A paydayDay of 0 means the default, 1.
 func (s *Store) CreatePersonalLedger(ctx context.Context, userID, name string, paydayDay int, now time.Time) (string, error) {
