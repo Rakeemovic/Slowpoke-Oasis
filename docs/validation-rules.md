@@ -41,7 +41,7 @@ Each rule is enforced either by the database (CHECK, UNIQUE, NOT NULL, foreign k
 | ID | Rule | Enforced by |
 |---|---|---|
 | X1 | `amount_cents` is not 0. | DB |
-| X2 | Sign by type: `expense` negative, `income` positive, `transfer` positive. Input is always a positive amount, and the app sets the sign. | DB |
+| X2 | Sign by type: `expense` and `transfer_out` negative, `income`, `transfer` and `transfer_in` positive. Input is always a positive amount, and the app sets the sign. | DB |
 | X3 | `expense` and `income`: `category_id` is required, `counterpart_pot_id` and `linked_transaction_id` are empty. | DB |
 | X4 | `transfer`: `category_id` and `linked_transaction_id` are empty, `counterpart_pot_id` is required and differs from `pot_id`. Both pots belong to the same ledger. | DB |
 | X5 | `pot_id` is required. If none is given, the ledger's default pot is used. | DB (NOT NULL) + App |
@@ -64,11 +64,24 @@ Every member of a household may read its ledger and book in it. Changing an exis
 | Action | Allowed for |
 |---|---|
 | Edit a transaction | The author and the owner of the ledger. |
-| Delete or restore a transaction | The author. The owner may also delete or restore bookings of a departed member (X12), because nobody else could. |
+| Delete or restore a transaction | The author. The owner may also delete or restore bookings of a departed member (X12), because nobody else could. For a leg of a transfer between ledgers (X14), the user must be allowed to change both legs, so a household owner cannot change a leg in someone else's personal ledger. |
 | Add a household member | The household owner. |
 | Remove a household member | The household owner. Every member may leave by removing themselves. |
+
+## Accounts and logins
+
+| ID | Rule | Enforcement |
+|---|---|---|
+| A1 | Username: 3 to 32 characters, lowercase letters, digits and underscore. Unique, ignoring case. | DB (unique index) + App |
+| A2 | Password: 8 to 256 characters. Only the Argon2id hash is stored. | App |
+| A3 | Session tokens: only the SHA-256 hash is stored. Valid for 30 days. | App |
+| A4 | Password reset: the code is sent by email, valid for 30 minutes, usable once and stored only as a hash. A new code replaces older ones. After a reset, all sessions of the account end. If the mail cannot be sent, the code is removed. | App |
+| A5 | The reset request answers the same way whether or not the address is registered. The mail is sent in the background, so neither the response time nor a mail error reveals it. A taken username or email gives one shared message. | App |
+| A6 | Rate limits: 10 failed logins per username within 15 minutes, 3 reset requests per address within an hour. Both count unknown names too. Above the limit the API answers 429. The counters are kept in memory and start again after a restart. | App |
 
 ## Notes
 
 - One-time pots have no period. Transactions are assigned only through `pot_id`, so no date-range check exists for them.
 - Soft-deleted transactions (`deleted_at` set) are excluded from all calculations and lists.
+- A category or active pot name that is already taken answers 409.
+- The transaction list returns at most 100 entries per request by default (`limit` up to 500, `offset` to page).
