@@ -36,6 +36,12 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /ledgers/{ledger}/transactions", s.createTransaction)
 	mux.HandleFunc("GET /ledgers/{ledger}/transactions", s.listTransactions)
 	mux.HandleFunc("DELETE /ledgers/{ledger}/transactions/{id}", s.deleteTransaction)
+	mux.HandleFunc("GET /ledgers/{ledger}/transactions/deleted", s.listDeletedTransactions)
+	mux.HandleFunc("POST /ledgers/{ledger}/transactions/{id}/restore", s.restoreTransaction)
+	mux.HandleFunc("POST /households", s.createHousehold)
+	mux.HandleFunc("GET /households", s.listHouseholds)
+	mux.HandleFunc("POST /households/{household}/members", s.addHouseholdMember)
+	mux.HandleFunc("DELETE /households/{household}/members/{user}", s.removeHouseholdMember)
 	mux.HandleFunc("POST /auth/register", s.register)
 	mux.HandleFunc("POST /auth/login", s.login)
 	mux.HandleFunc("POST /auth/logout", s.logout)
@@ -145,10 +151,11 @@ func (s *Server) listTransactions(w http.ResponseWriter, r *http.Request) {
 
 // DELETE /ledgers/{ledger}/transactions/{id}
 func (s *Server) deleteTransaction(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireLedgerAccess(w, r); !ok {
+	userID, ok := s.requireLedgerAccess(w, r)
+	if !ok {
 		return
 	}
-	err := s.store.DeleteTransaction(r.Context(), r.PathValue("ledger"), r.PathValue("id"), s.now())
+	err := s.store.DeleteTransaction(r.Context(), r.PathValue("ledger"), r.PathValue("id"), userID, s.now())
 	if err != nil {
 		s.writeStoreError(w, err)
 		return

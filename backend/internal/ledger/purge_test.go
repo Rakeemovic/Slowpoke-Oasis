@@ -15,10 +15,10 @@ func TestPurgeRemovesOnlyTransactionsDeletedMoreThan30DaysAgo(t *testing.T) {
 	recent := createExpense(t, s, "p-default", "2026-11-02", 200)
 	kept := createExpense(t, s, "p-default", "2026-11-03", 300)
 
-	if err := s.DeleteTransaction(ctx, "l1", old, now); err != nil {
+	if err := s.DeleteTransaction(ctx, "l1", old, "u1", now); err != nil {
 		t.Fatalf("delete old: %v", err)
 	}
-	if err := s.DeleteTransaction(ctx, "l1", recent, now); err != nil {
+	if err := s.DeleteTransaction(ctx, "l1", recent, "u1", now); err != nil {
 		t.Fatalf("delete recent: %v", err)
 	}
 	// Backdate the deletions: one 31 days ago, one 10 days ago.

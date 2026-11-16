@@ -107,7 +107,7 @@ func TestSoftDeletedTransactionsAreHidden(t *testing.T) {
 	ctx := context.Background()
 	id := createExpense(t, s, "p-default", "2026-11-16", 100)
 
-	if err := s.DeleteTransaction(ctx, "l1", id, time.Now()); err != nil {
+	if err := s.DeleteTransaction(ctx, "l1", id, "u1", time.Now()); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 
@@ -125,14 +125,14 @@ func TestDeleteFailsForWrongLedgerOrAlreadyDeleted(t *testing.T) {
 	ctx := context.Background()
 	id := createExpense(t, s, "p-default", "2026-11-16", 100)
 
-	if err := s.DeleteTransaction(ctx, "l-other", id, time.Now()); !errors.Is(err, ErrTransactionNotFound) {
+	if err := s.DeleteTransaction(ctx, "l-other", id, "u1", time.Now()); !errors.Is(err, ErrTransactionNotFound) {
 		t.Errorf("wrong ledger: err = %v, want ErrTransactionNotFound", err)
 	}
 
-	if err := s.DeleteTransaction(ctx, "l1", id, time.Now()); err != nil {
+	if err := s.DeleteTransaction(ctx, "l1", id, "u1", time.Now()); err != nil {
 		t.Fatalf("first delete: %v", err)
 	}
-	if err := s.DeleteTransaction(ctx, "l1", id, time.Now()); !errors.Is(err, ErrTransactionNotFound) {
+	if err := s.DeleteTransaction(ctx, "l1", id, "u1", time.Now()); !errors.Is(err, ErrTransactionNotFound) {
 		t.Errorf("second delete: err = %v, want ErrTransactionNotFound", err)
 	}
 }

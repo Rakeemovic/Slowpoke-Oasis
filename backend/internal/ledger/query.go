@@ -94,14 +94,14 @@ func (s *Store) ListTransactions(ctx context.Context, f ListFilter) ([]Transacti
 }
 
 // DeleteTransaction soft-deletes a transaction (rule X10): it sets deleted_at
-// and keeps the row until the cleanup job removes it after 30 days.
-func (s *Store) DeleteTransaction(ctx context.Context, ledgerID, id string, now time.Time) error {
+// and deleted_by and keeps the row until the cleanup job removes it after 30 days.
+func (s *Store) DeleteTransaction(ctx context.Context, ledgerID, id, userID string, now time.Time) error {
 	ts := now.UTC().Format(time.RFC3339)
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE transactions
-		SET deleted_at = ?, updated_at = ?
+		SET deleted_at = ?, deleted_by = ?, updated_at = ?
 		WHERE id = ? AND ledger_id = ? AND deleted_at IS NULL`,
-		ts, ts, id, ledgerID,
+		ts, userID, ts, id, ledgerID,
 	)
 	if err != nil {
 		return err
