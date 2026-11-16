@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/api"
+	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/auth"
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/ledger"
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/store"
 )
@@ -28,5 +29,5 @@ func main() {
 	defer db.Close()
 
 	log.Printf("listening on %s, database %s", addr, dbPath)
-	log.Fatal(http.ListenAndServe(addr, api.NewServer(ledger.New(db)).Routes()))
+	log.Fatal(http.ListenAndServe(addr, api.NewServer(ledger.New(db), auth.New(db)).Routes()))
 }

@@ -1,8 +1,6 @@
 // Package api exposes the ledger functions over HTTP as JSON.
 //
-// Authentication is not implemented yet. The acting user is read from the
-// X-User-ID header. This is a development placeholder and must be replaced
-// before the app is shared with anyone.
+// Requests that act on a user's data carry a bearer token obtained from /auth/login.
 package api
 
 import (
@@ -14,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/auth"
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/ledger"
 )
 
@@ -21,13 +20,14 @@ const maxBodyBytes = 1 << 20 // 1 MiB
 
 // Server holds the dependencies of the HTTP handlers.
 type Server struct {
-	store *ledger.Store
-	now   func() time.Time
+	store    *ledger.Store
+	accounts *auth.Service
+	now      func() time.Time
 }
 
-// NewServer returns a Server that uses the given store.
-func NewServer(store *ledger.Store) *Server {
-	return &Server{store: store, now: time.Now}
+// NewServer returns a Server that uses the given stores.
+func NewServer(store *ledger.Store, accounts *auth.Service) *Server {
+	return &Server{store: store, accounts: accounts, now: time.Now}
 }
 
 // Routes returns the HTTP handler with all endpoints registered.
@@ -36,7 +36,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /ledgers/{ledger}/transactions", s.createTransaction)
 	mux.HandleFunc("GET /ledgers/{ledger}/transactions", s.listTransactions)
 	mux.HandleFunc("DELETE /ledgers/{ledger}/transactions/{id}", s.deleteTransaction)
-	mux.HandleFunc("POST /users", s.createUser)
+	mux.HandleFunc("POST /auth/register", s.register)
+	mux.HandleFunc("POST /auth/login", s.login)
+	mux.HandleFunc("POST /auth/logout", s.logout)
 	mux.HandleFunc("POST /ledgers/{ledger}/pots", s.createPot)
 	mux.HandleFunc("GET /ledgers/{ledger}/pots", s.listPots)
 	mux.HandleFunc("PATCH /ledgers/{ledger}/pots/{pot}", s.updatePot)
@@ -74,9 +76,8 @@ type transactionResponse struct {
 
 // POST /ledgers/{ledger}/transactions
 func (s *Server) createTransaction(w http.ResponseWriter, r *http.Request) {
-	userID := r.Header.Get("X-User-ID")
-	if userID == "" {
-		writeError(w, http.StatusUnauthorized, "missing X-User-ID header")
+	userID, ok := s.requireUser(w, r)
+	if !ok {
 		return
 	}
 

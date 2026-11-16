@@ -2,17 +2,22 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/auth"
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/ledger"
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/store"
 )
 
+// testTokens holds a login token for each seeded user, filled by newTestHandler.
+var testTokens = map[string]string{}
+
 // newTestHandler returns the routes backed by an in-memory database with one
-// user, one ledger, a default pot, a second pot and one category.
+// user (u1, logged in), one ledger, a default pot, a second pot and one category.
 func newTestHandler(t *testing.T) http.Handler {
 	t.Helper()
 	db, err := store.Open(":memory:")
@@ -33,11 +38,19 @@ func newTestHandler(t *testing.T) http.Handler {
 			t.Fatalf("seed %q: %v", q, err)
 		}
 	}
-	return NewServer(ledger.New(db)).Routes()
+
+	accounts := auth.New(db)
+	token, err := accounts.CreateSession(context.Background(), "u1")
+	if err != nil {
+		t.Fatalf("session for u1: %v", err)
+	}
+	testTokens["u1"] = token
+
+	return NewServer(ledger.New(db), accounts).Routes()
 }
 
-// do sends a request through the handler. An empty user means no X-User-ID header.
-func do(t *testing.T, h http.Handler, method, path, user string, body any) *httptest.ResponseRecorder {
+// doToken sends a request through the handler. An empty token sends no Authorization header.
+func doToken(t *testing.T, h http.Handler, method, path, token string, body any) *httptest.ResponseRecorder {
 	t.Helper()
 	var buf bytes.Buffer
 	if body != nil {
@@ -47,12 +60,18 @@ func do(t *testing.T, h http.Handler, method, path, user string, body any) *http
 	}
 	req := httptest.NewRequest(method, path, &buf)
 	req.Header.Set("Content-Type", "application/json")
-	if user != "" {
-		req.Header.Set("X-User-ID", user)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	return rec
+}
+
+// do sends a request as one of the seeded users (see testTokens). An empty user sends no token.
+func do(t *testing.T, h http.Handler, method, path, user string, body any) *httptest.ResponseRecorder {
+	t.Helper()
+	return doToken(t, h, method, path, testTokens[user], body)
 }
 
 func expenseBody() map[string]any {
@@ -135,7 +154,7 @@ func TestErrorStatuses(t *testing.T) {
 		want   int
 	}{
 		{
-			name: "missing user header", method: http.MethodPost,
+			name: "missing token", method: http.MethodPost,
 			path: "/ledgers/l1/transactions", user: "", body: expenseBody(),
 			want: http.StatusUnauthorized,
 		},

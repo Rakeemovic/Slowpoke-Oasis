@@ -11,12 +11,9 @@ import (
 func TestCreatePersonalLedgerAddsDefaultPot(t *testing.T) {
 	db, s := setup(t)
 	ctx := context.Background()
+	mustExec(t, db, `INSERT INTO user (id, name, created_at) VALUES ('bob', 'Bob', '2026-01-01T00:00:00Z')`)
 
-	userID, err := s.CreateUser(ctx, "Bob", time.Now())
-	if err != nil {
-		t.Fatalf("create user: %v", err)
-	}
-	ledgerID, err := s.CreatePersonalLedger(ctx, userID, "Home", 23, time.Now())
+	ledgerID, err := s.CreatePersonalLedger(ctx, "bob", "Home", 23, time.Now())
 	if err != nil {
 		t.Fatalf("create ledger: %v", err)
 	}
@@ -40,14 +37,14 @@ func TestCreatePersonalLedgerAddsDefaultPot(t *testing.T) {
 }
 
 func TestPaydayDefaultsAndRange(t *testing.T) {
-	_, s := setup(t)
+	db, s := setup(t)
 	ctx := context.Background()
-	userID, _ := s.CreateUser(ctx, "Bob", time.Now())
+	mustExec(t, db, `INSERT INTO user (id, name, created_at) VALUES ('bob', 'Bob', '2026-01-01T00:00:00Z')`)
 
-	if _, err := s.CreatePersonalLedger(ctx, userID, "Default", 0, time.Now()); err != nil {
+	if _, err := s.CreatePersonalLedger(ctx, "bob", "Default", 0, time.Now()); err != nil {
 		t.Errorf("payday 0 should default to 1, got %v", err)
 	}
-	if _, err := s.CreatePersonalLedger(ctx, userID, "Too late", 32, time.Now()); !errors.Is(err, ErrInvalidPayday) {
+	if _, err := s.CreatePersonalLedger(ctx, "bob", "Too late", 32, time.Now()); !errors.Is(err, ErrInvalidPayday) {
 		t.Errorf("payday 32: err = %v, want ErrInvalidPayday", err)
 	}
 }
@@ -56,11 +53,11 @@ func TestInvalidNamesAreRejected(t *testing.T) {
 	_, s := setup(t)
 	ctx := context.Background()
 
-	if _, err := s.CreateUser(ctx, "   ", time.Now()); !errors.Is(err, ErrInvalidName) {
-		t.Errorf("blank user name: err = %v, want ErrInvalidName", err)
-	}
 	if _, err := s.CreateCategory(ctx, "l1", strings.Repeat("x", 51), false); !errors.Is(err, ErrInvalidName) {
 		t.Errorf("51-character category name: err = %v, want ErrInvalidName", err)
+	}
+	if _, err := s.CreateCategory(ctx, "l1", "   ", false); !errors.Is(err, ErrInvalidName) {
+		t.Errorf("blank category name: err = %v, want ErrInvalidName", err)
 	}
 }
 
