@@ -25,6 +25,7 @@ var (
 	ErrInvalidCredentials = errors.New("wrong username or password")
 	ErrUnauthenticated    = errors.New("not logged in or session expired")
 	ErrWrongPassword      = errors.New("wrong password")
+	ErrUserNotFound       = errors.New("user not found")
 )
 
 // Service handles registration, login and sessions.
@@ -159,6 +160,17 @@ func (s *Service) UserForToken(ctx context.Context, token string) (string, error
 func (s *Service) Logout(ctx context.Context, token string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM session WHERE token_hash = ?`, hashToken(token))
 	return err
+}
+
+// FindUserID returns the ID of the user with the given username.
+func (s *Service) FindUserID(ctx context.Context, username string) (string, error) {
+	u := strings.ToLower(strings.TrimSpace(username))
+	var id string
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM user WHERE lower(username) = ?`, u).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrUserNotFound
+	}
+	return id, err
 }
 
 // DeleteAccount removes a user after checking the password. The removeData

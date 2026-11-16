@@ -129,7 +129,7 @@ func (s *Server) deleteAccount(w http.ResponseWriter, r *http.Request) {
 			if err := ledger.DeletePersonalLedgersTx(ctx, tx, userID); err != nil {
 				return err
 			}
-			return ledger.ReleaseHouseholdTransactionsTx(ctx, tx, userID)
+			return ledger.LeaveAllHouseholdsTx(ctx, tx, userID)
 		})
 	switch {
 	case errors.Is(err, auth.ErrWrongPassword):

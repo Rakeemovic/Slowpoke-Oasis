@@ -57,7 +57,7 @@ func TestPotBalanceFollowsIncomeExpensesAndTransfers(t *testing.T) {
 	}
 
 	// A soft-deleted expense no longer counts.
-	if err := s.DeleteTransaction(ctx, "l1", holidayExpense, time.Now()); err != nil {
+	if err := s.DeleteTransaction(ctx, "l1", holidayExpense, "u1", time.Now()); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 	if got := balances(t, s, "l1")["p-holiday"]; got != 20000 {
