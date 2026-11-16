@@ -158,7 +158,10 @@ func (s *Server) deleteTransaction(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	err := s.store.DeleteTransaction(r.Context(), r.PathValue("ledger"), r.PathValue("id"), userID, s.now())
+	err := s.store.AuthorizeTransactionChange(r.Context(), userID, r.PathValue("ledger"), r.PathValue("id"), ledger.ActionDelete)
+	if err == nil {
+		err = s.store.DeleteTransaction(r.Context(), r.PathValue("ledger"), r.PathValue("id"), userID, s.now())
+	}
 	if err != nil {
 		s.writeStoreError(w, err)
 		return
@@ -200,6 +203,8 @@ func (s *Server) writeStoreError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ledger.ErrTransactionNotFound), errors.Is(err, ledger.ErrPotLineNotFound), errors.Is(err, sql.ErrNoRows):
 		writeError(w, http.StatusNotFound, "not found")
+	case errors.Is(err, ledger.ErrNotAllowed):
+		writeError(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, ledger.ErrPotArchived), errors.Is(err, ledger.ErrDefaultPotProtected):
 		writeError(w, http.StatusConflict, err.Error())
 	case strings.Contains(err.Error(), "constraint failed"):
