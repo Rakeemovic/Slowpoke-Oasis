@@ -36,6 +36,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /ledgers/{ledger}/transactions", s.createTransaction)
 	mux.HandleFunc("GET /ledgers/{ledger}/transactions", s.listTransactions)
 	mux.HandleFunc("DELETE /ledgers/{ledger}/transactions/{id}", s.deleteTransaction)
+	mux.HandleFunc("POST /users", s.createUser)
+	mux.HandleFunc("POST /users/{user}/ledgers", s.createPersonalLedger)
+	mux.HandleFunc("POST /ledgers/{ledger}/categories", s.createCategory)
 	return mux
 }
 
@@ -152,6 +155,8 @@ var validationErrors = []error{
 	ledger.ErrCounterpartForbidden,
 	ledger.ErrSamePot,
 	ledger.ErrNoteTooLong,
+	ledger.ErrInvalidName,
+	ledger.ErrInvalidPayday,
 }
 
 // writeStoreError maps errors from the ledger package to HTTP status codes.
