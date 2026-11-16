@@ -109,6 +109,9 @@ func (s *Server) createTransaction(w http.ResponseWriter, r *http.Request) {
 
 // GET /ledgers/{ledger}/transactions?pot_id=&from=&to=
 func (s *Server) listTransactions(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireUser(w, r); !ok {
+		return
+	}
 	q := r.URL.Query()
 	items, err := s.store.ListTransactions(r.Context(), ledger.ListFilter{
 		LedgerID: r.PathValue("ledger"),
@@ -141,6 +144,9 @@ func (s *Server) listTransactions(w http.ResponseWriter, r *http.Request) {
 
 // DELETE /ledgers/{ledger}/transactions/{id}
 func (s *Server) deleteTransaction(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireUser(w, r); !ok {
+		return
+	}
 	err := s.store.DeleteTransaction(r.Context(), r.PathValue("ledger"), r.PathValue("id"), s.now())
 	if err != nil {
 		s.writeStoreError(w, err)
