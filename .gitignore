@@ -1,0 +1,9 @@
+# Local SQLite databases and their journal files
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Compiled binaries
+/backend/server
+/backend/cmd/server/server
