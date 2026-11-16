@@ -24,6 +24,7 @@ var (
 	ErrUsernameTaken      = errors.New("username is already taken")
 	ErrInvalidCredentials = errors.New("wrong username or password")
 	ErrUnauthenticated    = errors.New("not logged in or session expired")
+	ErrWrongPassword      = errors.New("wrong password")
 )
 
 // Service handles registration, login and sessions.
@@ -158,6 +159,37 @@ func (s *Service) UserForToken(ctx context.Context, token string) (string, error
 func (s *Service) Logout(ctx context.Context, token string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM session WHERE token_hash = ?`, hashToken(token))
 	return err
+}
+
+// DeleteAccount removes a user after checking the password. The removeData
+// callback runs in the same transaction as the user deletion, so either all
+// data is removed or nothing is. Sessions are removed by the database cascade.
+func (s *Service) DeleteAccount(ctx context.Context, userID, password string, removeData func(ctx context.Context, tx *sql.Tx) error) error {
+	var hash sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT password_hash FROM user WHERE id = ?`, userID).Scan(&hash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrUnauthenticated
+	}
+	if err != nil {
+		return err
+	}
+	if !hash.Valid || !verifyPassword(password, hash.String) {
+		return ErrWrongPassword
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() // no effect after a successful Commit
+
+	if err := removeData(ctx, tx); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM user WHERE id = ?`, userID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // hashToken returns the SHA-256 hash of a token. Tokens are random and

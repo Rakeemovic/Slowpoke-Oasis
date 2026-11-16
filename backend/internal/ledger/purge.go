@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"database/sql"
 	"log"
 	"time"
 )
@@ -54,6 +55,15 @@ func (s *Store) DeletePersonalLedgers(ctx context.Context, userID string) error 
 	}
 	defer tx.Rollback() // no effect after a successful Commit
 
+	if err := DeletePersonalLedgersTx(ctx, tx, userID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// DeletePersonalLedgersTx is like DeletePersonalLedgers but runs inside an
+// existing transaction, so it can be combined with other deletions.
+func DeletePersonalLedgersTx(ctx context.Context, tx *sql.Tx, userID string) error {
 	rows, err := tx.QueryContext(ctx, `SELECT id FROM ledger WHERE user_id = ?`, userID)
 	if err != nil {
 		return err
@@ -89,5 +99,5 @@ func (s *Store) DeletePersonalLedgers(ctx context.Context, userID string) error 
 			}
 		}
 	}
-	return tx.Commit()
+	return nil
 }
