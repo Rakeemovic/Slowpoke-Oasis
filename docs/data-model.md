@@ -17,7 +17,7 @@ This document records the decisions behind the data model. The schema lives in t
 - `session`: token_hash, user_id, created_at, expires_at. A login is valid for 30 days. Only the SHA-256 hash of the token is stored.
 - `password_reset`: token_hash, user_id, created_at, expires_at. A reset code is valid for 30 minutes and can be used once.
 - `household`: id, name, created_at
-- `household_member`: household_id, user_id (primary key: both fields), role (`owner` or `member`). The creator is the owner. When the owner leaves, the longest-standing member becomes owner. When the last member leaves, the household and its ledger are deleted.
+- `household_member`: household_id, user_id (primary key: both fields), role (`owner` or `member`), joined_at. The creator is the owner. When the owner leaves, the longest-standing member (earliest `joined_at`) becomes owner. When the last member leaves, the household and its ledger are deleted.
 
 ### Ledger
 A container for categories, pots and transactions. It belongs to exactly one user (personal) or one household (shared).
