@@ -39,6 +39,26 @@ func (s *Server) requireUser(w http.ResponseWriter, r *http.Request) (string, bo
 	return userID, true
 }
 
+// requireLedgerAccess checks that the logged-in user may use the ledger in the
+// path. It writes 401 without a valid login and 404 when the ledger is unknown
+// or belongs to someone else, so that foreign IDs are not revealed.
+func (s *Server) requireLedgerAccess(w http.ResponseWriter, r *http.Request) (string, bool) {
+	userID, ok := s.requireUser(w, r)
+	if !ok {
+		return "", false
+	}
+	allowed, err := s.store.CanAccessLedger(r.Context(), userID, r.PathValue("ledger"))
+	if err != nil {
+		s.writeStoreError(w, err)
+		return "", false
+	}
+	if !allowed {
+		writeError(w, http.StatusNotFound, "not found")
+		return "", false
+	}
+	return userID, true
+}
+
 // POST /auth/register
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	var req struct {
