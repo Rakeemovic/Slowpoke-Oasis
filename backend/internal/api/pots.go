@@ -26,7 +26,7 @@ type plannedResponse struct {
 
 // POST /ledgers/{ledger}/pots
 func (s *Server) createPot(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireUser(w, r); !ok {
+	if _, ok := s.requireLedgerAccess(w, r); !ok {
 		return
 	}
 	var req struct {
@@ -52,7 +52,7 @@ func (s *Server) createPot(w http.ResponseWriter, r *http.Request) {
 
 // GET /ledgers/{ledger}/pots
 func (s *Server) listPots(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireUser(w, r); !ok {
+	if _, ok := s.requireLedgerAccess(w, r); !ok {
 		return
 	}
 	pots, err := s.store.ListPots(r.Context(), r.PathValue("ledger"))
@@ -86,7 +86,7 @@ func (s *Server) listPots(w http.ResponseWriter, r *http.Request) {
 // Only the fields present in the body are changed. Sending target_cents: 0
 // removes the target and its date.
 func (s *Server) updatePot(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireUser(w, r); !ok {
+	if _, ok := s.requireLedgerAccess(w, r); !ok {
 		return
 	}
 	var req struct {
@@ -113,7 +113,7 @@ func (s *Server) updatePot(w http.ResponseWriter, r *http.Request) {
 
 // PUT /ledgers/{ledger}/pots/{pot}/lines/{category}
 func (s *Server) setPlannedAmount(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireUser(w, r); !ok {
+	if _, ok := s.requireLedgerAccess(w, r); !ok {
 		return
 	}
 	var req struct {
@@ -133,7 +133,7 @@ func (s *Server) setPlannedAmount(w http.ResponseWriter, r *http.Request) {
 
 // DELETE /ledgers/{ledger}/pots/{pot}/lines/{category}
 func (s *Server) deletePlannedAmount(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireUser(w, r); !ok {
+	if _, ok := s.requireLedgerAccess(w, r); !ok {
 		return
 	}
 	err := s.store.DeletePlannedAmount(r.Context(), r.PathValue("ledger"), r.PathValue("pot"), r.PathValue("category"))

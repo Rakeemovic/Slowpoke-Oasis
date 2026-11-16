@@ -76,7 +76,7 @@ type transactionResponse struct {
 
 // POST /ledgers/{ledger}/transactions
 func (s *Server) createTransaction(w http.ResponseWriter, r *http.Request) {
-	userID, ok := s.requireUser(w, r)
+	userID, ok := s.requireLedgerAccess(w, r)
 	if !ok {
 		return
 	}
@@ -109,7 +109,7 @@ func (s *Server) createTransaction(w http.ResponseWriter, r *http.Request) {
 
 // GET /ledgers/{ledger}/transactions?pot_id=&from=&to=
 func (s *Server) listTransactions(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireUser(w, r); !ok {
+	if _, ok := s.requireLedgerAccess(w, r); !ok {
 		return
 	}
 	q := r.URL.Query()
@@ -144,7 +144,7 @@ func (s *Server) listTransactions(w http.ResponseWriter, r *http.Request) {
 
 // DELETE /ledgers/{ledger}/transactions/{id}
 func (s *Server) deleteTransaction(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireUser(w, r); !ok {
+	if _, ok := s.requireLedgerAccess(w, r); !ok {
 		return
 	}
 	err := s.store.DeleteTransaction(r.Context(), r.PathValue("ledger"), r.PathValue("id"), s.now())

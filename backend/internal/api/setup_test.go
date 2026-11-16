@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -122,5 +123,46 @@ func TestSetupValidationStatuses(t *testing.T) {
 	rec = do(t, h, http.MethodPost, "/ledgers/l1/categories", "u1", map[string]any{"name": "Groceries"})
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("duplicate category: status = %d, want 422", rec.Code)
+	}
+}
+
+func TestForeignLedgersAreHidden(t *testing.T) {
+	h := newTestHandler(t)
+	_, bobToken := register(t, h, "bob")
+
+	// u1 books a transaction in their own ledger.
+	rec := do(t, h, http.MethodPost, "/ledgers/l1/transactions", "u1", expenseBody())
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("u1 create: status %d, body %s", rec.Code, rec.Body)
+	}
+	txID := decodeID(t, rec.Body.Bytes())
+
+	// Bob is logged in but is not a member of l1, so every request fails with 404.
+	checks := []struct {
+		name   string
+		method string
+		path   string
+		body   any
+	}{
+		{"list transactions", http.MethodGet, "/ledgers/l1/transactions", nil},
+		{"book a transaction", http.MethodPost, "/ledgers/l1/transactions", expenseBody()},
+		{"delete a transaction", http.MethodDelete, "/ledgers/l1/transactions/" + txID, nil},
+		{"list pots", http.MethodGet, "/ledgers/l1/pots", nil},
+		{"create pot", http.MethodPost, "/ledgers/l1/pots", map[string]any{"name": "Spy"}},
+		{"create category", http.MethodPost, "/ledgers/l1/categories", map[string]any{"name": "Spy"}},
+	}
+	for _, c := range checks {
+		t.Run(c.name, func(t *testing.T) {
+			rec := doToken(t, h, c.method, c.path, bobToken, c.body)
+			if rec.Code != http.StatusNotFound {
+				t.Errorf("status = %d, want 404 (body %s)", rec.Code, rec.Body)
+			}
+		})
+	}
+
+	// The transaction is still there for its owner.
+	rec = do(t, h, http.MethodGet, "/ledgers/l1/transactions", "u1", nil)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), txID) {
+		t.Errorf("owner lost access or data: status %d, body %s", rec.Code, rec.Body)
 	}
 }

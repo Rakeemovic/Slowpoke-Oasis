@@ -44,10 +44,8 @@ func (s *Server) createPersonalLedger(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /ledgers/{ledger}/categories
-//
-// TODO: check that the ledger belongs to the acting user (ownership checks).
 func (s *Server) createCategory(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireUser(w, r); !ok {
+	if _, ok := s.requireLedgerAccess(w, r); !ok {
 		return
 	}
 
