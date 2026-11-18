@@ -1,0 +1,123 @@
+package ledger
+
+import (
+	"context"
+	"errors"
+	"time"
+)
+
+// Errors for reading and deleting transactions.
+var (
+	ErrLedgerRequired      = errors.New("a ledger ID is required")
+	ErrLedgerNotFound      = errors.New("ledger not found")
+	ErrTransactionNotFound = errors.New("transaction not found")
+)
+
+// Transaction is a stored transaction as returned to callers.
+// Optional values are empty strings when not set.
+type Transaction struct {
+	ID               string
+	LedgerID         string
+	UserID           string
+	Type             TxType
+	CategoryID       string
+	PotID            string
+	CounterpartPotID string
+	AmountCents      int64
+	BookedOn         string
+	Note             string
+}
+
+// transactionColumns lists the columns of a Transaction for a query that
+// names the transactions table t. scanTargets returns the matching targets.
+const transactionColumns = `
+	t.id, t.ledger_id, t.user_id, t.type,
+	COALESCE(t.category_id, ''), t.pot_id, COALESCE(t.counterpart_pot_id, ''),
+	t.amount_cents, t.booked_on, COALESCE(t.note, '')`
+
+func (t *Transaction) scanTargets() []any {
+	return []any{&t.ID, &t.LedgerID, &t.UserID, &t.Type, &t.CategoryID,
+		&t.PotID, &t.CounterpartPotID, &t.AmountCents, &t.BookedOn, &t.Note}
+}
+
+// ListFilter selects transactions of one ledger. Empty optional fields mean
+// "no restriction". From and To are inclusive and use the format YYYY-MM-DD.
+type ListFilter struct {
+	LedgerID string
+	PotID    string
+	From     string
+	To       string
+	// Limit and Offset page through the result. A limit of 0 returns everything.
+	Limit  int
+	Offset int
+}
+
+// ListTransactions returns the non-deleted transactions of a ledger that match
+// the filter, newest booking date first.
+func (s *Store) ListTransactions(ctx context.Context, f ListFilter) ([]Transaction, error) {
+	if f.LedgerID == "" {
+		return nil, ErrLedgerRequired
+	}
+	if err := validateRange(f.From, f.To); err != nil {
+		return nil, err
+	}
+
+	query := `SELECT ` + transactionColumns + `
+		FROM transactions t
+		WHERE t.ledger_id = ? AND t.deleted_at IS NULL`
+	args := []any{f.LedgerID}
+
+	if f.PotID != "" {
+		query += ` AND t.pot_id = ?`
+		args = append(args, f.PotID)
+	}
+	rc, rargs := rangeClause(f.From, f.To)
+	query += rc + ` ORDER BY t.booked_on DESC, t.created_at DESC`
+	args = append(args, rargs...)
+	if f.Limit > 0 {
+		query += ` LIMIT ? OFFSET ?`
+		args = append(args, f.Limit, f.Offset)
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Transaction
+	for rows.Next() {
+		var t Transaction
+		if err := rows.Scan(t.scanTargets()...); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// selfAndLinkedLeg is a WHERE condition that matches a transaction of a
+// ledger and, for a transfer between ledgers, its other leg (rule X14), so
+// both legs are always deleted and restored together. It takes the
+// transaction ID and the ledger ID, twice each.
+const selfAndLinkedLeg = `(
+	(id = ? AND ledger_id = ?)
+	OR id IN (SELECT linked_transaction_id FROM transactions
+	          WHERE id = ? AND ledger_id = ? AND linked_transaction_id IS NOT NULL)
+)`
+
+// DeleteTransaction soft-deletes a transaction (rule X10): it sets deleted_at
+// and deleted_by and keeps the row until the cleanup job removes it after 30 days.
+func (s *Store) DeleteTransaction(ctx context.Context, ledgerID, id, userID string, now time.Time) error {
+	ts := timestamp(now)
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE transactions
+		SET deleted_at = ?, deleted_by = ?, updated_at = ?
+		WHERE deleted_at IS NULL AND `+selfAndLinkedLeg,
+		ts, userID, ts, id, ledgerID, id, ledgerID,
+	)
+	if err != nil {
+		return err
+	}
+	return requireAffected(res, ErrTransactionNotFound)
+}

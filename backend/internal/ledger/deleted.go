@@ -1,0 +1,75 @@
+package ledger
+
+import (
+	"context"
+	"time"
+)
+
+// retentionDays is how long soft-deleted transactions stay in the database (rule X10).
+const retentionDays = 30
+
+// retentionCutoff returns the timestamp before which soft-deleted transactions
+// are no longer kept.
+func retentionCutoff(now time.Time) string {
+	return timestamp(now.AddDate(0, 0, -retentionDays))
+}
+
+// DeletedTransaction is a soft-deleted transaction that can still be restored.
+// The names are shown to the household, so everyone can see who booked and who
+// deleted the transaction (rule X13). Departed members appear as the placeholder.
+type DeletedTransaction struct {
+	Transaction
+	DeletedAt     string
+	DeletedBy     string
+	BookedByName  string
+	DeletedByName string
+}
+
+// ListDeletedTransactions returns the transactions of a ledger that were
+// soft-deleted within the retention period, most recent deletion first.
+func (s *Store) ListDeletedTransactions(ctx context.Context, ledgerID string, now time.Time) ([]DeletedTransaction, error) {
+	if ledgerID == "" {
+		return nil, ErrLedgerRequired
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+transactionColumns+`,
+		       t.deleted_at, COALESCE(t.deleted_by, ''),
+		       COALESCE(booker.name, ''), COALESCE(deleter.name, '')
+		FROM transactions t
+		LEFT JOIN user booker ON booker.id = t.user_id
+		LEFT JOIN user deleter ON deleter.id = t.deleted_by
+		WHERE t.ledger_id = ? AND t.deleted_at IS NOT NULL AND t.deleted_at >= ?
+		ORDER BY t.deleted_at DESC`,
+		ledgerID, retentionCutoff(now),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []DeletedTransaction
+	for rows.Next() {
+		var d DeletedTransaction
+		targets := append(d.scanTargets(), &d.DeletedAt, &d.DeletedBy, &d.BookedByName, &d.DeletedByName)
+		if err := rows.Scan(targets...); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// RestoreTransaction undoes a soft delete. It only works within the retention
+// period, because older deletions may already have been purged.
+func (s *Store) RestoreTransaction(ctx context.Context, ledgerID, id string, now time.Time) error {
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE transactions
+		SET deleted_at = NULL, deleted_by = NULL, updated_at = ?
+		WHERE deleted_at IS NOT NULL AND deleted_at >= ? AND `+selfAndLinkedLeg,
+		timestamp(now), retentionCutoff(now), id, ledgerID, id, ledgerID,
+	)
+	if err != nil {
+		return err
+	}
+	return requireAffected(res, ErrTransactionNotFound)
+}
