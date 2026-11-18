@@ -25,6 +25,7 @@ I want to create a "household" app, meaning it's a transparent, flexible, and fu
 * **Transactions:** Easily create and categorize income and expenses.
 * **Flexible Budgets:** Budgets can be adjusted to actual salary receipt dates (e.g., 24th to 24th of the following month) instead of rigidly locked to the beginning of the month.
 * **Categories & Analytics:** Clear overview of all expenses.
+* **Shared Households:** Keep a ledger together with the people you live with.
 * **Banking Import/Export:** Future import of transactions from banking apps planned.
 
 ### 2. Grocery List & Recipe Planner
@@ -39,18 +40,19 @@ I want to create a "household" app, meaning it's a transparent, flexible, and fu
 
 ---
 
-## Planned Tech Stack
+## Tech Stack
 
-* **Frontend:** React Native (for Android & Cross-Platform)
+* **Frontend (planned):** React Native (for Android & Cross-Platform)
 * **Backend:** Go (RESTful API for lean performance)
-* **Data Storage:** Hybrid approach with SQLite (relational for finances) and local JSON documents (for flexible recipes & lists)
-* **Deployment:** Docker & Docker Compose for easy self-hosting
+* **Data Storage:** SQLite for all data, including recipes and lists. JSON is only used to import and export data, such as product lists.
+* **Deployment (planned):** Docker & Docker Compose for easy self-hosting
 
 ---
 
 ## Contributing
 
-Since this project grows step-by-step, contributors, ideas, and pull requests are very welcome! 
+Since this project grows step-by-step, contributors, ideas, and pull requests are very welcome!
+
 ---
 
 ## 📄 License
