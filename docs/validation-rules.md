@@ -65,8 +65,10 @@ Every member of a household may read its ledger and book in it. Changing an exis
 |---|---|
 | Edit a transaction | The author and the owner of the ledger. |
 | Delete or restore a transaction | The author. The owner may also delete or restore bookings of a departed member (X12), because nobody else could. For a leg of a transfer between ledgers (X14), the user must be allowed to change both legs, so a household owner cannot change a leg in someone else's personal ledger. |
+| See the members of a household | Every member. Only the user ID, username and role are shown; email addresses and other personal data stay hidden. |
 | Add a household member | The household owner. |
 | Remove a household member | The household owner. Every member may leave by removing themselves. |
+| Hand over the owner role | The household owner, to another member. The previous owner becomes a regular member, so a household always has exactly one owner. The handover takes effect immediately. |
 
 ## Accounts and logins
 

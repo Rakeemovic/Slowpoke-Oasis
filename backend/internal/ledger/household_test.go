@@ -161,3 +161,56 @@ func TestRestoreFailsAfterRetentionPeriod(t *testing.T) {
 		t.Errorf("%d entries listed after retention, want 0", len(deleted))
 	}
 }
+
+func TestTransferOwnershipSwapsRolesAndKeepsOneOwner(t *testing.T) {
+	db, s := setup(t)
+	ctx := context.Background()
+	mustExec(t, db, `INSERT INTO user (id, name, created_at) VALUES ('bob', 'Bob', '2026-01-01T00:00:00Z')`)
+	mustExec(t, db, `INSERT INTO user (id, name, created_at) VALUES ('carol', 'Carol', '2026-01-01T00:00:00Z')`)
+
+	hid, _, err := s.CreateHousehold(ctx, "u1", "Flat", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddHouseholdMember(ctx, hid, "bob"); err != nil {
+		t.Fatal(err)
+	}
+
+	roleOf := func(user string) string {
+		t.Helper()
+		role, err := s.HouseholdRole(ctx, user, hid)
+		if err != nil {
+			t.Fatalf("role of %s: %v", user, err)
+		}
+		return role
+	}
+
+	if err := s.TransferOwnership(ctx, hid, "u1", "carol"); !errors.Is(err, ErrMemberNotFound) {
+		t.Errorf("transfer to non-member: err = %v, want ErrMemberNotFound", err)
+	}
+	if err := s.TransferOwnership(ctx, hid, "bob", "bob"); !errors.Is(err, ErrNotOwner) {
+		t.Errorf("member transfers: err = %v, want ErrNotOwner", err)
+	}
+	if err := s.TransferOwnership(ctx, hid, "u1", "u1"); err != nil || roleOf("u1") != RoleOwner {
+		t.Errorf("transfer to oneself: err = %v, role = %q; want no change", err, roleOf("u1"))
+	}
+
+	if err := s.TransferOwnership(ctx, hid, "u1", "bob"); err != nil {
+		t.Fatalf("transfer to bob: %v", err)
+	}
+	if roleOf("u1") != RoleMember || roleOf("bob") != RoleOwner {
+		t.Errorf("roles after transfer: u1 = %q, bob = %q; want member and owner", roleOf("u1"), roleOf("bob"))
+	}
+
+	// The former owner can no longer transfer the role.
+	if err := s.TransferOwnership(ctx, hid, "u1", "u1"); !errors.Is(err, ErrNotOwner) {
+		t.Errorf("former owner transfers again: err = %v, want ErrNotOwner", err)
+	}
+	var owners int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM household_member WHERE household_id = ? AND role = 'owner'`, hid).Scan(&owners); err != nil {
+		t.Fatal(err)
+	}
+	if owners != 1 {
+		t.Errorf("%d owners, want 1", owners)
+	}
+}

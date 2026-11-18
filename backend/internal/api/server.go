@@ -42,8 +42,10 @@ func (s *Server) Routes() http.Handler {
 	// Households
 	mux.HandleFunc("POST /households", s.createHousehold)
 	mux.HandleFunc("GET /households", s.listHouseholds)
+	mux.HandleFunc("GET /households/{household}/members", s.listHouseholdMembers)
 	mux.HandleFunc("POST /households/{household}/members", s.addHouseholdMember)
 	mux.HandleFunc("DELETE /households/{household}/members/{user}", s.removeHouseholdMember)
+	mux.HandleFunc("PUT /households/{household}/owner/{user}", s.transferHouseholdOwnership)
 
 	// Ledgers and categories
 	mux.HandleFunc("POST /users/{user}/ledgers", s.createPersonalLedger)
