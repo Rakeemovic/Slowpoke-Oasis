@@ -2,26 +2,21 @@ package api
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/ledger"
 )
 
-// bearerToken returns the token from "Authorization: Bearer <token>", or "".
-func bearerToken(r *http.Request) string {
-	const prefix = "Bearer "
-	h := r.Header.Get("Authorization")
-	if !strings.HasPrefix(h, prefix) {
-		return ""
-	}
-	return strings.TrimSpace(h[len(prefix):])
-}
-
-// requireUser returns the ID of the logged-in user, or writes 401 and returns false.
+// requireUser returns the ID of the logged-in user, or writes the error and
+// returns false: 401 without a valid login, 403 for a session cookie without
+// the CSRF header (see session.go).
 func (s *Server) requireUser(w http.ResponseWriter, r *http.Request) (string, bool) {
-	token := bearerToken(r)
+	token, fromCookie := sessionToken(r)
 	if token == "" {
-		writeError(w, http.StatusUnauthorized, "missing bearer token, please log in")
+		writeError(w, http.StatusUnauthorized, "missing login token, please log in")
+		return "", false
+	}
+	if fromCookie && r.Header.Get(csrfHeader) == "" {
+		fail(w, ErrCSRFHeaderMissing)
 		return "", false
 	}
 	userID, err := s.accounts.UserForToken(r.Context(), token)
@@ -82,10 +77,14 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /auth/login
+// With "cookie": true (web app) the token is set as an HttpOnly cookie and the
+// answer is 204 without a body, so JavaScript never sees it. Otherwise (native
+// apps) the token is returned in the body.
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
+		Cookie   bool   `json:"cookie"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -93,6 +92,11 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	token, err := s.accounts.Login(r.Context(), req.Username, req.Password)
 	if err != nil {
 		fail(w, err)
+		return
+	}
+	if req.Cookie {
+		setSessionCookie(w, token)
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"token": token})
@@ -103,10 +107,12 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireUser(w, r); !ok {
 		return
 	}
-	if err := s.accounts.Logout(r.Context(), bearerToken(r)); err != nil {
+	token, _ := sessionToken(r)
+	if err := s.accounts.Logout(r.Context(), token); err != nil {
 		fail(w, err)
 		return
 	}
+	clearSessionCookieIfUsed(w, r)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -162,5 +168,6 @@ func (s *Server) deleteAccount(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	clearSessionCookieIfUsed(w, r)
 	w.WriteHeader(http.StatusNoContent)
 }

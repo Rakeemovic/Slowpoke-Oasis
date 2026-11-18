@@ -53,6 +53,7 @@ var statusByError = []struct {
 		ledger.ErrNotAllowed,
 		ledger.ErrNotOwner,
 		auth.ErrWrongPassword,
+		ErrCSRFHeaderMissing,
 	}},
 	{http.StatusNotFound, []error{
 		ledger.ErrLedgerNotFound,

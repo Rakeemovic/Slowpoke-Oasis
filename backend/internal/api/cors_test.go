@@ -27,6 +27,9 @@ func TestCORSAllowedOriginGetsHeader(t *testing.T) {
 	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != testOrigin {
 		t.Errorf("Allow-Origin = %q, want %q", got, testOrigin)
 	}
+	if got := rec.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
+		t.Errorf("Allow-Credentials = %q, want true", got)
+	}
 }
 
 func TestCORSUnknownOriginGetsNoHeader(t *testing.T) {
@@ -52,7 +55,7 @@ func TestCORSPreflightIsAnswered(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want 204", rec.Code)
 	}
-	if got := rec.Header().Get("Access-Control-Allow-Headers"); got != "Authorization, Content-Type" {
+	if got := rec.Header().Get("Access-Control-Allow-Headers"); got != "Authorization, Content-Type, X-Requested-With" {
 		t.Errorf("Allow-Headers = %q", got)
 	}
 }

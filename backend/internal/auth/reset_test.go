@@ -269,7 +269,7 @@ func TestPurgeExpiredRemovesOnlyOldSessionsAndCodes(t *testing.T) {
 	}
 
 	// One day before the first session expires, the reset code is long gone.
-	*clock = clock.Add(sessionTTL - 24*time.Hour)
+	*clock = clock.Add(SessionTTL - 24*time.Hour)
 	newSession, err := s.Login(ctx, "bob", "correct horse battery")
 	if err != nil {
 		t.Fatalf("second login: %v", err)

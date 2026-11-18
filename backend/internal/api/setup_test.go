@@ -28,7 +28,7 @@ func register(t *testing.T, h http.Handler, username string) (userID, token stri
 	t.Helper()
 	rec := doToken(t, h, http.MethodPost, "/auth/register", "", map[string]any{
 		"username": username, "email": username + "@example.com",
-		"password": "correct horse battery", "display_name": "Bob",
+		"password": testPassword, "display_name": "Bob",
 	})
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("register: status %d, body %s", rec.Code, rec.Body)
@@ -36,7 +36,7 @@ func register(t *testing.T, h http.Handler, username string) (userID, token stri
 	userID = decodeID(t, rec.Body.Bytes())
 
 	rec = doToken(t, h, http.MethodPost, "/auth/login", "", map[string]any{
-		"username": username, "password": "correct horse battery",
+		"username": username, "password": testPassword,
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("login: status %d, body %s", rec.Code, rec.Body)

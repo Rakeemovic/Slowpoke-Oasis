@@ -11,9 +11,10 @@ const corsMaxAge = "600"
 // WithCORS lets browser apps served from one of the allowed origins call the API.
 //
 // Native apps do not need CORS; only the web build of the frontend does. Origins
-// must match exactly (scheme, host and port), so there is no wildcard: with bearer
-// tokens a wildcard would let any website use the API on behalf of a logged-in
-// browser that stores the token. With no allowed origins, next is returned as is.
+// must match exactly (scheme, host and port), so there is no wildcard: browsers
+// refuse a wildcard together with cookies, and the exact list is also what keeps
+// other sites from sending the CSRF header. With no allowed origins, next is
+// returned as is.
 func WithCORS(allowed []string, next http.Handler) http.Handler {
 	if len(allowed) == 0 {
 		return next
@@ -33,11 +34,13 @@ func WithCORS(allowed []string, next http.Handler) http.Handler {
 		}
 
 		w.Header().Set("Access-Control-Allow-Origin", origin)
+		// Lets the web app send the session cookie (see session.go).
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		if isPreflight(r) {
 			// The router only knows the real methods and would answer OPTIONS with
 			// 405, so the preflight is answered here without calling next.
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE")
-			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, "+csrfHeader)
 			w.Header().Set("Access-Control-Max-Age", corsMaxAge)
 			w.WriteHeader(http.StatusNoContent)
 			return
