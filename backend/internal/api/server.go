@@ -50,6 +50,7 @@ func (s *Server) Routes() http.Handler {
 	// Ledgers and categories
 	mux.HandleFunc("POST /users/{user}/ledgers", s.createPersonalLedger)
 	mux.HandleFunc("POST /ledgers/{ledger}/categories", s.createCategory)
+	mux.HandleFunc("GET /ledgers/{ledger}/categories", s.listCategories)
 
 	// Pots and planned amounts
 	mux.HandleFunc("POST /ledgers/{ledger}/pots", s.createPot)
