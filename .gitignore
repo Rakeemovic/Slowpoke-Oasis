@@ -7,3 +7,8 @@
 # Compiled binaries
 /backend/server
 /backend/cmd/server/server
+
+# Personal instructions for Claude Code, kept out of the repository
+CLAUDE.md
+CLAUDE.local.md
+.claude/
