@@ -62,9 +62,15 @@ func run() error {
 
 	go runCleanup(ctx, ledgers, accounts)
 
+	// Only the web build of the frontend needs CORS; native apps work without it.
+	corsOrigins := api.ParseOrigins(os.Getenv("CORS_ORIGINS"))
+	if len(corsOrigins) > 0 {
+		log.Printf("CORS allowed for %v", corsOrigins)
+	}
+
 	srv := &http.Server{
 		Addr:    addr,
-		Handler: api.NewServer(ledgers, accounts).Routes(),
+		Handler: api.WithCORS(corsOrigins, api.NewServer(ledgers, accounts).Routes()),
 		// Limits for slow or stalled clients, so they cannot hold connections open forever.
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
