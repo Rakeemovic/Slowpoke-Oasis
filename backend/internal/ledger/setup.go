@@ -82,6 +82,40 @@ func (s *Store) CreatePersonalLedger(ctx context.Context, userID, name string, p
 	return ledgerID, err
 }
 
+// Category is a category of a ledger. Archived categories are still listed,
+// because older transactions refer to them and need their names (rule K2).
+type Category struct {
+	ID       string
+	Name     string
+	IsIncome bool
+	Archived bool
+}
+
+// ListCategories returns the categories of a ledger, sorted by name.
+func (s *Store) ListCategories(ctx context.Context, ledgerID string) ([]Category, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, name, is_income, archived
+		FROM category
+		WHERE ledger_id = ?
+		ORDER BY lower(name)`,
+		ledgerID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Category
+	for rows.Next() {
+		var c Category
+		if err := rows.Scan(&c.ID, &c.Name, &c.IsIncome, &c.Archived); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 // CreateCategory adds a category to a ledger and returns its ID.
 // Names are unique per ledger, ignoring case (rule K1).
 func (s *Store) CreateCategory(ctx context.Context, ledgerID, name string, isIncome bool) (string, error) {

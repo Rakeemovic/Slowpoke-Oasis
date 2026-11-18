@@ -10,6 +10,7 @@ Each rule is enforced either by the database (CHECK, UNIQUE, NOT NULL, foreign k
 | L2 | `payday_day` is an integer from 1 to 31. | DB |
 | L3 | `currency` must be an ISO 4217 code from the allowed list. Only `EUR` is active in the MVP. | App (DB only checks length) |
 | L4 | Each ledger has exactly one default pot, created together with the ledger. | DB (partial unique index) + App |
+| L5 | A household has exactly one ledger, created together with the household. | DB (unique index) + App |
 
 ## Categories
 
