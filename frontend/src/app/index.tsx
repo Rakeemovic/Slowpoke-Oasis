@@ -1,24 +1,84 @@
-import { StyleSheet, Text, View } from "react-native";
+import { Link, Stack } from "expo-router";
+import { useCallback, useState } from "react";
+import { ActivityIndicator, Pressable, View } from "react-native";
 
-// Placeholder start screen until login and the household overview exist.
-export default function Index() {
+import { households } from "@/api/endpoints";
+import type { Household } from "@/api/types";
+import { useAuth } from "@/auth/auth-context";
+import { ErrorMessage } from "@/components/error-message";
+import { FormField } from "@/components/form-field";
+import { Screen } from "@/components/screen";
+import { Button } from "@/components/ui/button";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Text } from "@/components/ui/text";
+import { useLoader } from "@/hooks/use-loader";
+import { errorMessage } from "@/lib/errors";
+
+export default function HouseholdsScreen() {
+  const { signOut } = useAuth();
+  const { data, error, loading, reload } = useLoader(useCallback(() => households.list(), []));
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Slowpoke Oasis</Text>
-      <Text>Household book, tasks and shopping list.</Text>
-    </View>
+    <Screen>
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <Button variant="ghost" size="sm" onPress={signOut}>
+              <Text>Sign out</Text>
+            </Button>
+          ),
+        }}
+      />
+      {loading && !data && <ActivityIndicator />}
+      <ErrorMessage message={error} onRetry={reload} />
+      {data?.length === 0 && <Text variant="muted">You are not in a household yet. Create one below.</Text>}
+      {data?.map((household) => <HouseholdCard key={household.id} household={household} />)}
+      <CreateHousehold onCreated={reload} />
+    </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
-  },
-});
+function HouseholdCard({ household }: { household: Household }) {
+  return (
+    <Link href={{ pathname: "/ledgers/[ledgerId]", params: { ledgerId: household.ledger_id, name: household.name } }} asChild>
+      <Pressable accessibilityRole="link">
+        <Card>
+          <CardHeader>
+            <CardTitle>{household.name}</CardTitle>
+            <CardDescription>{household.role === "owner" ? "Owner" : "Member"}</CardDescription>
+          </CardHeader>
+        </Card>
+      </Pressable>
+    </Link>
+  );
+}
+
+function CreateHousehold({ onCreated }: { onCreated: () => void }) {
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string>();
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    setBusy(true);
+    setError(undefined);
+    try {
+      await households.create(name.trim());
+      setName("");
+      onCreated();
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <View className="mt-4 gap-3">
+      <FormField label="New household" value={name} onChangeText={setName} placeholder="e.g. Shared flat" onSubmitEditing={submit} />
+      <ErrorMessage message={error} />
+      <Button variant="secondary" onPress={submit} disabled={busy || !name.trim()}>
+        <Text>Create household</Text>
+      </Button>
+    </View>
+  );
+}
