@@ -25,6 +25,7 @@ var (
 	ErrAlreadyMember  = errors.New("user is already a member of this household")
 	ErrMemberNotFound = errors.New("member not found")
 	ErrNotMember      = errors.New("not a member of this household")
+	ErrNotOwner       = errors.New("only the owner can do this")
 )
 
 // Household is a household the user belongs to, with the user's role in it.
@@ -92,6 +93,42 @@ func (s *Store) ListHouseholds(ctx context.Context, userID string) ([]Household,
 	return out, rows.Err()
 }
 
+// Member is a member of a household as other members see it. It deliberately
+// holds no personal data such as the email address.
+type Member struct {
+	UserID   string
+	Username string
+	Role     string
+}
+
+// ListMembers returns the members of a household in the order they joined,
+// which is also the order of owner succession. Accounts from before logins
+// existed have no username; they are listed with an empty one.
+func (s *Store) ListMembers(ctx context.Context, householdID string) ([]Member, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT m.user_id, COALESCE(u.username, ''), m.role
+		FROM household_member m
+		JOIN user u ON u.id = m.user_id
+		WHERE m.household_id = ?
+		ORDER BY m.joined_at, m.rowid`,
+		householdID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Member
+	for rows.Next() {
+		var m Member
+		if err := rows.Scan(&m.UserID, &m.Username, &m.Role); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 // HouseholdRole returns the role of a user in a household, or ErrNotMember.
 func (s *Store) HouseholdRole(ctx context.Context, userID, householdID string) (string, error) {
 	return memberRole(ctx, s.db, householdID, userID)
@@ -121,6 +158,43 @@ func (s *Store) AddHouseholdMember(ctx context.Context, householdID, userID stri
 		return ErrAlreadyMember
 	}
 	return err
+}
+
+// TransferOwnership makes another member the owner of a household. The
+// current owner becomes a regular member, so a household keeps exactly one
+// owner. It returns ErrNotOwner if ownerID is not the owner and
+// ErrMemberNotFound if newOwnerID is not a member. Transferring to oneself
+// changes nothing.
+func (s *Store) TransferOwnership(ctx context.Context, householdID, ownerID, newOwnerID string) error {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		// The owner check is part of the transaction, so two transfers sent
+		// at the same time cannot both succeed and leave two owners.
+		role, err := memberRole(ctx, tx, householdID, ownerID)
+		if err != nil {
+			return err
+		}
+		if role != RoleOwner {
+			return ErrNotOwner
+		}
+		if _, err := memberRole(ctx, tx, householdID, newOwnerID); errors.Is(err, ErrNotMember) {
+			return ErrMemberNotFound
+		} else if err != nil {
+			return err
+		}
+
+		for _, change := range []struct{ userID, role string }{
+			{ownerID, RoleMember},
+			{newOwnerID, RoleOwner},
+		} {
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE household_member SET role = ? WHERE household_id = ? AND user_id = ?`,
+				change.role, householdID, change.userID,
+			); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // LeaveHousehold removes a user from a household. It returns ErrMemberNotFound

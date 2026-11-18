@@ -13,6 +13,15 @@ type householdResponse struct {
 	Role string `json:"role"`
 }
 
+// memberResponse is one member of a household. Other members only see the
+// username and the role; the user ID is needed to address the member in
+// other requests.
+type memberResponse struct {
+	UserID   string `json:"user_id"`
+	Username string `json:"username"`
+	Role     string `json:"role"`
+}
+
 // requireHouseholdMember checks that the logged-in user belongs to the household
 // in the path. It writes 404 for unknown households and for households of other
 // people alike, so their IDs are not revealed. It returns the user ID and the
@@ -68,6 +77,24 @@ func (s *Server) listHouseholds(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// GET /households/{household}/members
+// Every member may see who else belongs to the household.
+func (s *Server) listHouseholdMembers(w http.ResponseWriter, r *http.Request) {
+	if _, _, ok := s.requireHouseholdMember(w, r); !ok {
+		return
+	}
+	members, err := s.store.ListMembers(r.Context(), r.PathValue("household"))
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	out := make([]memberResponse, 0, len(members))
+	for _, m := range members {
+		out = append(out, memberResponse{UserID: m.UserID, Username: m.Username, Role: m.Role})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 // POST /households/{household}/members
 // Only the owner can add members. The request names the user by username.
 func (s *Server) addHouseholdMember(w http.ResponseWriter, r *http.Request) {
@@ -89,6 +116,22 @@ func (s *Server) addHouseholdMember(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		err = s.store.AddHouseholdMember(r.Context(), r.PathValue("household"), memberID)
 	}
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// PUT /households/{household}/owner/{user}
+// The owner hands the role to another member and becomes a regular member.
+func (s *Server) transferHouseholdOwnership(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := s.requireHouseholdMember(w, r)
+	if !ok {
+		return
+	}
+	// The store checks the owner role itself, inside its transaction.
+	err := s.store.TransferOwnership(r.Context(), r.PathValue("household"), userID, r.PathValue("user"))
 	if err != nil {
 		fail(w, err)
 		return

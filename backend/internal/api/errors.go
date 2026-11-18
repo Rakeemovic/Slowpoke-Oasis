@@ -51,6 +51,7 @@ var statusByError = []struct {
 	// The user is known but may not do this.
 	{http.StatusForbidden, []error{
 		ledger.ErrNotAllowed,
+		ledger.ErrNotOwner,
 		auth.ErrWrongPassword,
 	}},
 	{http.StatusNotFound, []error{
