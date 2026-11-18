@@ -80,6 +80,8 @@ Every member of a household may read its ledger and book in it. Changing an exis
 | A4 | Password reset: the code is sent by email, valid for 30 minutes, usable once and stored only as a hash. A new code replaces older ones. After a reset, all sessions of the account end. If the mail cannot be sent, the code is removed. | App |
 | A5 | The reset request answers the same way whether or not the address is registered. The mail is sent in the background, so neither the response time nor a mail error reveals it. A taken username or email gives one shared message. | App |
 | A6 | Rate limits: 10 failed logins per username within 15 minutes, 3 reset requests per address within an hour. Both count unknown names too. Above the limit the API answers 429. The counters are kept in memory and start again after a restart. | App |
+| A7 | The login token reaches the API as `Authorization: Bearer` (native apps) or as the `session` cookie (web app, login with `"cookie": true`; the token is then not in the response body). The cookie is HttpOnly, Secure and SameSite=Strict and lives as long as the session. A bearer token takes precedence. Logout and account deletion clear the cookie. | App |
+| A8 | Requests authenticated by cookie must send the `X-Requested-With` header, otherwise 403 (CSRF protection). CORS is off unless `CORS_ORIGINS` lists exact origins; only those may send credentials and that header. | App |
 
 ## Notes
 

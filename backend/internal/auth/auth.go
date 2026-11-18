@@ -18,8 +18,8 @@ import (
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/store"
 )
 
-// sessionTTL is how long a login stays valid.
-const sessionTTL = 30 * 24 * time.Hour
+// SessionTTL is how long a login stays valid.
+const SessionTTL = 30 * 24 * time.Hour
 
 // Errors returned by the auth service. Callers can compare them with errors.Is.
 var (
@@ -188,7 +188,7 @@ func (s *Service) CreateSession(ctx context.Context, userID string) (string, err
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO session (token_hash, user_id, created_at, expires_at)
 		VALUES (?, ?, ?, ?)`,
-		hashToken(token), userID, timestamp(now), timestamp(now.Add(sessionTTL)),
+		hashToken(token), userID, timestamp(now), timestamp(now.Add(SessionTTL)),
 	)
 	if err != nil {
 		return "", err
