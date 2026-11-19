@@ -9,6 +9,7 @@ import { ActivityIndicator, View } from "react-native";
 
 import { AuthProvider, useAuth } from "@/auth/auth-context";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { useRefreshOnReturn } from "@/hooks/use-refresh-on-return";
 import { applySavedScheme } from "@/lib/color-scheme";
 import { NAV_THEME } from "@/lib/theme";
 
@@ -29,6 +30,7 @@ export default function RootLayout() {
 
 function RootNavigator() {
   const { status } = useAuth();
+  useRefreshOnReturn();
   const { colorScheme } = useColorScheme();
   const scheme = colorScheme === "dark" ? "dark" : "light";
 

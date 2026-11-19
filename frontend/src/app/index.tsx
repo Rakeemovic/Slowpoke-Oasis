@@ -5,10 +5,10 @@ import { ActivityIndicator, Pressable, View } from "react-native";
 import { households } from "@/api/endpoints";
 import { useAuth } from "@/auth/auth-context";
 import { ErrorMessage } from "@/components/error-message";
+import { HeaderActions } from "@/components/header-actions";
 import { FormField } from "@/components/form-field";
 import { LedgerBalance } from "@/components/ledger-balance";
 import { Screen } from "@/components/screen";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Text } from "@/components/ui/text";
@@ -28,12 +28,11 @@ export default function OverviewScreen() {
       <Stack.Screen
         options={{
           headerRight: () => (
-            <View className="flex-row">
-              <ThemeToggle />
+            <HeaderActions>
               <Button variant="ghost" size="sm" onPress={signOut}>
                 <Text>Sign out</Text>
               </Button>
-            </View>
+            </HeaderActions>
           ),
         }}
       />
