@@ -99,6 +99,14 @@ func (s *Server) counterpartsOf(ctx context.Context, viewerID string, items []le
 	return s.store.Counterparts(ctx, viewerID, ids)
 }
 
+// listedTransactionResponse is a transaction in the normal list, plus what
+// the viewer may do with it (rule X19).
+type listedTransactionResponse struct {
+	transactionResponse
+	CanEdit   bool `json:"can_edit"`
+	CanDelete bool `json:"can_delete"`
+}
+
 // deletedTransactionResponse is a soft-deleted transaction that can be
 // restored: the transaction itself plus who deleted it and when.
 type deletedTransactionResponse struct {
@@ -161,16 +169,55 @@ func (s *Server) listTransactions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	counterparts, err := s.counterpartsOf(r.Context(), userID, items)
+	out, err := s.listedResponses(r.Context(), userID, items)
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	out := make([]transactionResponse, 0, len(items))
-	for _, t := range items {
-		out = append(out, newTransactionResponse(t, counterparts))
-	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// GET /ledgers/{ledger}/transactions/{id}
+// Answers with the same fields as one entry of the list.
+func (s *Server) getTransaction(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireLedgerAccess(w, r)
+	if !ok {
+		return
+	}
+	t, err := s.store.GetTransaction(r.Context(), r.PathValue("ledger"), r.PathValue("id"))
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	out, err := s.listedResponses(r.Context(), userID, []ledger.Transaction{t})
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out[0])
+}
+
+// listedResponses converts transactions for viewerID: each with its
+// counterpart (rule X17) and what the viewer may do with it (rule X19).
+func (s *Server) listedResponses(ctx context.Context, viewerID string, items []ledger.Transaction) ([]listedTransactionResponse, error) {
+	counterparts, err := s.counterpartsOf(ctx, viewerID, items)
+	if err != nil {
+		return nil, err
+	}
+	permissions, err := s.store.Permissions(ctx, viewerID, items)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]listedTransactionResponse, 0, len(items))
+	for _, t := range items {
+		p := permissions[t.ID]
+		out = append(out, listedTransactionResponse{
+			transactionResponse: newTransactionResponse(t, counterparts),
+			CanEdit:             p.CanEdit,
+			CanDelete:           p.CanDelete,
+		})
+	}
+	return out, nil
 }
 
 // PATCH /ledgers/{ledger}/transactions/{id}

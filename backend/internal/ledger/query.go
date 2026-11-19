@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"time"
 )
@@ -100,6 +101,21 @@ func (s *Store) ListTransactions(ctx context.Context, f ListFilter) ([]Transacti
 		out = append(out, t)
 	}
 	return out, rows.Err()
+}
+
+// GetTransaction returns one non-deleted transaction of a ledger, or
+// ErrTransactionNotFound.
+func (s *Store) GetTransaction(ctx context.Context, ledgerID, id string) (Transaction, error) {
+	var t Transaction
+	err := s.db.QueryRowContext(ctx, `SELECT `+transactionColumns+`
+		FROM `+transactionTables+`
+		WHERE t.id = ? AND t.ledger_id = ? AND t.deleted_at IS NULL`,
+		id, ledgerID,
+	).Scan(t.scanTargets()...)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Transaction{}, ErrTransactionNotFound
+	}
+	return t, err
 }
 
 // selfAndLinkedLeg is a WHERE condition that matches a transaction of a
