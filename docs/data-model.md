@@ -20,9 +20,9 @@ This document records the decisions behind the data model. The schema lives in t
 - `household_member`: household_id, user_id (primary key: both fields), role (`owner` or `member`), joined_at. The creator is the owner. A household has exactly one owner: the owner can hand the role to another member and becomes a regular member. When the owner leaves, the longest-standing member (earliest `joined_at`) becomes owner. When the last member leaves, the household and its ledger are deleted.
 
 ### Ledger
-A container for categories, pots and transactions. It belongs to exactly one user (personal) or one household (shared). A household has exactly one ledger, so the household list can return it directly as `ledger_id`.
+A container for categories, pots and transactions. It belongs to exactly one user (personal) or one household (shared). A household has exactly one ledger, so the household list can return it directly as `ledger_id`. Every account gets a personal ledger at registration; it is marked as primary and returned by `GET /me` (rule L6). Users may create more personal ledgers, which are not primary.
 
-- `ledger`: id, name, user_id or household_id (exactly one is set), payday_day (default 1), currency (default `EUR`), created_at
+- `ledger`: id, name, user_id or household_id (exactly one is set), payday_day (default 1), currency (default `EUR`), is_primary (only for the personal ledger created at registration, at most one per user), created_at
 
 ### Categories
 Categories belong to a ledger. The personal ledger has its own categories, and the household ledger has its own.

@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"database/sql"
 	"net/http"
 
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/ledger"
@@ -68,7 +70,7 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	id, err := s.accounts.Register(r.Context(), req.Username, req.Email, req.Password, req.DisplayName)
+	id, err := s.accounts.Register(r.Context(), req.Username, req.Email, req.Password, req.DisplayName, s.createStarterData)
 	if err != nil {
 		fail(w, err)
 		return
@@ -170,4 +172,42 @@ func (s *Server) deleteAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	clearSessionCookieIfUsed(w, r)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// createStarterData gives a new account its personal ledger (rule L6). It runs
+// inside the registration transaction.
+func (s *Server) createStarterData(ctx context.Context, tx *sql.Tx, userID string) error {
+	return ledger.CreateStarterLedger(ctx, tx, userID, s.now())
+}
+
+// meResponse describes the signed-in user. PersonalLedgerID is null for
+// accounts that were created before every account got a personal ledger.
+type meResponse struct {
+	UserID           string  `json:"user_id"`
+	Username         string  `json:"username"`
+	DisplayName      string  `json:"display_name"`
+	PersonalLedgerID *string `json:"personal_ledger_id"`
+}
+
+// GET /me
+func (s *Server) me(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+	profile, err := s.accounts.Profile(r.Context(), userID)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	ledgerID, err := s.store.PersonalLedgerID(r.Context(), userID)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	resp := meResponse{UserID: profile.UserID, Username: profile.Username, DisplayName: profile.DisplayName}
+	if ledgerID != "" {
+		resp.PersonalLedgerID = &ledgerID
+	}
+	writeJSON(w, http.StatusOK, resp)
 }

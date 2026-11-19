@@ -38,6 +38,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /auth/password-reset", s.requestPasswordReset)
 	mux.HandleFunc("POST /auth/password-reset/confirm", s.confirmPasswordReset)
 	mux.HandleFunc("DELETE /auth/account", s.deleteAccount)
+	mux.HandleFunc("GET /me", s.me)
 
 	// Households
 	mux.HandleFunc("POST /households", s.createHousehold)

@@ -110,8 +110,10 @@ func timestamp(t time.Time) string {
 
 // Register creates an account and returns the new user ID.
 // The email address is required and used for password resets.
-// The display name defaults to the username.
-func (s *Service) Register(ctx context.Context, username, email, password, displayName string) (string, error) {
+// The display name defaults to the username. setupData may be nil; otherwise
+// it runs in the same transaction as the user insert, so the account and its
+// starting data (such as the personal ledger) exist together or not at all.
+func (s *Service) Register(ctx context.Context, username, email, password, displayName string, setupData UserDataFunc) (string, error) {
 	u, err := normalizeUsername(username)
 	if err != nil {
 		return "", err
@@ -128,8 +130,14 @@ func (s *Service) Register(ctx context.Context, username, email, password, displ
 		name = u
 	}
 
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback() // no effect after a successful Commit
+
 	id := randomHex(16)
-	_, err = s.db.ExecContext(ctx, `
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO user (id, name, username, email, password_hash, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)`,
 		id, name, u, e, hashPassword(password), timestamp(s.now()),
@@ -144,6 +152,14 @@ func (s *Service) Register(ctx context.Context, username, email, password, displ
 		}
 	}
 	if err != nil {
+		return "", err
+	}
+	if setupData != nil {
+		if err := setupData(ctx, tx, id); err != nil {
+			return "", err
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return "", err
 	}
 	return id, nil
@@ -234,6 +250,26 @@ func (s *Service) FindUserID(ctx context.Context, username string) (string, erro
 	return id, err
 }
 
+// Profile is what a user may see about their own account. It leaves out the
+// email address on purpose, so it never leaves the server once stored.
+type Profile struct {
+	UserID      string
+	Username    string
+	DisplayName string
+}
+
+// Profile returns the account details of a user.
+func (s *Service) Profile(ctx context.Context, userID string) (Profile, error) {
+	p := Profile{UserID: userID}
+	err := s.db.QueryRowContext(ctx,
+		`SELECT username, name FROM user WHERE id = ?`, userID,
+	).Scan(&p.Username, &p.DisplayName)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Profile{}, ErrUnauthenticated
+	}
+	return p, err
+}
+
 // PurgeExpired removes sessions and password reset codes that are no longer
 // valid. It returns how many rows were removed.
 func (s *Service) PurgeExpired(ctx context.Context) (int64, error) {
@@ -253,14 +289,14 @@ func (s *Service) PurgeExpired(ctx context.Context) (int64, error) {
 	return removed, nil
 }
 
-// RemoveDataFunc removes everything a user owns outside the auth tables. It
-// runs inside the transaction that deletes the account.
-type RemoveDataFunc func(ctx context.Context, tx *sql.Tx, userID string) error
+// UserDataFunc creates or removes what a user owns outside the auth tables.
+// It runs inside the transaction that creates or deletes the account.
+type UserDataFunc func(ctx context.Context, tx *sql.Tx, userID string) error
 
 // DeleteAccount removes a user after checking the password. removeData runs in
 // the same transaction as the user deletion, so either all data is removed or
 // nothing is. Sessions and reset codes are removed by the database cascade.
-func (s *Service) DeleteAccount(ctx context.Context, userID, password string, removeData RemoveDataFunc) error {
+func (s *Service) DeleteAccount(ctx context.Context, userID, password string, removeData UserDataFunc) error {
 	var hash sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT password_hash FROM user WHERE id = ?`, userID).Scan(&hash)
 	if errors.Is(err, sql.ErrNoRows) {
