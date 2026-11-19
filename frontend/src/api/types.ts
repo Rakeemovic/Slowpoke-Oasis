@@ -2,6 +2,15 @@
 
 export type Role = "owner" | "member";
 
+/** The signed-in user (GET /me). The email address is never sent. */
+export interface Me {
+  user_id: string;
+  username: string;
+  display_name: string;
+  /** Created at registration; null only for accounts older than that rule. */
+  personal_ledger_id: string | null;
+}
+
 export interface Household {
   id: string;
   name: string;

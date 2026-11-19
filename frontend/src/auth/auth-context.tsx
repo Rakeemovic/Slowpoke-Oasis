@@ -1,7 +1,7 @@
 import { createContext, use, useEffect, useState, type ReactNode } from "react";
 
 import { ApiError, setUnauthorizedHandler } from "@/api/client";
-import { auth, households } from "@/api/endpoints";
+import { auth } from "@/api/endpoints";
 import { deleteToken, getToken, saveToken, usesCookieSession } from "@/api/token";
 
 export type AuthStatus = "loading" | "signedIn" | "signedOut";
@@ -58,9 +58,8 @@ export function useAuth(): AuthValue {
 }
 
 /**
- * Finds out at app start whether an earlier login is still valid. The API has
- * no "who am I" endpoint, so a cheap request that needs a login answers that.
- * The web app cannot look at its HttpOnly cookie, so it always has to ask.
+ * Finds out at app start whether an earlier login is still valid by asking
+ * GET /me. The web app cannot look at its HttpOnly cookie, so it always has to ask.
  */
 async function checkSession(): Promise<AuthStatus> {
   const token = await getToken();
@@ -68,7 +67,7 @@ async function checkSession(): Promise<AuthStatus> {
     return "signedOut";
   }
   try {
-    await households.list();
+    await auth.me();
     return "signedIn";
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
