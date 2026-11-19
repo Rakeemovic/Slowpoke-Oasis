@@ -214,3 +214,13 @@ func TestErrorStatuses(t *testing.T) {
 		})
 	}
 }
+
+// Answers must not be cached, or the app could show an old list after a change.
+func TestAnswersForbidCaching(t *testing.T) {
+	h := newTestHandler(t)
+	_, token := register(t, h, "bob")
+	rec := doToken(t, h, http.MethodGet, "/me", token, nil)
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", got)
+	}
+}

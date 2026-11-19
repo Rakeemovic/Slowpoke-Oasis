@@ -100,8 +100,12 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 	return true
 }
 
+// writeJSON sends v as JSON. Every answer forbids caching: the data is
+// private and changes with each booking, so a browser must never show a
+// stored copy instead of asking again.
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		log.Printf("write response: %v", err)
