@@ -105,3 +105,25 @@ func (s *Server) analytics(w http.ResponseWriter, r *http.Request) {
 		"categories":    categories,
 	})
 }
+
+// balanceResponse is the balance of a ledger on one day (rule L7).
+type balanceResponse struct {
+	AsOf           string `json:"as_of"`
+	AvailableCents int64  `json:"available_cents"`
+	TotalCents     int64  `json:"total_cents"`
+}
+
+// GET /ledgers/{ledger}/balance?date=YYYY-MM-DD
+// The app sends its own "today", because the server may be in another time
+// zone. Without date, the server's today is used.
+func (s *Server) ledgerBalance(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireLedgerAccess(w, r); !ok {
+		return
+	}
+	b, err := s.store.LedgerBalance(r.Context(), r.PathValue("ledger"), r.URL.Query().Get("date"), s.now())
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, balanceResponse{AsOf: b.AsOf, AvailableCents: b.AvailableCents, TotalCents: b.TotalCents})
+}
