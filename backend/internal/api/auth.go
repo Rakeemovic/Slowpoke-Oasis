@@ -97,7 +97,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Cookie {
-		setSessionCookie(w, token)
+		s.setSessionCookie(w, token)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -114,7 +114,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	clearSessionCookieIfUsed(w, r)
+	s.clearSessionCookieIfUsed(w, r)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -170,7 +170,7 @@ func (s *Server) deleteAccount(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	clearSessionCookieIfUsed(w, r)
+	s.clearSessionCookieIfUsed(w, r)
 	w.WriteHeader(http.StatusNoContent)
 }
 

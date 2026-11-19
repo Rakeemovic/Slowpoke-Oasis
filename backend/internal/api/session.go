@@ -52,37 +52,37 @@ func bearerToken(r *http.Request) string {
 }
 
 // setSessionCookie stores the login token in an HttpOnly cookie that lives as
-// long as the session. Secure is always set: browsers accept it on
-// http://localhost, and everywhere else the API must be served over HTTPS.
-func setSessionCookie(w http.ResponseWriter, token string) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookieName,
-		Value:    token,
-		Path:     "/",
-		MaxAge:   int(auth.SessionTTL.Seconds()),
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteStrictMode,
-	})
+// long as the session.
+func (s *Server) setSessionCookie(w http.ResponseWriter, token string) {
+	http.SetCookie(w, s.sessionCookie(token, int(auth.SessionTTL.Seconds())))
 }
 
 // clearSessionCookie tells the browser to delete the session cookie.
-func clearSessionCookie(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
+func (s *Server) clearSessionCookie(w http.ResponseWriter) {
+	http.SetCookie(w, s.sessionCookie("", -1))
+}
+
+// sessionCookie builds the session cookie. Setting and clearing must use the
+// same attributes, otherwise the browser treats them as different cookies.
+// Secure is set unless the operator turned it off for a LAN without HTTPS:
+// browsers accept Secure cookies on http://localhost, but not on other
+// plain-HTTP addresses.
+func (s *Server) sessionCookie(value string, maxAge int) *http.Cookie {
+	return &http.Cookie{
 		Name:     sessionCookieName,
-		Value:    "",
+		Value:    value,
 		Path:     "/",
-		MaxAge:   -1,
+		MaxAge:   maxAge,
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   !s.insecureCookies,
 		SameSite: http.SameSiteStrictMode,
-	})
+	}
 }
 
 // clearSessionCookieIfUsed deletes the cookie after logout or account deletion,
 // but only for clients that logged in with one.
-func clearSessionCookieIfUsed(w http.ResponseWriter, r *http.Request) {
+func (s *Server) clearSessionCookieIfUsed(w http.ResponseWriter, r *http.Request) {
 	if _, fromCookie := sessionToken(r); fromCookie {
-		clearSessionCookie(w)
+		s.clearSessionCookie(w)
 	}
 }

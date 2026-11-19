@@ -20,11 +20,21 @@ type Server struct {
 	store    *ledger.Store
 	accounts *auth.Service
 	now      func() time.Time
+	// insecureCookies drops the Secure flag from the session cookie. The zero
+	// value keeps it, so a server is safe unless told otherwise.
+	insecureCookies bool
 }
 
 // NewServer returns a Server that uses the given stores.
 func NewServer(store *ledger.Store, accounts *auth.Service) *Server {
 	return &Server{store: store, accounts: accounts, now: time.Now}
+}
+
+// AllowInsecureCookies sends the session cookie without the Secure flag, so
+// browsers also keep it over plain HTTP. Only meant for a home network
+// without HTTPS: anyone on the network can then read the cookie.
+func (s *Server) AllowInsecureCookies() {
+	s.insecureCookies = true
 }
 
 // Routes returns the HTTP handler with all endpoints registered.

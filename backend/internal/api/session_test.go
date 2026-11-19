@@ -73,6 +73,26 @@ func TestCookieLoginSetsSecureCookie(t *testing.T) {
 	}
 }
 
+func TestInsecureCookiesDropOnlyTheSecureFlag(t *testing.T) {
+	srv := newTestServer(t)
+	srv.AllowInsecureCookies()
+	h := srv.Routes()
+	c := cookieLogin(t, h, "bob")
+
+	if c.Secure {
+		t.Error("login cookie must not be Secure when insecure cookies are allowed")
+	}
+	if !c.HttpOnly || c.SameSite != http.SameSiteStrictMode {
+		t.Errorf("other flags must stay: HttpOnly=%v SameSite=%v", c.HttpOnly, c.SameSite)
+	}
+
+	// Clearing must use the same flags, or the browser keeps the old cookie.
+	rec := doCookie(t, h, http.MethodPost, "/auth/logout", c, true, nil)
+	if cleared := findCookie(rec, sessionCookieName); cleared == nil || cleared.Secure {
+		t.Errorf("logout cookie must not be Secure either, got %+v", cleared)
+	}
+}
+
 func TestCookieRequestWithCSRFHeaderWorks(t *testing.T) {
 	h := newTestHandler(t)
 	c := cookieLogin(t, h, "bob")

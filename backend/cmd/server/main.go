@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -38,6 +39,11 @@ func main() {
 func run() error {
 	dbPath := envOr("DB_PATH", "slowpoke.db")
 	addr := envOr("ADDR", ":8080")
+	// Checked before anything starts, so a typo stops the server cleanly.
+	secureCookies, err := cookieSecureFromEnv()
+	if err != nil {
+		return err
+	}
 
 	db, err := store.Open(dbPath)
 	if err != nil {
@@ -68,9 +74,16 @@ func run() error {
 		log.Printf("CORS allowed for %v", corsOrigins)
 	}
 
+	server := api.NewServer(ledgers, accounts)
+	if !secureCookies {
+		server.AllowInsecureCookies()
+		log.Printf("WARNING: COOKIE_SECURE=false: the web login cookie is sent over plain HTTP. " +
+			"Anyone on the network can read it and take over the session. Only use this in a trusted home network.")
+	}
+
 	srv := &http.Server{
 		Addr:    addr,
-		Handler: api.WithCORS(corsOrigins, api.NewServer(ledgers, accounts).Routes()),
+		Handler: api.WithCORS(corsOrigins, server.Routes()),
 		// Limits for slow or stalled clients, so they cannot hold connections open forever.
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
@@ -125,6 +138,21 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// cookieSecureFromEnv reads COOKIE_SECURE. It defaults to true; only an
+// explicit false turns the Secure flag off. Anything that is not a boolean is
+// an error, so a typo cannot silently weaken the cookie.
+func cookieSecureFromEnv() (bool, error) {
+	v := os.Getenv("COOKIE_SECURE")
+	if v == "" {
+		return true, nil
+	}
+	secure, err := strconv.ParseBool(v)
+	if err != nil {
+		return false, fmt.Errorf("COOKIE_SECURE must be true or false, got %q", v)
+	}
+	return secure, nil
 }
 
 // smtpFromEnv reads the mail server settings from the environment. The server
