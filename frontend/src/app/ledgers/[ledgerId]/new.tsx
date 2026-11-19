@@ -3,7 +3,7 @@ import { useCallback, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 
 import { ledgers } from "@/api/endpoints";
-import type { Category } from "@/api/types";
+import { ChoicePicker } from "@/components/choice-picker";
 import { ErrorMessage } from "@/components/error-message";
 import { FormField } from "@/components/form-field";
 import { Screen } from "@/components/screen";
@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Text } from "@/components/ui/text";
 import { useLoader } from "@/hooks/use-loader";
-import { isIsoDate, today } from "@/lib/dates";
+import { bookingProblem } from "@/lib/booking";
+import { today } from "@/lib/dates";
 import { errorMessage } from "@/lib/errors";
 import { parseAmountToCents } from "@/lib/money";
 
@@ -75,7 +76,12 @@ export default function NewTransactionScreen() {
         <Label>Category</Label>
         {categories.loading && !categories.data && <ActivityIndicator />}
         <ErrorMessage message={categories.error} onRetry={categories.reload} />
-        <CategoryPicker choices={choices} selected={categoryId} onSelect={setCategoryId} />
+        <ChoicePicker
+          choices={choices.map((c) => ({ id: c.id, label: c.name }))}
+          selected={categoryId}
+          onSelect={setCategoryId}
+          emptyText="No categories of this type yet. Add one below."
+        />
         <AddCategory
           ledgerId={ledgerId}
           isIncome={kind === "income"}
@@ -97,16 +103,7 @@ export default function NewTransactionScreen() {
 
 /** Returns a message for the first invalid input, or undefined if all are fine. */
 function validate(cents: number | null, bookedOn: string, categoryId?: string): string | undefined {
-  if (cents === null) {
-    return "Enter an amount greater than zero, with at most two decimal places.";
-  }
-  if (!isIsoDate(bookedOn)) {
-    return "Enter the date as YYYY-MM-DD.";
-  }
-  if (!categoryId) {
-    return "Choose a category.";
-  }
-  return undefined;
+  return bookingProblem(cents, bookedOn) ?? (categoryId ? undefined : "Choose a category.");
 }
 
 function KindButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
@@ -114,29 +111,6 @@ function KindButton({ label, active, onPress }: { label: string; active: boolean
     <Button className="flex-1" variant={active ? "default" : "outline"} onPress={onPress} aria-selected={active}>
       <Text>{label}</Text>
     </Button>
-  );
-}
-
-function CategoryPicker({
-  choices,
-  selected,
-  onSelect,
-}: {
-  choices: Category[];
-  selected?: string;
-  onSelect: (id: string) => void;
-}) {
-  if (choices.length === 0) {
-    return <Text variant="muted">No categories of this type yet. Add one below.</Text>;
-  }
-  return (
-    <View className="flex-row flex-wrap gap-2">
-      {choices.map((c) => (
-        <Button key={c.id} size="sm" variant={c.id === selected ? "default" : "outline"} onPress={() => onSelect(c.id)}>
-          <Text>{c.name}</Text>
-        </Button>
-      ))}
-    </View>
   );
 }
 
