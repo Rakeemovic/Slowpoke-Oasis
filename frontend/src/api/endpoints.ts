@@ -1,5 +1,5 @@
 import { request } from "@/api/client";
-import type { Balance, Category, Household, Me, Member, NewLedgerTransfer, NewTransaction, Transaction } from "@/api/types";
+import type { Balance, Category, Household, Me, Member, NewLedgerTransfer, NewTransaction, Transaction, TransactionChange } from "@/api/types";
 
 // One small function per API endpoint, so screens never build URLs themselves.
 
@@ -45,6 +45,17 @@ export const ledgers = {
 
   createTransaction: (ledgerId: string, tx: NewTransaction) =>
     request<{ id: string }>("POST", `/ledgers/${enc(ledgerId)}/transactions`, tx),
+
+  transaction: (ledgerId: string, id: string) =>
+    request<Transaction>("GET", `/ledgers/${enc(ledgerId)}/transactions/${enc(id)}`),
+
+  /** Only incomes and expenses; a transfer between ledgers can only be deleted. */
+  updateTransaction: (ledgerId: string, id: string, change: TransactionChange) =>
+    request<void>("PATCH", `/ledgers/${enc(ledgerId)}/transactions/${enc(id)}`, change),
+
+  /** Soft delete; a transfer between ledgers loses both legs. */
+  deleteTransaction: (ledgerId: string, id: string) =>
+    request<void>("DELETE", `/ledgers/${enc(ledgerId)}/transactions/${enc(id)}`),
 
   /** asOf is the app's local today, since the server may be in another time zone. */
   balance: (ledgerId: string, asOf: string) =>

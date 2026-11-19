@@ -18,6 +18,12 @@ export function parseAmountToCents(input: string): number | null {
   return total > 0 && Number.isSafeInteger(total) ? total : null;
 }
 
+/** The reverse of parseAmountToCents, for prefilling a form: 1250 → "12.50". */
+export function centsToAmountInput(cents: number): string {
+  const abs = Math.abs(cents);
+  return `${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}`;
+}
+
 // The MVP only supports EUR (rule L3).
 const currencyFormat = new Intl.NumberFormat(undefined, { style: "currency", currency: "EUR" });
 

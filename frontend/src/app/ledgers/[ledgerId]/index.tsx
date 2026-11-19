@@ -1,9 +1,9 @@
 import { Link, Stack, useLocalSearchParams } from "expo-router";
 import { useCallback } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { ActivityIndicator, Pressable, View } from "react-native";
 
 import { ledgers } from "@/api/endpoints";
-import type { Category, Counterpart, Transaction } from "@/api/types";
+import type { Category, Transaction } from "@/api/types";
 import { ErrorMessage } from "@/components/error-message";
 import { Screen } from "@/components/screen";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Text } from "@/components/ui/text";
 import { useLoader } from "@/hooks/use-loader";
 import { formatCents, formatSignedCents } from "@/lib/money";
+import { transactionTitle } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
 
 export default function TransactionsScreen() {
@@ -72,6 +73,7 @@ export default function TransactionsScreen() {
                 categories={categories ?? []}
                 first={index === 0}
                 showAuthor={showAuthor}
+                kind={kind}
               />
             ))}
           </CardContent>
@@ -86,21 +88,22 @@ function TransactionRow({
   categories,
   first,
   showAuthor,
+  kind,
 }: {
   tx: Transaction;
   categories: Category[];
   first: boolean;
   showAuthor: boolean;
+  kind?: string;
 }) {
-  const category = categories.find((c) => c.id === tx.category_id);
   // The API sends signed amounts: money coming in is positive, money going out
   // negative. A transfer between pots of the same ledger changes neither.
   const isTransfer = tx.type === "transfer";
   const isIncoming = !isTransfer && tx.amount_cents > 0;
-  const title = category?.name ?? describeType(tx.type, tx.counterpart);
+  const title = transactionTitle(tx, categories);
   const details = [tx.booked_on, showAuthor && (tx.username ?? "Former member"), tx.note].filter(Boolean).join(" · ");
 
-  return (
+  const row = (
     <View className={cn("flex-row items-center gap-3 px-4 py-3", !first && "border-t border-border")}>
       <View className="flex-1 gap-0.5">
         <Text className="font-medium">{title}</Text>
@@ -113,32 +116,17 @@ function TransactionRow({
       </Text>
     </View>
   );
-}
-
-function describeType(type: Transaction["type"], counterpart?: Counterpart): string {
-  switch (type) {
-    case "transfer":
-      return "Transfer between pots";
-    case "transfer_out":
-      return `Transfer to ${describeLedger(counterpart)}`;
-    case "transfer_in":
-      return `Transfer from ${describeLedger(counterpart)}`;
-    default:
-      return "Uncategorised";
+  // Rows the user cannot change open nothing, so they are not pressable.
+  if (!tx.can_edit && !tx.can_delete) {
+    return row;
   }
-}
-
-/** The other ledger by name, or only its kind if the user cannot open it. */
-function describeLedger(counterpart?: Counterpart): string {
-  if (counterpart?.name) {
-    return counterpart.name;
-  }
-  if (counterpart?.kind === "personal") {
-    return "a personal ledger";
-  }
-  if (counterpart?.kind === "household") {
-    return "a household";
-  }
-  // The other ledger was deleted (rule X16).
-  return "a deleted ledger";
+  return (
+    <Link
+      href={{ pathname: "/ledgers/[ledgerId]/transactions/[transactionId]", params: { ledgerId: tx.ledger_id, transactionId: tx.id, kind } }}
+      asChild>
+      <Pressable className="active:bg-accent web:hover:bg-accent/50" role="link">
+        {row}
+      </Pressable>
+    </Link>
+  );
 }

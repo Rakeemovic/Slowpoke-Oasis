@@ -51,6 +51,9 @@ export interface Transaction {
   note?: string;
   /** Only for transfers between ledgers (rule X17). */
   counterpart?: Counterpart;
+  /** What the signed-in user may do with it (rule X19). The server checks again. */
+  can_edit: boolean;
+  can_delete: boolean;
 }
 
 /**
@@ -71,6 +74,19 @@ export interface NewTransaction {
   amount_cents: number;
   booked_on: string;
   note?: string;
+}
+
+/**
+ * The fields of an income or expense that can be changed. Every field is sent,
+ * so an empty note removes the old one.
+ */
+export interface TransactionChange {
+  type: "expense" | "income";
+  category_id: string;
+  /** Always positive; the type decides the direction. */
+  amount_cents: number;
+  booked_on: string;
+  note: string;
 }
 
 /** Balance of a ledger on one day (rule L7). Planned transactions after as_of do not count. */
