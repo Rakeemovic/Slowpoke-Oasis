@@ -72,6 +72,7 @@ func (s *Server) Routes() http.Handler {
 	// Reports
 	mux.HandleFunc("GET /ledgers/{ledger}/pots/{pot}/summary", s.potSummary)
 	mux.HandleFunc("GET /ledgers/{ledger}/analytics", s.analytics)
+	mux.HandleFunc("GET /ledgers/{ledger}/balance", s.ledgerBalance)
 
 	return mux
 }

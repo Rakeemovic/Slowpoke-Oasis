@@ -64,6 +64,7 @@ A pot groups planned amounts and collects transactions.
 
 - **Period of a monthly pot:** starts on `payday_day` of a month and ends the day before `payday_day` of the next month. If the day does not exist in a month (for example the 30th in February), the last day of the month is used.
 - **Balance of a pot:** incoming transfers and income, minus expenses and outgoing transfers. Transfers between ledgers count like transfers between pots. Deleted transactions are excluded.
+- **Balance of a ledger** (`GET /ledgers/{ledger}/balance`, rule L7): *available* is the balance of the default pot, *total* the sum of all pots. Only transactions booked on or before the given day count, so planned transactions do not lower it early.
 - **Progress toward a savings goal:** the pot balance relative to `target_cents`. Balances are calculated on demand and not stored.
 - **Required monthly rate:** the remaining amount up to `target_cents`, divided by the number of months until `target_date`. Only available when a target date is set.
 
