@@ -20,6 +20,13 @@ var testTokens = map[string]string{}
 // user (u1, logged in), one ledger, a default pot, a second pot and one category.
 func newTestHandler(t *testing.T) http.Handler {
 	t.Helper()
+	return newTestServer(t).Routes()
+}
+
+// newTestServer is newTestHandler for tests that change the server's settings
+// before building the routes.
+func newTestServer(t *testing.T) *Server {
+	t.Helper()
 	db, err := store.Open(":memory:")
 	if err != nil {
 		t.Fatalf("open store: %v", err)
@@ -46,7 +53,7 @@ func newTestHandler(t *testing.T) http.Handler {
 	}
 	testTokens["u1"] = token
 
-	return NewServer(ledger.New(db), accounts).Routes()
+	return NewServer(ledger.New(db), accounts)
 }
 
 // doToken sends a request through the handler. An empty token sends no Authorization header.
