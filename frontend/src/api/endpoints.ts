@@ -1,5 +1,5 @@
 import { request } from "@/api/client";
-import type { Category, Household, NewTransaction, Transaction } from "@/api/types";
+import type { Category, Household, Me, NewTransaction, Transaction } from "@/api/types";
 
 // One small function per API endpoint, so screens never build URLs themselves.
 
@@ -12,6 +12,8 @@ export const auth = {
     request<{ token: string } | undefined>("POST", "/auth/login", { username, password, cookie }),
 
   logout: () => request<void>("POST", "/auth/logout"),
+
+  me: () => request<Me>("GET", "/me"),
 };
 
 export const households = {
