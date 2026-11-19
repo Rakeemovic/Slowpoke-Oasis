@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from "expo-router";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 
@@ -7,6 +7,7 @@ import type { Member } from "@/api/types";
 import { ConfirmPanel } from "@/components/confirm-panel";
 import { ErrorMessage } from "@/components/error-message";
 import { FormField } from "@/components/form-field";
+import { HeaderActions } from "@/components/header-actions";
 import { Screen } from "@/components/screen";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -68,6 +69,7 @@ export default function MembersScreen() {
 
   return (
     <Screen>
+      <Stack.Screen options={{ headerRight: () => <HeaderActions /> }} />
       {loading && !data && <ActivityIndicator />}
       <ErrorMessage message={error} onRetry={reload} />
       {members && me && (

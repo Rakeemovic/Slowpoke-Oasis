@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, View } from "react-native";
 import { ledgers } from "@/api/endpoints";
 import type { Category, Transaction } from "@/api/types";
 import { ErrorMessage } from "@/components/error-message";
+import { HeaderActions } from "@/components/header-actions";
 import { Screen } from "@/components/screen";
 import { Button } from "@/components/ui/button";
 import { LedgerBalance } from "@/components/ledger-balance";
@@ -35,7 +36,7 @@ export default function TransactionsScreen() {
 
   return (
     <Screen>
-      <Stack.Screen options={{ title: name ?? "Transactions" }} />
+      <Stack.Screen options={{ title: name ?? "Transactions", headerRight: () => <HeaderActions /> }} />
       <Card>
         <CardContent>
           <LedgerBalance ledgerId={ledgerId} size="large" />
