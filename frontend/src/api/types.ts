@@ -40,6 +40,18 @@ export interface Transaction {
   /** Date as YYYY-MM-DD. */
   booked_on: string;
   note?: string;
+  /** Only for transfers between ledgers (rule X17). */
+  counterpart?: Counterpart;
+}
+
+/**
+ * The other ledger of a transfer. ledger_id and name are missing when the user
+ * cannot open that ledger, e.g. another member's personal ledger.
+ */
+export interface Counterpart {
+  kind: "personal" | "household";
+  ledger_id?: string;
+  name?: string;
 }
 
 /** A new income or expense. Without pot_id it goes into the default pot. */
