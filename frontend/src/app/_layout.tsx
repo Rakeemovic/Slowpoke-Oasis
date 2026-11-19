@@ -56,6 +56,7 @@ function RootNavigator() {
           <Stack.Screen name="ledgers/[ledgerId]/index" options={{ title: "Transactions" }} />
           <Stack.Screen name="ledgers/[ledgerId]/new" options={{ title: "New transaction" }} />
           <Stack.Screen name="ledgers/[ledgerId]/transfer" options={{ title: "Transfer" }} />
+          <Stack.Screen name="households/[householdId]/members" options={{ title: "Members" }} />
         </Stack.Protected>
       </Stack>
       {/* Overlays such as dialogs and dropdowns render here, above all screens. */}

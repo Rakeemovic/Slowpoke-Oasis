@@ -58,8 +58,15 @@ export default function OverviewScreen() {
 
 /** A card that opens the transactions of a ledger and shows its balance. */
 function LedgerCard({ ledger }: { ledger: LedgerSummary }) {
+  const params = {
+    ledgerId: ledger.id,
+    name: ledger.name,
+    kind: ledger.kind,
+    // Route params are strings, so a missing household ID is left out entirely.
+    ...(ledger.householdId && { householdId: ledger.householdId }),
+  };
   return (
-    <Link href={{ pathname: "/ledgers/[ledgerId]", params: { ledgerId: ledger.id, name: ledger.name, kind: ledger.kind } }} asChild>
+    <Link href={{ pathname: "/ledgers/[ledgerId]", params }} asChild>
       <Pressable accessibilityRole="link">
         <Card>
           <CardHeader className="flex-row items-center justify-between gap-4">

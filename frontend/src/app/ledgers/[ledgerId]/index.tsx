@@ -15,7 +15,12 @@ import { formatCents, formatSignedCents } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 export default function TransactionsScreen() {
-  const { ledgerId, name, kind } = useLocalSearchParams<{ ledgerId: string; name?: string; kind?: string }>();
+  const { ledgerId, name, kind, householdId } = useLocalSearchParams<{
+    ledgerId: string;
+    name?: string;
+    kind?: string;
+    householdId?: string;
+  }>();
   // In a personal ledger every booking is the user's own, so naming them is noise.
   const showAuthor = kind !== "personal";
 
@@ -47,6 +52,13 @@ export default function TransactionsScreen() {
           </Button>
         </Link>
       </View>
+      {householdId && (
+        <Link href={{ pathname: "/households/[householdId]/members", params: { householdId } }} asChild>
+          <Button variant="outline">
+            <Text>Members</Text>
+          </Button>
+        </Link>
+      )}
       {loading && !data && <ActivityIndicator />}
       <ErrorMessage message={error} onRetry={reload} />
       {transactions?.length === 0 && <Text variant="muted">No transactions yet. Tap “Add transaction” to book the first one.</Text>}

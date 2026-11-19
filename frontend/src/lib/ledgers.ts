@@ -5,6 +5,8 @@ export interface LedgerSummary {
   id: string;
   name: string;
   kind: "personal" | "household";
+  /** Set for household ledgers, to open the member list. */
+  householdId?: string;
   /** A short line under the name, such as the user's role in the household. */
   description: string;
 }
@@ -21,6 +23,7 @@ export async function loadMyLedgers(): Promise<LedgerSummary[]> {
       id: h.ledger_id,
       name: h.name,
       kind: "household" as const,
+      householdId: h.id,
       description: h.role === "owner" ? "Owner" : "Member",
     })),
   ];

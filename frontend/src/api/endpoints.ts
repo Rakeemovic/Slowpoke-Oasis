@@ -1,5 +1,5 @@
 import { request } from "@/api/client";
-import type { Balance, Category, Household, Me, NewLedgerTransfer, NewTransaction, Transaction } from "@/api/types";
+import type { Balance, Category, Household, Me, Member, NewLedgerTransfer, NewTransaction, Transaction } from "@/api/types";
 
 // One small function per API endpoint, so screens never build URLs themselves.
 
@@ -19,6 +19,20 @@ export const auth = {
 export const households = {
   list: () => request<Household[]>("GET", "/households"),
   create: (name: string) => request<{ id: string; ledger_id: string }>("POST", "/households", { name }),
+
+  members: (householdId: string) => request<Member[]>("GET", `/households/${enc(householdId)}/members`),
+
+  /** Owner only. */
+  addMember: (householdId: string, username: string) =>
+    request<void>("POST", `/households/${enc(householdId)}/members`, { username }),
+
+  /** The owner removes someone else, or any member removes themselves to leave. */
+  removeMember: (householdId: string, userId: string) =>
+    request<void>("DELETE", `/households/${enc(householdId)}/members/${enc(userId)}`),
+
+  /** Owner only. The current owner becomes a regular member. */
+  transferOwnership: (householdId: string, userId: string) =>
+    request<void>("PUT", `/households/${enc(householdId)}/owner/${enc(userId)}`),
 };
 
 export const ledgers = {

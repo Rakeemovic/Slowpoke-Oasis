@@ -18,6 +18,13 @@ export interface Household {
   ledger_id: string;
 }
 
+/** A household member. Other members only ever see the username, never the email. */
+export interface Member {
+  user_id: string;
+  username: string;
+  role: Role;
+}
+
 export interface Category {
   id: string;
   name: string;
