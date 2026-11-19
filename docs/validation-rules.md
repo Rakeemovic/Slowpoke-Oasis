@@ -11,6 +11,7 @@ Each rule is enforced either by the database (CHECK, UNIQUE, NOT NULL, foreign k
 | L3 | `currency` must be an ISO 4217 code from the allowed list. Only `EUR` is active in the MVP. | App (DB only checks length) |
 | L4 | Each ledger has exactly one default pot, created together with the ledger. | DB (partial unique index) + App |
 | L5 | A household has exactly one ledger, created together with the household. | DB (unique index) + App |
+| L6 | Every account gets a personal ledger named "Personal" at registration, in the same transaction. It is the user's primary ledger (`is_primary`); `GET /me` returns it as `personal_ledger_id`. Further personal ledgers are allowed but never primary. | DB (partial unique index) + App |
 
 ## Categories
 
