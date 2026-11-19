@@ -15,7 +15,9 @@ import { formatCents, formatSignedCents } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 export default function TransactionsScreen() {
-  const { ledgerId, name } = useLocalSearchParams<{ ledgerId: string; name?: string }>();
+  const { ledgerId, name, kind } = useLocalSearchParams<{ ledgerId: string; name?: string; kind?: string }>();
+  // In a personal ledger every booking is the user's own, so naming them is noise.
+  const showAuthor = kind !== "personal";
 
   // Both lists are needed to show category names, so they load together.
   const load = useCallback(
@@ -52,7 +54,13 @@ export default function TransactionsScreen() {
         <Card className="py-2">
           <CardContent className="gap-0 px-0">
             {transactions.map((tx, index) => (
-              <TransactionRow key={tx.id} tx={tx} categories={categories ?? []} first={index === 0} />
+              <TransactionRow
+                key={tx.id}
+                tx={tx}
+                categories={categories ?? []}
+                first={index === 0}
+                showAuthor={showAuthor}
+              />
             ))}
           </CardContent>
         </Card>
@@ -61,20 +69,31 @@ export default function TransactionsScreen() {
   );
 }
 
-function TransactionRow({ tx, categories, first }: { tx: Transaction; categories: Category[]; first: boolean }) {
+function TransactionRow({
+  tx,
+  categories,
+  first,
+  showAuthor,
+}: {
+  tx: Transaction;
+  categories: Category[];
+  first: boolean;
+  showAuthor: boolean;
+}) {
   const category = categories.find((c) => c.id === tx.category_id);
   // The API sends signed amounts: money coming in is positive, money going out
   // negative. A transfer between pots of the same ledger changes neither.
   const isTransfer = tx.type === "transfer";
   const isIncoming = !isTransfer && tx.amount_cents > 0;
   const title = category?.name ?? describeType(tx.type, tx.counterpart);
+  const details = [tx.booked_on, showAuthor && (tx.username ?? "Former member"), tx.note].filter(Boolean).join(" · ");
 
   return (
     <View className={cn("flex-row items-center gap-3 px-4 py-3", !first && "border-t border-border")}>
       <View className="flex-1 gap-0.5">
         <Text className="font-medium">{title}</Text>
         <Text variant="muted" numberOfLines={1}>
-          {tx.note ? `${tx.booked_on} · ${tx.note}` : tx.booked_on}
+          {details}
         </Text>
       </View>
       <Text className={cn("font-semibold", isIncoming && "text-green-600 dark:text-green-500")}>

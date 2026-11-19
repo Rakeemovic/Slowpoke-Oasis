@@ -32,16 +32,18 @@ type transactionPatchRequest struct {
 
 // transactionResponse is the JSON representation of a stored transaction.
 type transactionResponse struct {
-	ID               string `json:"id"`
-	LedgerID         string `json:"ledger_id"`
-	UserID           string `json:"user_id"`
-	Type             string `json:"type"`
-	CategoryID       string `json:"category_id,omitempty"`
-	PotID            string `json:"pot_id"`
-	CounterpartPotID string `json:"counterpart_pot_id,omitempty"`
-	AmountCents      int64  `json:"amount_cents"`
-	BookedOn         string `json:"booked_on"`
-	Note             string `json:"note,omitempty"`
+	ID       string `json:"id"`
+	LedgerID string `json:"ledger_id"`
+	UserID   string `json:"user_id"`
+	// Username is null for the former-member placeholder (rule X18).
+	Username         *string `json:"username"`
+	Type             string  `json:"type"`
+	CategoryID       string  `json:"category_id,omitempty"`
+	PotID            string  `json:"pot_id"`
+	CounterpartPotID string  `json:"counterpart_pot_id,omitempty"`
+	AmountCents      int64   `json:"amount_cents"`
+	BookedOn         string  `json:"booked_on"`
+	Note             string  `json:"note,omitempty"`
 	// Counterpart is set for transfers between ledgers (rule X17).
 	Counterpart *counterpartResponse `json:"counterpart,omitempty"`
 }
@@ -68,11 +70,21 @@ func newTransactionResponse(t ledger.Transaction, counterparts map[string]ledger
 		AmountCents:      t.AmountCents,
 		BookedOn:         t.BookedOn,
 		Note:             t.Note,
+		Username:         usernameOrNull(t.Username),
 	}
 	if c, ok := counterparts[t.ID]; ok {
 		resp.Counterpart = &counterpartResponse{Kind: c.Kind, LedgerID: c.LedgerID, Name: c.Name}
 	}
 	return resp
+}
+
+// usernameOrNull turns the empty username of the former-member placeholder
+// into JSON null (rule X18).
+func usernameOrNull(username string) *string {
+	if username == "" {
+		return nil
+	}
+	return &username
 }
 
 // counterpartsOf looks up the other ledger of every transfer between ledgers
@@ -91,10 +103,9 @@ func (s *Server) counterpartsOf(ctx context.Context, viewerID string, items []le
 // restored: the transaction itself plus who deleted it and when.
 type deletedTransactionResponse struct {
 	transactionResponse
-	DeletedAt     string `json:"deleted_at"`
-	DeletedBy     string `json:"deleted_by"`
-	BookedByName  string `json:"booked_by_name"`
-	DeletedByName string `json:"deleted_by_name"`
+	DeletedAt         string  `json:"deleted_at"`
+	DeletedBy         string  `json:"deleted_by"`
+	DeletedByUsername *string `json:"deleted_by_username"`
 }
 
 // POST /ledgers/{ledger}/transactions
@@ -230,8 +241,7 @@ func (s *Server) listDeletedTransactions(w http.ResponseWriter, r *http.Request)
 			transactionResponse: newTransactionResponse(d.Transaction, counterparts),
 			DeletedAt:           d.DeletedAt,
 			DeletedBy:           d.DeletedBy,
-			BookedByName:        d.BookedByName,
-			DeletedByName:       d.DeletedByName,
+			DeletedByUsername:   usernameOrNull(d.DeletedByUsername),
 		})
 	}
 	writeJSON(w, http.StatusOK, out)

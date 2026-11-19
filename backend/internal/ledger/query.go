@@ -26,18 +26,24 @@ type Transaction struct {
 	AmountCents      int64
 	BookedOn         string
 	Note             string
+	// Username of the author (rule X18). Empty for the former-member
+	// placeholder, which has no username.
+	Username string
 }
 
 // transactionColumns lists the columns of a Transaction for a query that
-// names the transactions table t. scanTargets returns the matching targets.
+// reads FROM transactionTables. scanTargets returns the matching targets.
 const transactionColumns = `
 	t.id, t.ledger_id, t.user_id, t.type,
 	COALESCE(t.category_id, ''), t.pot_id, COALESCE(t.counterpart_pot_id, ''),
-	t.amount_cents, t.booked_on, COALESCE(t.note, '')`
+	t.amount_cents, t.booked_on, COALESCE(t.note, ''), COALESCE(author.username, '')`
+
+// transactionTables names the transactions table t and joins its author.
+const transactionTables = `transactions t LEFT JOIN user author ON author.id = t.user_id`
 
 func (t *Transaction) scanTargets() []any {
 	return []any{&t.ID, &t.LedgerID, &t.UserID, &t.Type, &t.CategoryID,
-		&t.PotID, &t.CounterpartPotID, &t.AmountCents, &t.BookedOn, &t.Note}
+		&t.PotID, &t.CounterpartPotID, &t.AmountCents, &t.BookedOn, &t.Note, &t.Username}
 }
 
 // ListFilter selects transactions of one ledger. Empty optional fields mean
@@ -63,7 +69,7 @@ func (s *Store) ListTransactions(ctx context.Context, f ListFilter) ([]Transacti
 	}
 
 	query := `SELECT ` + transactionColumns + `
-		FROM transactions t
+		FROM ` + transactionTables + `
 		WHERE t.ledger_id = ? AND t.deleted_at IS NULL`
 	args := []any{f.LedgerID}
 
