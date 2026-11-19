@@ -3,7 +3,7 @@ import { useCallback } from "react";
 import { ActivityIndicator, View } from "react-native";
 
 import { ledgers } from "@/api/endpoints";
-import type { Category, Transaction } from "@/api/types";
+import type { Category, Counterpart, Transaction } from "@/api/types";
 import { ErrorMessage } from "@/components/error-message";
 import { Screen } from "@/components/screen";
 import { Button } from "@/components/ui/button";
@@ -67,7 +67,7 @@ function TransactionRow({ tx, categories, first }: { tx: Transaction; categories
   // negative. A transfer between pots of the same ledger changes neither.
   const isTransfer = tx.type === "transfer";
   const isIncoming = !isTransfer && tx.amount_cents > 0;
-  const title = category?.name ?? describeType(tx.type);
+  const title = category?.name ?? describeType(tx.type, tx.counterpart);
 
   return (
     <View className={cn("flex-row items-center gap-3 px-4 py-3", !first && "border-t border-border")}>
@@ -84,15 +84,30 @@ function TransactionRow({ tx, categories, first }: { tx: Transaction; categories
   );
 }
 
-function describeType(type: Transaction["type"]): string {
+function describeType(type: Transaction["type"], counterpart?: Counterpart): string {
   switch (type) {
     case "transfer":
       return "Transfer between pots";
     case "transfer_out":
-      return "Transfer to another ledger";
+      return `Transfer to ${describeLedger(counterpart)}`;
     case "transfer_in":
-      return "Transfer from another ledger";
+      return `Transfer from ${describeLedger(counterpart)}`;
     default:
       return "Uncategorised";
   }
+}
+
+/** The other ledger by name, or only its kind if the user cannot open it. */
+function describeLedger(counterpart?: Counterpart): string {
+  if (counterpart?.name) {
+    return counterpart.name;
+  }
+  if (counterpart?.kind === "personal") {
+    return "a personal ledger";
+  }
+  if (counterpart?.kind === "household") {
+    return "a household";
+  }
+  // The other ledger was deleted (rule X16).
+  return "a deleted ledger";
 }
