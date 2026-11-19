@@ -43,15 +43,20 @@ export async function request<T>(method: Method, path: string, body?: unknown): 
 }
 
 async function send(method: Method, path: string, body: unknown): Promise<Response> {
+  // Built outside the try, so a failing token store is not reported as offline.
+  const requestHeaders = await headers(body !== undefined);
   try {
     return await fetch(baseUrl + path, {
       method,
-      headers: await headers(body !== undefined),
+      headers: requestHeaders,
       body: body === undefined ? undefined : JSON.stringify(body),
       // The browser only attaches the session cookie with "include".
       credentials: usesCookieSession ? "include" : "omit",
     });
-  } catch {
+  } catch (error) {
+    if (__DEV__) {
+      console.warn(`${method} ${baseUrl + path} failed:`, error);
+    }
     // fetch only throws when no answer arrived at all (offline, wrong address, CORS).
     throw new ApiError(0, "Cannot reach the server. Please check your connection.");
   }
