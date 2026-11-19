@@ -7,6 +7,7 @@ import type { Category, Transaction } from "@/api/types";
 import { ErrorMessage } from "@/components/error-message";
 import { Screen } from "@/components/screen";
 import { Button } from "@/components/ui/button";
+import { LedgerBalance } from "@/components/ledger-balance";
 import { Card, CardContent } from "@/components/ui/card";
 import { Text } from "@/components/ui/text";
 import { useLoader } from "@/hooks/use-loader";
@@ -26,21 +27,27 @@ export default function TransactionsScreen() {
 
   return (
     <Screen>
-      <Stack.Screen
-        options={{
-          title: name ?? "Transactions",
-          headerRight: () => (
-            <Link href={{ pathname: "/ledgers/[ledgerId]/new", params: { ledgerId } }} asChild>
-              <Button size="sm">
-                <Text>Add</Text>
-              </Button>
-            </Link>
-          ),
-        }}
-      />
+      <Stack.Screen options={{ title: name ?? "Transactions" }} />
+      <Card>
+        <CardContent>
+          <LedgerBalance ledgerId={ledgerId} size="large" />
+        </CardContent>
+      </Card>
+      <View className="flex-row gap-2">
+        <Link href={{ pathname: "/ledgers/[ledgerId]/new", params: { ledgerId } }} asChild>
+          <Button className="flex-1">
+            <Text>Add transaction</Text>
+          </Button>
+        </Link>
+        <Link href={{ pathname: "/ledgers/[ledgerId]/transfer", params: { ledgerId } }} asChild>
+          <Button className="flex-1" variant="outline">
+            <Text>Transfer</Text>
+          </Button>
+        </Link>
+      </View>
       {loading && !data && <ActivityIndicator />}
       <ErrorMessage message={error} onRetry={reload} />
-      {transactions?.length === 0 && <Text variant="muted">No transactions yet. Tap “Add” to book the first one.</Text>}
+      {transactions?.length === 0 && <Text variant="muted">No transactions yet. Tap “Add transaction” to book the first one.</Text>}
       {transactions && transactions.length > 0 && (
         <Card className="py-2">
           <CardContent className="gap-0 px-0">

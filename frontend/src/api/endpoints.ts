@@ -1,5 +1,5 @@
 import { request } from "@/api/client";
-import type { Category, Household, Me, NewTransaction, Transaction } from "@/api/types";
+import type { Balance, Category, Household, Me, NewLedgerTransfer, NewTransaction, Transaction } from "@/api/types";
 
 // One small function per API endpoint, so screens never build URLs themselves.
 
@@ -31,6 +31,15 @@ export const ledgers = {
 
   createTransaction: (ledgerId: string, tx: NewTransaction) =>
     request<{ id: string }>("POST", `/ledgers/${enc(ledgerId)}/transactions`, tx),
+
+  /** asOf is the app's local today, since the server may be in another time zone. */
+  balance: (ledgerId: string, asOf: string) =>
+    request<Balance>("GET", `/ledgers/${enc(ledgerId)}/balance?date=${enc(asOf)}`),
+};
+
+export const transfers = {
+  create: (transfer: NewLedgerTransfer) =>
+    request<{ out_id: string; in_id: string }>("POST", "/transfers", transfer),
 };
 
 // IDs come from the API, but encoding keeps a malformed one from changing the path.

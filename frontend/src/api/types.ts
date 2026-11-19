@@ -51,3 +51,22 @@ export interface NewTransaction {
   booked_on: string;
   note?: string;
 }
+
+/** Balance of a ledger on one day (rule L7). Planned transactions after as_of do not count. */
+export interface Balance {
+  as_of: string;
+  /** The default pot: money that is not set aside in another pot. */
+  available_cents: number;
+  /** All pots together. */
+  total_cents: number;
+}
+
+/** A transfer between two ledgers. Without pot IDs, both sides use the default pot. */
+export interface NewLedgerTransfer {
+  from_ledger_id: string;
+  to_ledger_id: string;
+  /** Always positive. */
+  amount_cents: number;
+  booked_on: string;
+  note?: string;
+}
