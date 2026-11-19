@@ -31,6 +31,8 @@ export interface Transaction {
   id: string;
   ledger_id: string;
   user_id: string;
+  /** Who booked it; null for a member who has left or deleted their account (rule X18). */
+  username: string | null;
   type: TransactionType;
   category_id?: string;
   pot_id: string;

@@ -15,14 +15,13 @@ func retentionCutoff(now time.Time) string {
 }
 
 // DeletedTransaction is a soft-deleted transaction that can still be restored.
-// The names are shown to the household, so everyone can see who booked and who
-// deleted the transaction (rule X13). Departed members appear as the placeholder.
+// The household sees who booked and who deleted it (rules X13, X18).
 type DeletedTransaction struct {
 	Transaction
-	DeletedAt     string
-	DeletedBy     string
-	BookedByName  string
-	DeletedByName string
+	DeletedAt string
+	DeletedBy string
+	// DeletedByUsername is empty for the former-member placeholder.
+	DeletedByUsername string
 }
 
 // ListDeletedTransactions returns the transactions of a ledger that were
@@ -34,9 +33,8 @@ func (s *Store) ListDeletedTransactions(ctx context.Context, ledgerID string, no
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT `+transactionColumns+`,
 		       t.deleted_at, COALESCE(t.deleted_by, ''),
-		       COALESCE(booker.name, ''), COALESCE(deleter.name, '')
-		FROM transactions t
-		LEFT JOIN user booker ON booker.id = t.user_id
+		       COALESCE(deleter.username, '')
+		FROM `+transactionTables+`
 		LEFT JOIN user deleter ON deleter.id = t.deleted_by
 		WHERE t.ledger_id = ? AND t.deleted_at IS NOT NULL AND t.deleted_at >= ?
 		ORDER BY t.deleted_at DESC`,
@@ -50,7 +48,7 @@ func (s *Store) ListDeletedTransactions(ctx context.Context, ledgerID string, no
 	var out []DeletedTransaction
 	for rows.Next() {
 		var d DeletedTransaction
-		targets := append(d.scanTargets(), &d.DeletedAt, &d.DeletedBy, &d.BookedByName, &d.DeletedByName)
+		targets := append(d.scanTargets(), &d.DeletedAt, &d.DeletedBy, &d.DeletedByUsername)
 		if err := rows.Scan(targets...); err != nil {
 			return nil, err
 		}
