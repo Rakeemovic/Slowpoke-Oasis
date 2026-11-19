@@ -61,6 +61,7 @@ Each rule is enforced either by the database (CHECK, UNIQUE, NOT NULL, foreign k
 | X16 | When a ledger is deleted, the other leg of a transfer into or out of it stays in its own ledger and loses its link. From then on it is deleted and restored on its own. | DB (`ON DELETE SET NULL`) |
 | X17 | Transaction lists name the other side of a transfer between ledgers as `counterpart`: `kind` (`personal` or `household`) always, `ledger_id` and `name` only if the viewer may access that ledger. A member therefore never learns the ID or name of another member's personal ledger. Legs that lost their link (X16) have no counterpart. | App |
 | X18 | Transaction lists name the author of each booking by `username`, the same name the member list shows (never the display name or email). It is `null` for the `former-member` placeholder, so departed members stay anonymous. The list of deleted transactions names the deleting user the same way as `deleted_by_username`. | App |
+| X19 | Transaction lists tell the viewer, per booking, whether they may change it: `can_edit` and `can_delete` follow the rules for editing and deleting below. A transfer between ledgers (X14) is never editable, and deleting one of its legs needs the right on both legs. The flags only let the app hide actions; the server still checks every change. | App |
 
 ## Permissions
 

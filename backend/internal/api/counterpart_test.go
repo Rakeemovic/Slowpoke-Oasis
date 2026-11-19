@@ -7,13 +7,13 @@ import (
 )
 
 // listTransactionsAs returns the transactions of a ledger as seen by token.
-func listTransactionsAs(t *testing.T, h http.Handler, token, ledgerID string) []transactionResponse {
+func listTransactionsAs(t *testing.T, h http.Handler, token, ledgerID string) []listedTransactionResponse {
 	t.Helper()
 	rec := doToken(t, h, http.MethodGet, "/ledgers/"+ledgerID+"/transactions", token, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("list: status %d, body %s", rec.Code, rec.Body)
 	}
-	var out []transactionResponse
+	var out []listedTransactionResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
@@ -21,7 +21,7 @@ func listTransactionsAs(t *testing.T, h http.Handler, token, ledgerID string) []
 }
 
 // onlyCounterpart returns the counterpart of the single transaction in txs.
-func onlyCounterpart(t *testing.T, txs []transactionResponse) counterpartResponse {
+func onlyCounterpart(t *testing.T, txs []listedTransactionResponse) counterpartResponse {
 	t.Helper()
 	if len(txs) != 1 || txs[0].Counterpart == nil {
 		t.Fatalf("want one transaction with a counterpart, got %+v", txs)

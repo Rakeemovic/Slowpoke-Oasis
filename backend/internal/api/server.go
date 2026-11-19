@@ -73,6 +73,7 @@ func (s *Server) Routes() http.Handler {
 	// Transactions
 	mux.HandleFunc("POST /ledgers/{ledger}/transactions", s.createTransaction)
 	mux.HandleFunc("GET /ledgers/{ledger}/transactions", s.listTransactions)
+	mux.HandleFunc("GET /ledgers/{ledger}/transactions/{id}", s.getTransaction)
 	mux.HandleFunc("PATCH /ledgers/{ledger}/transactions/{id}", s.updateTransaction)
 	mux.HandleFunc("DELETE /ledgers/{ledger}/transactions/{id}", s.deleteTransaction)
 	mux.HandleFunc("GET /ledgers/{ledger}/transactions/deleted", s.listDeletedTransactions)
