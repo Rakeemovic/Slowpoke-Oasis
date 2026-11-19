@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/ledger"
@@ -41,10 +42,22 @@ type transactionResponse struct {
 	AmountCents      int64  `json:"amount_cents"`
 	BookedOn         string `json:"booked_on"`
 	Note             string `json:"note,omitempty"`
+	// Counterpart is set for transfers between ledgers (rule X17).
+	Counterpart *counterpartResponse `json:"counterpart,omitempty"`
 }
 
-func newTransactionResponse(t ledger.Transaction) transactionResponse {
-	return transactionResponse{
+// counterpartResponse names the other ledger of a transfer. ledger_id and
+// name are left out when the viewer cannot access that ledger.
+type counterpartResponse struct {
+	Kind     string `json:"kind"`
+	LedgerID string `json:"ledger_id,omitempty"`
+	Name     string `json:"name,omitempty"`
+}
+
+// newTransactionResponse converts a transaction. counterparts comes from
+// counterpartsOf and may lack the transaction.
+func newTransactionResponse(t ledger.Transaction, counterparts map[string]ledger.Counterpart) transactionResponse {
+	resp := transactionResponse{
 		ID:               t.ID,
 		LedgerID:         t.LedgerID,
 		UserID:           t.UserID,
@@ -56,6 +69,22 @@ func newTransactionResponse(t ledger.Transaction) transactionResponse {
 		BookedOn:         t.BookedOn,
 		Note:             t.Note,
 	}
+	if c, ok := counterparts[t.ID]; ok {
+		resp.Counterpart = &counterpartResponse{Kind: c.Kind, LedgerID: c.LedgerID, Name: c.Name}
+	}
+	return resp
+}
+
+// counterpartsOf looks up the other ledger of every transfer between ledgers
+// in items, as seen by viewerID, with a single query.
+func (s *Server) counterpartsOf(ctx context.Context, viewerID string, items []ledger.Transaction) (map[string]ledger.Counterpart, error) {
+	var ids []string
+	for _, t := range items {
+		if t.Type == ledger.TypeTransferOut || t.Type == ledger.TypeTransferIn {
+			ids = append(ids, t.ID)
+		}
+	}
+	return s.store.Counterparts(ctx, viewerID, ids)
 }
 
 // deletedTransactionResponse is a soft-deleted transaction that can be
@@ -98,7 +127,8 @@ func (s *Server) createTransaction(w http.ResponseWriter, r *http.Request) {
 
 // GET /ledgers/{ledger}/transactions?pot_id=&from=&to=&limit=&offset=
 func (s *Server) listTransactions(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireLedgerAccess(w, r); !ok {
+	userID, ok := s.requireLedgerAccess(w, r)
+	if !ok {
 		return
 	}
 	q := r.URL.Query()
@@ -120,9 +150,14 @@ func (s *Server) listTransactions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	counterparts, err := s.counterpartsOf(r.Context(), userID, items)
+	if err != nil {
+		fail(w, err)
+		return
+	}
 	out := make([]transactionResponse, 0, len(items))
 	for _, t := range items {
-		out = append(out, newTransactionResponse(t))
+		out = append(out, newTransactionResponse(t, counterparts))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -171,7 +206,8 @@ func (s *Server) deleteTransaction(w http.ResponseWriter, r *http.Request) {
 
 // GET /ledgers/{ledger}/transactions/deleted
 func (s *Server) listDeletedTransactions(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireLedgerAccess(w, r); !ok {
+	userID, ok := s.requireLedgerAccess(w, r)
+	if !ok {
 		return
 	}
 	items, err := s.store.ListDeletedTransactions(r.Context(), r.PathValue("ledger"), s.now())
@@ -179,10 +215,19 @@ func (s *Server) listDeletedTransactions(w http.ResponseWriter, r *http.Request)
 		fail(w, err)
 		return
 	}
+	plain := make([]ledger.Transaction, 0, len(items))
+	for _, d := range items {
+		plain = append(plain, d.Transaction)
+	}
+	counterparts, err := s.counterpartsOf(r.Context(), userID, plain)
+	if err != nil {
+		fail(w, err)
+		return
+	}
 	out := make([]deletedTransactionResponse, 0, len(items))
 	for _, d := range items {
 		out = append(out, deletedTransactionResponse{
-			transactionResponse: newTransactionResponse(d.Transaction),
+			transactionResponse: newTransactionResponse(d.Transaction, counterparts),
 			DeletedAt:           d.DeletedAt,
 			DeletedBy:           d.DeletedBy,
 			BookedByName:        d.BookedByName,
