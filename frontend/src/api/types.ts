@@ -77,6 +77,7 @@ export interface Counterpart {
 export interface NewTransaction {
   type: "expense" | "income";
   category_id: string;
+  pot_id?: string;
   /** Always positive; the type decides the direction. */
   amount_cents: number;
   booked_on: string;
@@ -90,6 +91,7 @@ export interface NewTransaction {
 export interface TransactionChange {
   type: "expense" | "income";
   category_id: string;
+  pot_id: string;
   /** Always positive; the type decides the direction. */
   amount_cents: number;
   booked_on: string;
@@ -109,6 +111,49 @@ export interface Balance {
 export interface NewLedgerTransfer {
   from_ledger_id: string;
   to_ledger_id: string;
+  /** Always positive. */
+  amount_cents: number;
+  booked_on: string;
+  note?: string;
+}
+
+export interface Pot {
+  id: string;
+  name: string;
+  /** The default pot is "monthly"; pots created in the app are "one_time". */
+  kind: "monthly" | "one_time";
+  is_default: boolean;
+  archived: boolean;
+  /** Savings goal in cents; left out when the pot has none. */
+  target_cents?: number;
+  /** Goal date as YYYY-MM-DD; only present together with target_cents. */
+  target_date?: string;
+  /** Calculated by the server from all bookings, never stored. */
+  balance_cents: number;
+}
+
+/** What a new pot needs. A target of 0 or a missing one means no goal. */
+export interface NewPot {
+  name: string;
+  target_cents?: number;
+  target_date?: string;
+}
+
+/** Every field is sent. Sending target_cents: 0 removes the goal and its date. */
+export interface PotChange {
+  name: string;
+  target_cents: number;
+  target_date: string;
+  archived: boolean;
+}
+
+/** Money moved from one pot to another pot of the same ledger. */
+export interface NewPotTransfer {
+  type: "transfer";
+  /** The pot the money leaves. */
+  pot_id: string;
+  /** The pot the money arrives in. */
+  counterpart_pot_id: string;
   /** Always positive. */
   amount_cents: number;
   booked_on: string;

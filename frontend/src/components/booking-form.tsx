@@ -1,10 +1,11 @@
 import { useCallback, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 
-import { ledgers } from "@/api/endpoints";
+import { ledgers, pots } from "@/api/endpoints";
 import type { TransactionChange } from "@/api/types";
 import { ChoicePicker } from "@/components/choice-picker";
 import { ErrorMessage } from "@/components/error-message";
+import { PotPicker } from "@/components/pot-picker";
 import { FormField } from "@/components/form-field";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -13,6 +14,7 @@ import { useLoader } from "@/hooks/use-loader";
 import { bookingProblem } from "@/lib/booking";
 import { today } from "@/lib/dates";
 import { errorMessage } from "@/lib/errors";
+import { defaultPot } from "@/lib/pots";
 import { centsToAmountInput, parseAmountToCents } from "@/lib/money";
 
 type Kind = TransactionChange["type"];
@@ -32,9 +34,12 @@ export function BookingForm({
   onSubmit: (values: TransactionChange) => Promise<void>;
 }) {
   const categories = useLoader(useCallback(() => ledgers.categories(ledgerId), [ledgerId]));
+  const potList = useLoader(useCallback(() => pots.list(ledgerId), [ledgerId]));
 
   const [kind, setKind] = useState<Kind>(initial?.type ?? "expense");
   const [categoryId, setCategoryId] = useState<string | undefined>(initial?.category_id);
+  // Without a choice, the booking goes into the default pot.
+  const [chosenPotId, setChosenPotId] = useState<string | undefined>(initial?.pot_id);
   const [amount, setAmount] = useState(initial ? centsToAmountInput(initial.amount_cents) : "");
   const [bookedOn, setBookedOn] = useState(initial?.booked_on ?? today);
   const [note, setNote] = useState(initial?.note ?? "");
@@ -54,7 +59,8 @@ export function BookingForm({
 
   async function submit() {
     const cents = parseAmountToCents(amount);
-    const problem = validate(cents, bookedOn, categoryId);
+    const potId = chosenPotId ?? defaultPot(potList.data ?? [])?.id;
+    const problem = validate(cents, bookedOn, categoryId) ?? (potId ? undefined : "The pots could not be loaded. Try again.");
     if (problem) {
       setError(problem);
       return;
@@ -62,7 +68,7 @@ export function BookingForm({
     setBusy(true);
     setError(undefined);
     try {
-      await onSubmit({ type: kind, category_id: categoryId!, amount_cents: cents!, booked_on: bookedOn, note: note.trim() });
+      await onSubmit({ type: kind, category_id: categoryId!, pot_id: potId!, amount_cents: cents!, booked_on: bookedOn, note: note.trim() });
     } catch (e) {
       setError(errorMessage(e));
       setBusy(false);
@@ -98,6 +104,16 @@ export function BookingForm({
           }}
         />
       </View>
+
+      <PotPicker
+        label="Pot"
+        pots={potList.data}
+        selected={chosenPotId}
+        onSelect={setChosenPotId}
+        loading={potList.loading}
+        error={potList.error}
+        onRetry={potList.reload}
+      />
 
       <FormField label="Note (optional)" value={note} onChangeText={setNote} />
       <ErrorMessage message={error} />
