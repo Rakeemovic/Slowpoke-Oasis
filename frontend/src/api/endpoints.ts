@@ -1,5 +1,20 @@
 import { request } from "@/api/client";
-import type { Balance, Category, DeletedTransaction, Household, Me, Member, NewLedgerTransfer, NewTransaction, Transaction, TransactionChange } from "@/api/types";
+import type {
+  Balance,
+  Category,
+  DeletedTransaction,
+  Household,
+  Me,
+  Member,
+  NewLedgerTransfer,
+  NewPot,
+  NewPotTransfer,
+  NewTransaction,
+  Pot,
+  PotChange,
+  Transaction,
+  TransactionChange,
+} from "@/api/types";
 
 // One small function per API endpoint, so screens never build URLs themselves.
 
@@ -50,16 +65,18 @@ export const ledgers = {
   createCategory: (ledgerId: string, name: string, isIncome: boolean) =>
     request<{ id: string }>("POST", `/ledgers/${enc(ledgerId)}/categories`, { name, is_income: isIncome }),
 
-  transactions: (ledgerId: string) => request<Transaction[]>("GET", `/ledgers/${enc(ledgerId)}/transactions`),
+  /** Newest first. The server returns at most 100 by default and 500 at most; page with limit and offset. */
+  transactions: (ledgerId: string, page: { limit: number; offset: number }) =>
+    request<Transaction[]>("GET", `/ledgers/${enc(ledgerId)}/transactions?limit=${page.limit}&offset=${page.offset}`),
 
-  createTransaction: (ledgerId: string, tx: NewTransaction) =>
+  createTransaction: (ledgerId: string, tx: NewTransaction | NewPotTransfer) =>
     request<{ id: string }>("POST", `/ledgers/${enc(ledgerId)}/transactions`, tx),
 
   transaction: (ledgerId: string, id: string) =>
     request<Transaction>("GET", `/ledgers/${enc(ledgerId)}/transactions/${enc(id)}`),
 
-  /** Only incomes and expenses; a transfer between ledgers can only be deleted. */
-  updateTransaction: (ledgerId: string, id: string, change: TransactionChange) =>
+  /** Incomes, expenses and transfers between pots; a transfer between ledgers can only be deleted. */
+  updateTransaction: (ledgerId: string, id: string, change: TransactionChange | NewPotTransfer) =>
     request<void>("PATCH", `/ledgers/${enc(ledgerId)}/transactions/${enc(id)}`, change),
 
   /** Soft delete; a transfer between ledgers loses both legs. */
@@ -77,6 +94,16 @@ export const ledgers = {
   /** asOf is the app's local today, since the server may be in another time zone. */
   balance: (ledgerId: string, asOf: string) =>
     request<Balance>("GET", `/ledgers/${enc(ledgerId)}/balance?date=${enc(asOf)}`),
+};
+
+export const pots = {
+  /** The default pot comes first. Archived pots are included. */
+  list: (ledgerId: string) => request<Pot[]>("GET", `/ledgers/${enc(ledgerId)}/pots`),
+
+  create: (ledgerId: string, pot: NewPot) => request<{ id: string }>("POST", `/ledgers/${enc(ledgerId)}/pots`, pot),
+
+  update: (ledgerId: string, potId: string, change: PotChange) =>
+    request<void>("PATCH", `/ledgers/${enc(ledgerId)}/pots/${enc(potId)}`, change),
 };
 
 export const transfers = {

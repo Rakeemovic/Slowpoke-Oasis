@@ -12,6 +12,7 @@ import { LedgerBalance } from "@/components/ledger-balance";
 import { Card, CardContent } from "@/components/ui/card";
 import { Text } from "@/components/ui/text";
 import { useLoader } from "@/hooks/use-loader";
+import { usePagedLoader } from "@/hooks/use-paged-loader";
 import { formatCents, formatSignedCents } from "@/lib/money";
 import { transactionTitle } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
@@ -26,13 +27,13 @@ export default function TransactionsScreen() {
   // In a personal ledger every booking is the user's own, so naming them is noise.
   const showAuthor = kind !== "personal";
 
-  // Both lists are needed to show category names, so they load together.
-  const load = useCallback(
-    () => Promise.all([ledgers.transactions(ledgerId), ledgers.categories(ledgerId)]),
-    [ledgerId],
+  // Category names are needed to show the rows, so both lists load.
+  const categoryList = useLoader(useCallback(() => ledgers.categories(ledgerId), [ledgerId]));
+  const list = usePagedLoader(
+    useCallback((limit: number, offset: number) => ledgers.transactions(ledgerId, { limit, offset }), [ledgerId]),
   );
-  const { data, error, loading, reload } = useLoader(load);
-  const [transactions, categories] = data ?? [];
+  const { items: transactions, loading, error, reload } = list;
+  const categories = categoryList.data;
 
   return (
     <Screen>
@@ -54,6 +55,11 @@ export default function TransactionsScreen() {
           </Button>
         </Link>
       </View>
+      <Link href={{ pathname: "/ledgers/[ledgerId]/pots", params: { ledgerId } }} asChild>
+        <Button variant="outline">
+          <Text>Pots</Text>
+        </Button>
+      </Link>
       <Link href={{ pathname: "/ledgers/[ledgerId]/deleted", params: { ledgerId, kind } }} asChild>
         <Button variant="outline">
           <Text>Deleted transactions</Text>
@@ -66,8 +72,8 @@ export default function TransactionsScreen() {
           </Button>
         </Link>
       )}
-      {loading && !data && <ActivityIndicator />}
-      <ErrorMessage message={error} onRetry={reload} />
+      {loading && !transactions && <ActivityIndicator />}
+      <ErrorMessage message={error ?? categoryList.error} onRetry={reload} />
       {transactions?.length === 0 && <Text variant="muted">No transactions yet. Tap “Add transaction” to book the first one.</Text>}
       {transactions && transactions.length > 0 && (
         <Card className="py-2">
@@ -84,6 +90,11 @@ export default function TransactionsScreen() {
             ))}
           </CardContent>
         </Card>
+      )}
+      {list.hasMore && (
+        <Button variant="outline" onPress={list.loadMore} disabled={list.loadingMore}>
+          <Text>{list.loadingMore ? "Loading…" : "Load more"}</Text>
+        </Button>
       )}
     </Screen>
   );
