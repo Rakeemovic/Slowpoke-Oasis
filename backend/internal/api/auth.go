@@ -1,27 +1,24 @@
 package api
 
 import (
+	"context"
+	"database/sql"
 	"net/http"
-	"strings"
 
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/ledger"
 )
 
-// bearerToken returns the token from "Authorization: Bearer <token>", or "".
-func bearerToken(r *http.Request) string {
-	const prefix = "Bearer "
-	h := r.Header.Get("Authorization")
-	if !strings.HasPrefix(h, prefix) {
-		return ""
-	}
-	return strings.TrimSpace(h[len(prefix):])
-}
-
-// requireUser returns the ID of the logged-in user, or writes 401 and returns false.
+// requireUser returns the ID of the logged-in user, or writes the error and
+// returns false: 401 without a valid login, 403 for a session cookie without
+// the CSRF header (see session.go).
 func (s *Server) requireUser(w http.ResponseWriter, r *http.Request) (string, bool) {
-	token := bearerToken(r)
+	token, fromCookie := sessionToken(r)
 	if token == "" {
-		writeError(w, http.StatusUnauthorized, "missing bearer token, please log in")
+		writeError(w, http.StatusUnauthorized, "missing login token, please log in")
+		return "", false
+	}
+	if fromCookie && r.Header.Get(csrfHeader) == "" {
+		fail(w, ErrCSRFHeaderMissing)
 		return "", false
 	}
 	userID, err := s.accounts.UserForToken(r.Context(), token)
@@ -73,7 +70,7 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	id, err := s.accounts.Register(r.Context(), req.Username, req.Email, req.Password, req.DisplayName)
+	id, err := s.accounts.Register(r.Context(), req.Username, req.Email, req.Password, req.DisplayName, s.createStarterData)
 	if err != nil {
 		fail(w, err)
 		return
@@ -82,10 +79,14 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /auth/login
+// With "cookie": true (web app) the token is set as an HttpOnly cookie and the
+// answer is 204 without a body, so JavaScript never sees it. Otherwise (native
+// apps) the token is returned in the body.
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
+		Cookie   bool   `json:"cookie"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -93,6 +94,11 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	token, err := s.accounts.Login(r.Context(), req.Username, req.Password)
 	if err != nil {
 		fail(w, err)
+		return
+	}
+	if req.Cookie {
+		s.setSessionCookie(w, token)
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"token": token})
@@ -103,10 +109,12 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireUser(w, r); !ok {
 		return
 	}
-	if err := s.accounts.Logout(r.Context(), bearerToken(r)); err != nil {
+	token, _ := sessionToken(r)
+	if err := s.accounts.Logout(r.Context(), token); err != nil {
 		fail(w, err)
 		return
 	}
+	s.clearSessionCookieIfUsed(w, r)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -162,5 +170,44 @@ func (s *Server) deleteAccount(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	s.clearSessionCookieIfUsed(w, r)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// createStarterData gives a new account its personal ledger (rule L6). It runs
+// inside the registration transaction.
+func (s *Server) createStarterData(ctx context.Context, tx *sql.Tx, userID string) error {
+	return ledger.CreateStarterLedger(ctx, tx, userID, s.now())
+}
+
+// meResponse describes the signed-in user. PersonalLedgerID is null for
+// accounts that were created before every account got a personal ledger.
+type meResponse struct {
+	UserID           string  `json:"user_id"`
+	Username         string  `json:"username"`
+	DisplayName      string  `json:"display_name"`
+	PersonalLedgerID *string `json:"personal_ledger_id"`
+}
+
+// GET /me
+func (s *Server) me(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+	profile, err := s.accounts.Profile(r.Context(), userID)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	ledgerID, err := s.store.PersonalLedgerID(r.Context(), userID)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	resp := meResponse{UserID: profile.UserID, Username: profile.Username, DisplayName: profile.DisplayName}
+	if ledgerID != "" {
+		resp.PersonalLedgerID = &ledgerID
+	}
+	writeJSON(w, http.StatusOK, resp)
 }

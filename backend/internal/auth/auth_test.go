@@ -23,7 +23,7 @@ func TestRegisterThenLoginReturnsUsableToken(t *testing.T) {
 	_, s := newService(t)
 	ctx := context.Background()
 
-	userID, err := s.Register(ctx, "Bob_1", "bob@example.com", "correct horse battery", "Bob")
+	userID, err := s.Register(ctx, "Bob_1", "bob@example.com", "correct horse battery", "Bob", nil)
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestRegisterThenLoginReturnsUsableToken(t *testing.T) {
 func TestWrongPasswordAndUnknownUserGiveTheSameError(t *testing.T) {
 	_, s := newService(t)
 	ctx := context.Background()
-	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", "", nil); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 
@@ -58,10 +58,10 @@ func TestWrongPasswordAndUnknownUserGiveTheSameError(t *testing.T) {
 func TestUsernamesAreUniqueIgnoringCase(t *testing.T) {
 	_, s := newService(t)
 	ctx := context.Background()
-	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", "", nil); err != nil {
 		t.Fatalf("register: %v", err)
 	}
-	if _, err := s.Register(ctx, "BOB", "other@example.com", "another password", ""); !errors.Is(err, ErrUsernameTaken) {
+	if _, err := s.Register(ctx, "BOB", "other@example.com", "another password", "", nil); !errors.Is(err, ErrUsernameTaken) {
 		t.Errorf("err = %v, want ErrUsernameTaken", err)
 	}
 }
@@ -70,13 +70,13 @@ func TestInvalidRegistrationInput(t *testing.T) {
 	_, s := newService(t)
 	ctx := context.Background()
 
-	if _, err := s.Register(ctx, "ab", "bob@example.com", "correct horse battery", ""); !errors.Is(err, ErrInvalidUsername) {
+	if _, err := s.Register(ctx, "ab", "bob@example.com", "correct horse battery", "", nil); !errors.Is(err, ErrInvalidUsername) {
 		t.Errorf("short username: err = %v, want ErrInvalidUsername", err)
 	}
-	if _, err := s.Register(ctx, "bob smith", "bob@example.com", "correct horse battery", ""); !errors.Is(err, ErrInvalidUsername) {
+	if _, err := s.Register(ctx, "bob smith", "bob@example.com", "correct horse battery", "", nil); !errors.Is(err, ErrInvalidUsername) {
 		t.Errorf("username with space: err = %v, want ErrInvalidUsername", err)
 	}
-	if _, err := s.Register(ctx, "bob", "bob@example.com", "short", ""); !errors.Is(err, ErrInvalidPassword) {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "short", "", nil); !errors.Is(err, ErrInvalidPassword) {
 		t.Errorf("short password: err = %v, want ErrInvalidPassword", err)
 	}
 }
@@ -84,7 +84,7 @@ func TestInvalidRegistrationInput(t *testing.T) {
 func TestPasswordIsNotStoredInPlainText(t *testing.T) {
 	db, s := newService(t)
 	ctx := context.Background()
-	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", "", nil); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 
@@ -100,7 +100,7 @@ func TestPasswordIsNotStoredInPlainText(t *testing.T) {
 func TestSessionTokenIsStoredOnlyAsHash(t *testing.T) {
 	db, s := newService(t)
 	ctx := context.Background()
-	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", "", nil); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	token, err := s.Login(ctx, "bob", "correct horse battery")
@@ -120,7 +120,7 @@ func TestSessionTokenIsStoredOnlyAsHash(t *testing.T) {
 func TestLogoutInvalidatesToken(t *testing.T) {
 	_, s := newService(t)
 	ctx := context.Background()
-	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", "", nil); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	token, err := s.Login(ctx, "bob", "correct horse battery")
@@ -139,7 +139,7 @@ func TestLogoutInvalidatesToken(t *testing.T) {
 func TestExpiredSessionIsRejected(t *testing.T) {
 	db, s := newService(t)
 	ctx := context.Background()
-	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", "", nil); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	token, err := s.Login(ctx, "bob", "correct horse battery")
@@ -159,5 +159,23 @@ func TestEmptyTokenIsRejected(t *testing.T) {
 	_, s := newService(t)
 	if _, err := s.UserForToken(context.Background(), ""); !errors.Is(err, ErrUnauthenticated) {
 		t.Errorf("err = %v, want ErrUnauthenticated", err)
+	}
+}
+
+func TestRegisterRollsBackWhenSetupFails(t *testing.T) {
+	db, s := newService(t)
+	ctx := context.Background()
+	setupErr := errors.New("setup failed")
+	failingSetup := func(context.Context, *sql.Tx, string) error { return setupErr }
+
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", "", failingSetup); !errors.Is(err, setupErr) {
+		t.Fatalf("err = %v, want the setup error", err)
+	}
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM user WHERE username = 'bob'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("bob stored %d times, want 0 after a failed setup", n)
 	}
 }

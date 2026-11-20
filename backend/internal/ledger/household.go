@@ -28,11 +28,13 @@ var (
 	ErrNotOwner       = errors.New("only the owner can do this")
 )
 
-// Household is a household the user belongs to, with the user's role in it.
+// Household is a household the user belongs to, with the user's role in it
+// and the ID of its shared ledger (each household has exactly one, rule L5).
 type Household struct {
-	ID   string
-	Name string
-	Role string
+	ID       string
+	Name     string
+	Role     string
+	LedgerID string
 }
 
 // CreateHousehold creates a household with its shared ledger and default pot
@@ -70,9 +72,10 @@ func (s *Store) CreateHousehold(ctx context.Context, ownerID, name string, now t
 // ListHouseholds returns the households a user belongs to, sorted by name.
 func (s *Store) ListHouseholds(ctx context.Context, userID string) ([]Household, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT h.id, h.name, m.role
+		SELECT h.id, h.name, m.role, l.id
 		FROM household h
 		JOIN household_member m ON m.household_id = h.id
+		JOIN ledger l ON l.household_id = h.id
 		WHERE m.user_id = ?
 		ORDER BY h.name`,
 		userID,
@@ -85,7 +88,7 @@ func (s *Store) ListHouseholds(ctx context.Context, userID string) ([]Household,
 	var out []Household
 	for rows.Next() {
 		var h Household
-		if err := rows.Scan(&h.ID, &h.Name, &h.Role); err != nil {
+		if err := rows.Scan(&h.ID, &h.Name, &h.Role, &h.LedgerID); err != nil {
 			return nil, err
 		}
 		out = append(out, h)

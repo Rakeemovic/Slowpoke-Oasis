@@ -82,6 +82,68 @@ func (s *Store) CreatePersonalLedger(ctx context.Context, userID, name string, p
 	return ledgerID, err
 }
 
+// personalLedgerName is the name of the ledger every new account starts with.
+const personalLedgerName = "Personal"
+
+// CreateStarterLedger creates the primary personal ledger of a new user in
+// tx, as part of the registration (rule L6).
+func CreateStarterLedger(ctx context.Context, tx *sql.Tx, userID string, now time.Time) error {
+	ledgerID, err := insertLedger(ctx, tx, ledgerOwner{UserID: userID}, personalLedgerName, 1, now)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE ledger SET is_primary = 1 WHERE id = ?`, ledgerID)
+	return err
+}
+
+// PersonalLedgerID returns the user's primary personal ledger, the one created
+// at registration (rule L6). Further personal ledgers are extras. Accounts
+// without any personal ledger have none; then it returns "".
+func (s *Store) PersonalLedgerID(ctx context.Context, userID string) (string, error) {
+	var id string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id FROM ledger WHERE user_id = ? AND is_primary = 1`, userID,
+	).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return id, err
+}
+
+// Category is a category of a ledger. Archived categories are still listed,
+// because older transactions refer to them and need their names (rule K2).
+type Category struct {
+	ID       string
+	Name     string
+	IsIncome bool
+	Archived bool
+}
+
+// ListCategories returns the categories of a ledger, sorted by name.
+func (s *Store) ListCategories(ctx context.Context, ledgerID string) ([]Category, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, name, is_income, archived
+		FROM category
+		WHERE ledger_id = ?
+		ORDER BY lower(name)`,
+		ledgerID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Category
+	for rows.Next() {
+		var c Category
+		if err := rows.Scan(&c.ID, &c.Name, &c.IsIncome, &c.Archived); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 // CreateCategory adds a category to a ledger and returns its ID.
 // Names are unique per ledger, ignoring case (rule K1).
 func (s *Store) CreateCategory(ctx context.Context, ledgerID, name string, isIncome bool) (string, error) {

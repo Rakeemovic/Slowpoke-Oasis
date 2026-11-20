@@ -10,6 +10,9 @@ Each rule is enforced either by the database (CHECK, UNIQUE, NOT NULL, foreign k
 | L2 | `payday_day` is an integer from 1 to 31. | DB |
 | L3 | `currency` must be an ISO 4217 code from the allowed list. Only `EUR` is active in the MVP. | App (DB only checks length) |
 | L4 | Each ledger has exactly one default pot, created together with the ledger. | DB (partial unique index) + App |
+| L5 | A household has exactly one ledger, created together with the household. | DB (unique index) + App |
+| L6 | Every account gets a personal ledger named "Personal" at registration, in the same transaction. It is the user's primary ledger (`is_primary`); `GET /me` returns it as `personal_ledger_id`. Further personal ledgers are allowed but never primary. | DB (partial unique index) + App |
+| L7 | A ledger's balance is given as of one day (`date`, default: today on the server; the app sends its local today). `available_cents` is the default pot, `total_cents` all pots including archived ones. Transactions after that day and deleted ones do not count. | App |
 
 ## Categories
 
@@ -56,6 +59,9 @@ Each rule is enforced either by the database (CHECK, UNIQUE, NOT NULL, foreign k
 | X14 | A transfer between two ledgers is booked as two legs: `transfer_out` (negative) in the source ledger and `transfer_in` (positive) in the target ledger. The legs have no category and no counterpart pot and point at each other with `linked_transaction_id`. They are created, deleted and restored together and cannot be edited. | DB (CHECK) + App |
 | X15 | New accounts need an email address. It is unique, case-insensitive, and used for password resets. | App + DB (unique index) |
 | X16 | When a ledger is deleted, the other leg of a transfer into or out of it stays in its own ledger and loses its link. From then on it is deleted and restored on its own. | DB (`ON DELETE SET NULL`) |
+| X17 | Transaction lists name the other side of a transfer between ledgers as `counterpart`: `kind` (`personal` or `household`) always, `ledger_id` and `name` only if the viewer may access that ledger. A member therefore never learns the ID or name of another member's personal ledger. Legs that lost their link (X16) have no counterpart. | App |
+| X18 | Transaction lists name the author of each booking by `username`, the same name the member list shows (never the display name or email). It is `null` for the `former-member` placeholder, so departed members stay anonymous. The list of deleted transactions names the deleting user the same way as `deleted_by_username`. | App |
+| X19 | Transaction lists tell the viewer, per booking, whether they may change it: `can_edit` and `can_delete` follow the rules for editing and deleting below. A transfer between ledgers (X14) is never editable, and deleting one of its legs needs the right on both legs. The flags only let the app hide actions; the server still checks every change. | App |
 
 ## Permissions
 
@@ -80,6 +86,8 @@ Every member of a household may read its ledger and book in it. Changing an exis
 | A4 | Password reset: the code is sent by email, valid for 30 minutes, usable once and stored only as a hash. A new code replaces older ones. After a reset, all sessions of the account end. If the mail cannot be sent, the code is removed. | App |
 | A5 | The reset request answers the same way whether or not the address is registered. The mail is sent in the background, so neither the response time nor a mail error reveals it. A taken username or email gives one shared message. | App |
 | A6 | Rate limits: 10 failed logins per username within 15 minutes, 3 reset requests per address within an hour. Both count unknown names too. Above the limit the API answers 429. The counters are kept in memory and start again after a restart. | App |
+| A7 | The login token reaches the API as `Authorization: Bearer` (native apps) or as the `session` cookie (web app, login with `"cookie": true`; the token is then not in the response body). The cookie is HttpOnly, Secure and SameSite=Strict and lives as long as the session. `COOKIE_SECURE=false` drops only the Secure flag, for a home network without HTTPS; the server then logs a warning at startup. Any value other than a boolean stops the server. A bearer token takes precedence. Logout and account deletion clear the cookie. | App |
+| A8 | Requests authenticated by cookie must send the `X-Requested-With` header, otherwise 403 (CSRF protection). CORS is off unless `CORS_ORIGINS` lists exact origins; only those may send credentials and that header. | App |
 
 ## Notes
 

@@ -52,19 +52,23 @@ func (s *Store) AuthorizeTransactionChange(ctx context.Context, userID, ledgerID
 		return err
 	}
 
-	isAuthor := author == userID
-	isOwner := personalOwner || role == RoleOwner
-	orphaned := author == FormerMemberID
-
-	allowed := false
-	switch action {
-	case ActionEdit:
-		allowed = isAuthor || isOwner
-	case ActionDelete:
-		allowed = isAuthor || (isOwner && orphaned)
-	}
-	if !allowed {
+	if !mayChange(action, userID, author, personalOwner || role == RoleOwner) {
 		return ErrNotAllowed
 	}
 	return nil
+}
+
+// mayChange holds the rules described at AuthorizeTransactionChange for one
+// transaction. isOwner says whether userID owns the transaction's ledger.
+// Keeping them in one place lets the list flags (Permissions) never disagree
+// with the check that guards the actual change.
+func mayChange(action TransactionAction, userID, author string, isOwner bool) bool {
+	isAuthor := author == userID
+	switch action {
+	case ActionEdit:
+		return isAuthor || isOwner
+	case ActionDelete:
+		return isAuthor || (isOwner && author == FormerMemberID)
+	}
+	return false
 }
