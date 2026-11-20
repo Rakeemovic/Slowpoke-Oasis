@@ -60,6 +60,10 @@ function RootNavigator() {
           <Stack.Screen name="ledgers/[ledgerId]/index" options={{ title: "Transactions" }} />
           <Stack.Screen name="ledgers/[ledgerId]/new" options={{ title: "New transaction" }} />
           <Stack.Screen name="ledgers/[ledgerId]/transfer" options={{ title: "Transfer" }} />
+          <Stack.Screen name="ledgers/[ledgerId]/move" options={{ title: "Move between pots" }} />
+          <Stack.Screen name="ledgers/[ledgerId]/pots/index" options={{ title: "Pots" }} />
+          <Stack.Screen name="ledgers/[ledgerId]/pots/new" options={{ title: "New pot" }} />
+          <Stack.Screen name="ledgers/[ledgerId]/pots/[potId]" options={{ title: "Pot" }} />
           <Stack.Screen name="ledgers/[ledgerId]/transactions/[transactionId]" options={{ title: "Transaction" }} />
           <Stack.Screen name="households/[householdId]/members" options={{ title: "Members" }} />
         </Stack.Protected>
