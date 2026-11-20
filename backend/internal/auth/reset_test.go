@@ -71,7 +71,7 @@ func TestRegisterRequiresValidEmail(t *testing.T) {
 	ctx := context.Background()
 
 	for _, email := range []string{"", "not-an-email", "bob@", "bob smith@example.com"} {
-		if _, err := s.Register(ctx, "bob", email, "correct horse battery", ""); !errors.Is(err, ErrInvalidEmail) {
+		if _, err := s.Register(ctx, "bob", email, "correct horse battery", "", nil); !errors.Is(err, ErrInvalidEmail) {
 			t.Errorf("email %q: got %v, want ErrInvalidEmail", email, err)
 		}
 	}
@@ -80,10 +80,10 @@ func TestRegisterRequiresValidEmail(t *testing.T) {
 func TestEmailMustBeUniqueIgnoringCase(t *testing.T) {
 	_, s := newService(t)
 	ctx := context.Background()
-	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", "", nil); err != nil {
 		t.Fatalf("register: %v", err)
 	}
-	if _, err := s.Register(ctx, "carol", "BOB@example.com", "correct horse battery", ""); !errors.Is(err, ErrEmailTaken) {
+	if _, err := s.Register(ctx, "carol", "BOB@example.com", "correct horse battery", "", nil); !errors.Is(err, ErrEmailTaken) {
 		t.Fatalf("got %v, want ErrEmailTaken", err)
 	}
 }
@@ -91,7 +91,7 @@ func TestEmailMustBeUniqueIgnoringCase(t *testing.T) {
 func TestPasswordResetWorksOnceAndEndsOldLogins(t *testing.T) {
 	s, mailer, _ := newResetService(t)
 	ctx := context.Background()
-	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", "", nil); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	oldSession, err := s.Login(ctx, "bob", "correct horse battery")
@@ -124,7 +124,7 @@ func TestPasswordResetWorksOnceAndEndsOldLogins(t *testing.T) {
 func TestResetCodeExpiresAfterThirtyMinutes(t *testing.T) {
 	s, mailer, clock := newResetService(t)
 	ctx := context.Background()
-	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", "", nil); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	if err := s.RequestPasswordReset(ctx, "bob@example.com"); err != nil {
@@ -143,7 +143,7 @@ func TestResetCodeExpiresAfterThirtyMinutes(t *testing.T) {
 func TestNewResetRequestReplacesTheOldCode(t *testing.T) {
 	s, mailer, _ := newResetService(t)
 	ctx := context.Background()
-	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", "", nil); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	for i := 0; i < 2; i++ {
@@ -183,7 +183,7 @@ func TestUnknownEmailGetsNoErrorAndNoMail(t *testing.T) {
 func TestResetWithoutMailSetupFails(t *testing.T) {
 	_, s := newService(t)
 	ctx := context.Background()
-	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", "", nil); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	if err := s.RequestPasswordReset(ctx, "bob@example.com"); !errors.Is(err, mail.ErrNotConfigured) {
@@ -196,7 +196,7 @@ func TestResetCodeIsStoredOnlyAsHash(t *testing.T) {
 	mailer := &fakeMailer{}
 	s.SetMailer(mailer)
 	ctx := context.Background()
-	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", "", nil); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	if err := s.RequestPasswordReset(ctx, "bob@example.com"); err != nil {
@@ -224,7 +224,7 @@ func TestFailedMailLeavesNoResetCode(t *testing.T) {
 	db, s := newService(t)
 	s.SetMailer(failingMailer{})
 	ctx := context.Background()
-	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", "", nil); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	// The mail is sent in the background, so the request itself succeeds and
@@ -252,7 +252,7 @@ func TestFailedMailLeavesNoResetCode(t *testing.T) {
 func TestPurgeExpiredRemovesOnlyOldSessionsAndCodes(t *testing.T) {
 	s, _, clock := newResetService(t)
 	ctx := context.Background()
-	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", "", nil); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	oldSession, err := s.Login(ctx, "bob", "correct horse battery")
@@ -269,7 +269,7 @@ func TestPurgeExpiredRemovesOnlyOldSessionsAndCodes(t *testing.T) {
 	}
 
 	// One day before the first session expires, the reset code is long gone.
-	*clock = clock.Add(sessionTTL - 24*time.Hour)
+	*clock = clock.Add(SessionTTL - 24*time.Hour)
 	newSession, err := s.Login(ctx, "bob", "correct horse battery")
 	if err != nil {
 		t.Fatalf("second login: %v", err)

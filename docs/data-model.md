@@ -20,14 +20,14 @@ This document records the decisions behind the data model. The schema lives in t
 - `household_member`: household_id, user_id (primary key: both fields), role (`owner` or `member`), joined_at. The creator is the owner. A household has exactly one owner: the owner can hand the role to another member and becomes a regular member. When the owner leaves, the longest-standing member (earliest `joined_at`) becomes owner. When the last member leaves, the household and its ledger are deleted.
 
 ### Ledger
-A container for categories, pots and transactions. It belongs to exactly one user (personal) or one household (shared).
+A container for categories, pots and transactions. It belongs to exactly one user (personal) or one household (shared). A household has exactly one ledger, so the household list can return it directly as `ledger_id`. Every account gets a personal ledger at registration; it is marked as primary and returned by `GET /me` (rule L6). Users may create more personal ledgers, which are not primary.
 
-- `ledger`: id, name, user_id or household_id (exactly one is set), payday_day (default 1), currency (default `EUR`), created_at
+- `ledger`: id, name, user_id or household_id (exactly one is set), payday_day (default 1), currency (default `EUR`), is_primary (only for the personal ledger created at registration, at most one per user), created_at
 
 ### Categories
 Categories belong to a ledger. The personal ledger has its own categories, and the household ledger has its own.
 
-- `category`: id, ledger_id, name, is_income, archived. Names are unique per ledger.
+- `category`: id, ledger_id, name, is_income, archived. Names are unique per ledger. The category list also contains archived categories, because older transactions still refer to them.
 
 ### Pots
 A pot groups planned amounts and collects transactions.
@@ -64,6 +64,7 @@ A pot groups planned amounts and collects transactions.
 
 - **Period of a monthly pot:** starts on `payday_day` of a month and ends the day before `payday_day` of the next month. If the day does not exist in a month (for example the 30th in February), the last day of the month is used.
 - **Balance of a pot:** incoming transfers and income, minus expenses and outgoing transfers. Transfers between ledgers count like transfers between pots. Deleted transactions are excluded.
+- **Balance of a ledger** (`GET /ledgers/{ledger}/balance`, rule L7): *available* is the balance of the default pot, *total* the sum of all pots. Only transactions booked on or before the given day count, so planned transactions do not lower it early.
 - **Progress toward a savings goal:** the pot balance relative to `target_cents`. Balances are calculated on demand and not stored.
 - **Required monthly rate:** the remaining amount up to `target_cents`, divided by the number of months until `target_date`. Only available when a target date is set.
 

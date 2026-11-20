@@ -10,7 +10,7 @@ import (
 func TestLoginIsBlockedAfterTenFailuresAndUnblocksLater(t *testing.T) {
 	s, _, clock := newResetService(t)
 	ctx := context.Background()
-	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", "", nil); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 
@@ -33,7 +33,7 @@ func TestLoginIsBlockedAfterTenFailuresAndUnblocksLater(t *testing.T) {
 func TestSuccessfulLoginResetsTheFailureCount(t *testing.T) {
 	s, _, _ := newResetService(t)
 	ctx := context.Background()
-	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", "", nil); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	for i := 0; i < maxFailedLogins-1; i++ {
@@ -53,7 +53,7 @@ func TestSuccessfulLoginResetsTheFailureCount(t *testing.T) {
 func TestResetRequestsAreLimitedPerAddress(t *testing.T) {
 	s, _, clock := newResetService(t)
 	ctx := context.Background()
-	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", ""); err != nil {
+	if _, err := s.Register(ctx, "bob", "bob@example.com", "correct horse battery", "", nil); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	for i := 0; i < maxResetRequests; i++ {

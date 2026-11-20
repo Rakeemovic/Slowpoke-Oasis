@@ -20,11 +20,21 @@ type Server struct {
 	store    *ledger.Store
 	accounts *auth.Service
 	now      func() time.Time
+	// insecureCookies drops the Secure flag from the session cookie. The zero
+	// value keeps it, so a server is safe unless told otherwise.
+	insecureCookies bool
 }
 
 // NewServer returns a Server that uses the given stores.
 func NewServer(store *ledger.Store, accounts *auth.Service) *Server {
 	return &Server{store: store, accounts: accounts, now: time.Now}
+}
+
+// AllowInsecureCookies sends the session cookie without the Secure flag, so
+// browsers also keep it over plain HTTP. Only meant for a home network
+// without HTTPS: anyone on the network can then read the cookie.
+func (s *Server) AllowInsecureCookies() {
+	s.insecureCookies = true
 }
 
 // Routes returns the HTTP handler with all endpoints registered.
@@ -38,6 +48,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /auth/password-reset", s.requestPasswordReset)
 	mux.HandleFunc("POST /auth/password-reset/confirm", s.confirmPasswordReset)
 	mux.HandleFunc("DELETE /auth/account", s.deleteAccount)
+	mux.HandleFunc("GET /me", s.me)
 
 	// Households
 	mux.HandleFunc("POST /households", s.createHousehold)
@@ -50,6 +61,7 @@ func (s *Server) Routes() http.Handler {
 	// Ledgers and categories
 	mux.HandleFunc("POST /users/{user}/ledgers", s.createPersonalLedger)
 	mux.HandleFunc("POST /ledgers/{ledger}/categories", s.createCategory)
+	mux.HandleFunc("GET /ledgers/{ledger}/categories", s.listCategories)
 
 	// Pots and planned amounts
 	mux.HandleFunc("POST /ledgers/{ledger}/pots", s.createPot)
@@ -61,6 +73,7 @@ func (s *Server) Routes() http.Handler {
 	// Transactions
 	mux.HandleFunc("POST /ledgers/{ledger}/transactions", s.createTransaction)
 	mux.HandleFunc("GET /ledgers/{ledger}/transactions", s.listTransactions)
+	mux.HandleFunc("GET /ledgers/{ledger}/transactions/{id}", s.getTransaction)
 	mux.HandleFunc("PATCH /ledgers/{ledger}/transactions/{id}", s.updateTransaction)
 	mux.HandleFunc("DELETE /ledgers/{ledger}/transactions/{id}", s.deleteTransaction)
 	mux.HandleFunc("GET /ledgers/{ledger}/transactions/deleted", s.listDeletedTransactions)
@@ -70,6 +83,7 @@ func (s *Server) Routes() http.Handler {
 	// Reports
 	mux.HandleFunc("GET /ledgers/{ledger}/pots/{pot}/summary", s.potSummary)
 	mux.HandleFunc("GET /ledgers/{ledger}/analytics", s.analytics)
+	mux.HandleFunc("GET /ledgers/{ledger}/balance", s.ledgerBalance)
 
 	return mux
 }
@@ -86,8 +100,12 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 	return true
 }
 
+// writeJSON sends v as JSON. Every answer forbids caching: the data is
+// private and changes with each booking, so a browser must never show a
+// stored copy instead of asking again.
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		log.Printf("write response: %v", err)

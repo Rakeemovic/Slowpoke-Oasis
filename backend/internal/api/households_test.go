@@ -176,3 +176,28 @@ func TestMembersSeeOnlyUsernameRoleAndIDOfEachOther(t *testing.T) {
 		t.Errorf("members = %v, want %v", got, want)
 	}
 }
+
+func TestHouseholdListIncludesSharedLedger(t *testing.T) {
+	h := newTestHandler(t)
+	_, bobToken := register(t, h, "bob")
+
+	rec := doToken(t, h, http.MethodPost, "/households", bobToken, map[string]any{"name": "Flat"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create household: status %d, body %s", rec.Code, rec.Body)
+	}
+	householdID := decodeID(t, rec.Body.Bytes())
+	ledgerID := decodeField(t, rec.Body.Bytes(), "ledger_id")
+
+	rec = doToken(t, h, http.MethodGet, "/households", bobToken, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list: status %d, body %s", rec.Code, rec.Body)
+	}
+	var got []householdResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode %s: %v", rec.Body, err)
+	}
+	want := householdResponse{ID: householdID, Name: "Flat", Role: "owner", LedgerID: ledgerID}
+	if len(got) != 1 || got[0] != want {
+		t.Errorf("households = %+v, want [%+v]", got, want)
+	}
+}

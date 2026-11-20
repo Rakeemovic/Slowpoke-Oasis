@@ -8,9 +8,10 @@ import (
 
 // householdResponse is one household of the logged-in user.
 type householdResponse struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Role string `json:"role"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Role     string `json:"role"`
+	LedgerID string `json:"ledger_id"`
 }
 
 // memberResponse is one member of a household. Other members only see the
@@ -72,7 +73,7 @@ func (s *Server) listHouseholds(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]householdResponse, 0, len(items))
 	for _, h := range items {
-		out = append(out, householdResponse{ID: h.ID, Name: h.Name, Role: h.Role})
+		out = append(out, householdResponse{ID: h.ID, Name: h.Name, Role: h.Role, LedgerID: h.LedgerID})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"errors"
 	"io/fs"
 	"path/filepath"
@@ -56,22 +57,70 @@ func TestUniqueViolationIsRecognized(t *testing.T) {
 	}
 }
 
-// Transfers between ledgers that were booked before migration 0007 must
-// survive the table rebuild with their links, and afterwards a ledger with
-// one leg of such a transfer can be deleted.
-func TestOrphanedLegMigrationKeepsExistingLinks(t *testing.T) {
+// openSchemaBefore opens a fresh database file with all migrations before
+// upgrade applied, so a test can seed old data and then run Open on path.
+func openSchemaBefore(t *testing.T, upgrade string) (old *sql.DB, path string) {
+	t.Helper()
 	names := migrationNames(t)
-	const upgrade = "0007_orphaned_transfer_legs.sql"
 	cut := sort.SearchStrings(names, upgrade)
 	if cut == len(names) || names[cut] != upgrade {
 		t.Fatalf("migration %s not found", upgrade)
 	}
-	path := filepath.Join(t.TempDir(), "test.db")
-
+	path = filepath.Join(t.TempDir(), "test.db")
 	old, err := open(path, names[:cut])
 	if err != nil {
 		t.Fatalf("open old schema: %v", err)
 	}
+	return old, path
+}
+
+// Accounts from before migration 0010 get their oldest personal ledger as the
+// primary one; later personal ledgers and household ledgers stay unmarked.
+func TestPrimaryLedgerMigrationMarksOldestPersonalLedger(t *testing.T) {
+	old, path := openSchemaBefore(t, "0010_primary_personal_ledger.sql")
+	seed := []string{
+		`INSERT INTO user (id, name, created_at) VALUES ('u1', 'Alice', '2026-01-01T00:00:00Z')`,
+		`INSERT INTO household (id, name, created_at) VALUES ('h1', 'Home', '2026-01-01T00:00:00Z')`,
+		`INSERT INTO ledger (id, name, user_id, created_at) VALUES ('later', 'Savings', 'u1', '2026-02-01T00:00:00Z')`,
+		`INSERT INTO ledger (id, name, user_id, created_at) VALUES ('first', 'Personal', 'u1', '2026-01-01T00:00:00Z')`,
+		`INSERT INTO ledger (id, name, household_id, created_at) VALUES ('shared', 'Home', 'h1', '2025-01-01T00:00:00Z')`,
+	}
+	for _, q := range seed {
+		if _, err := old.Exec(q); err != nil {
+			t.Fatalf("seed %q: %v", q, err)
+		}
+	}
+	old.Close()
+
+	db, err := Open(path)
+	if err != nil {
+		t.Fatalf("upgrade: %v", err)
+	}
+	defer db.Close()
+
+	primary, err := db.Query(`SELECT id FROM ledger WHERE is_primary = 1`)
+	if err != nil {
+		t.Fatalf("query primary ledgers: %v", err)
+	}
+	defer primary.Close()
+	var ids []string
+	for primary.Next() {
+		var id string
+		if err := primary.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	if len(ids) != 1 || ids[0] != "first" {
+		t.Errorf("primary ledgers = %v, want [first]", ids)
+	}
+}
+
+// Transfers between ledgers that were booked before migration 0007 must
+// survive the table rebuild with their links, and afterwards a ledger with
+// one leg of such a transfer can be deleted.
+func TestOrphanedLegMigrationKeepsExistingLinks(t *testing.T) {
+	old, path := openSchemaBefore(t, "0007_orphaned_transfer_legs.sql")
 	seed := []string{
 		`INSERT INTO user (id, name, created_at) VALUES ('u1', 'Alice', '2026-01-01T00:00:00Z')`,
 		`INSERT INTO ledger (id, name, user_id, created_at) VALUES ('l1', 'Home', 'u1', '2026-01-01T00:00:00Z')`,

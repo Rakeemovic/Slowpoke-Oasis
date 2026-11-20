@@ -28,7 +28,7 @@ func register(t *testing.T, h http.Handler, username string) (userID, token stri
 	t.Helper()
 	rec := doToken(t, h, http.MethodPost, "/auth/register", "", map[string]any{
 		"username": username, "email": username + "@example.com",
-		"password": "correct horse battery", "display_name": "Bob",
+		"password": testPassword, "display_name": "Bob",
 	})
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("register: status %d, body %s", rec.Code, rec.Body)
@@ -36,7 +36,7 @@ func register(t *testing.T, h http.Handler, username string) (userID, token stri
 	userID = decodeID(t, rec.Body.Bytes())
 
 	rec = doToken(t, h, http.MethodPost, "/auth/login", "", map[string]any{
-		"username": username, "password": "correct horse battery",
+		"username": username, "password": testPassword,
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("login: status %d, body %s", rec.Code, rec.Body)
@@ -151,6 +151,7 @@ func TestForeignLedgersAreHidden(t *testing.T) {
 		{"list pots", http.MethodGet, "/ledgers/l1/pots", nil},
 		{"create pot", http.MethodPost, "/ledgers/l1/pots", map[string]any{"name": "Spy"}},
 		{"create category", http.MethodPost, "/ledgers/l1/categories", map[string]any{"name": "Spy"}},
+		{"list categories", http.MethodGet, "/ledgers/l1/categories", nil},
 	}
 	for _, c := range checks {
 		t.Run(c.name, func(t *testing.T) {
@@ -165,5 +166,49 @@ func TestForeignLedgersAreHidden(t *testing.T) {
 	rec = do(t, h, http.MethodGet, "/ledgers/l1/transactions", "u1", nil)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), txID) {
 		t.Errorf("owner lost access or data: status %d, body %s", rec.Code, rec.Body)
+	}
+}
+
+func TestListCategoriesSortedByNameWithFlags(t *testing.T) {
+	h := newTestHandler(t)
+	bobID, bobToken := register(t, h, "bob")
+
+	rec := doToken(t, h, http.MethodPost, "/users/"+bobID+"/ledgers", bobToken, map[string]any{"name": "Home"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create ledger: status %d, body %s", rec.Code, rec.Body)
+	}
+	ledgerID := decodeID(t, rec.Body.Bytes())
+
+	for _, c := range []map[string]any{
+		{"name": "rent"},
+		{"name": "Salary", "is_income": true},
+		{"name": "Groceries"},
+	} {
+		rec := doToken(t, h, http.MethodPost, "/ledgers/"+ledgerID+"/categories", bobToken, c)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("create category %v: status %d, body %s", c["name"], rec.Code, rec.Body)
+		}
+	}
+
+	rec = doToken(t, h, http.MethodGet, "/ledgers/"+ledgerID+"/categories", bobToken, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list: status %d, body %s", rec.Code, rec.Body)
+	}
+	var got []categoryResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode %s: %v", rec.Body, err)
+	}
+	// Sorting ignores case, so "rent" comes after "Groceries".
+	wantNames := []string{"Groceries", "rent", "Salary"}
+	if len(got) != len(wantNames) {
+		t.Fatalf("got %d categories, want %d: %+v", len(got), len(wantNames), got)
+	}
+	for i, name := range wantNames {
+		if got[i].Name != name || got[i].ID == "" || got[i].Archived {
+			t.Errorf("category %d = %+v, want name %q, an ID and not archived", i, got[i], name)
+		}
+	}
+	if !got[2].IsIncome || got[0].IsIncome {
+		t.Errorf("is_income flags wrong: %+v", got)
 	}
 }

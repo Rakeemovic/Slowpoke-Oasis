@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/store"
 )
 
 func TestCreateHouseholdMakesCreatorOwnerWithSharedLedger(t *testing.T) {
@@ -212,5 +214,17 @@ func TestTransferOwnershipSwapsRolesAndKeepsOneOwner(t *testing.T) {
 	}
 	if owners != 1 {
 		t.Errorf("%d owners, want 1", owners)
+	}
+}
+
+func TestHouseholdCannotHaveSecondLedger(t *testing.T) {
+	db, s := setup(t)
+	hid, _, err := s.CreateHousehold(context.Background(), "u1", "Flat", time.Now())
+	if err != nil {
+		t.Fatalf("create household: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO ledger (id, name, household_id, created_at) VALUES ('l-second', 'Second', ?, '2026-01-01T00:00:00Z')`, hid)
+	if !store.IsUniqueViolation(err) {
+		t.Errorf("second household ledger: err = %v, want unique violation (rule L5)", err)
 	}
 }

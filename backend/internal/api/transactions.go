@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/ledger"
@@ -31,20 +32,34 @@ type transactionPatchRequest struct {
 
 // transactionResponse is the JSON representation of a stored transaction.
 type transactionResponse struct {
-	ID               string `json:"id"`
-	LedgerID         string `json:"ledger_id"`
-	UserID           string `json:"user_id"`
-	Type             string `json:"type"`
-	CategoryID       string `json:"category_id,omitempty"`
-	PotID            string `json:"pot_id"`
-	CounterpartPotID string `json:"counterpart_pot_id,omitempty"`
-	AmountCents      int64  `json:"amount_cents"`
-	BookedOn         string `json:"booked_on"`
-	Note             string `json:"note,omitempty"`
+	ID       string `json:"id"`
+	LedgerID string `json:"ledger_id"`
+	UserID   string `json:"user_id"`
+	// Username is null for the former-member placeholder (rule X18).
+	Username         *string `json:"username"`
+	Type             string  `json:"type"`
+	CategoryID       string  `json:"category_id,omitempty"`
+	PotID            string  `json:"pot_id"`
+	CounterpartPotID string  `json:"counterpart_pot_id,omitempty"`
+	AmountCents      int64   `json:"amount_cents"`
+	BookedOn         string  `json:"booked_on"`
+	Note             string  `json:"note,omitempty"`
+	// Counterpart is set for transfers between ledgers (rule X17).
+	Counterpart *counterpartResponse `json:"counterpart,omitempty"`
 }
 
-func newTransactionResponse(t ledger.Transaction) transactionResponse {
-	return transactionResponse{
+// counterpartResponse names the other ledger of a transfer. ledger_id and
+// name are left out when the viewer cannot access that ledger.
+type counterpartResponse struct {
+	Kind     string `json:"kind"`
+	LedgerID string `json:"ledger_id,omitempty"`
+	Name     string `json:"name,omitempty"`
+}
+
+// newTransactionResponse converts a transaction. counterparts comes from
+// counterpartsOf and may lack the transaction.
+func newTransactionResponse(t ledger.Transaction, counterparts map[string]ledger.Counterpart) transactionResponse {
+	resp := transactionResponse{
 		ID:               t.ID,
 		LedgerID:         t.LedgerID,
 		UserID:           t.UserID,
@@ -55,17 +70,50 @@ func newTransactionResponse(t ledger.Transaction) transactionResponse {
 		AmountCents:      t.AmountCents,
 		BookedOn:         t.BookedOn,
 		Note:             t.Note,
+		Username:         usernameOrNull(t.Username),
 	}
+	if c, ok := counterparts[t.ID]; ok {
+		resp.Counterpart = &counterpartResponse{Kind: c.Kind, LedgerID: c.LedgerID, Name: c.Name}
+	}
+	return resp
+}
+
+// usernameOrNull turns the empty username of the former-member placeholder
+// into JSON null (rule X18).
+func usernameOrNull(username string) *string {
+	if username == "" {
+		return nil
+	}
+	return &username
+}
+
+// counterpartsOf looks up the other ledger of every transfer between ledgers
+// in items, as seen by viewerID, with a single query.
+func (s *Server) counterpartsOf(ctx context.Context, viewerID string, items []ledger.Transaction) (map[string]ledger.Counterpart, error) {
+	var ids []string
+	for _, t := range items {
+		if t.Type == ledger.TypeTransferOut || t.Type == ledger.TypeTransferIn {
+			ids = append(ids, t.ID)
+		}
+	}
+	return s.store.Counterparts(ctx, viewerID, ids)
+}
+
+// listedTransactionResponse is a transaction in the normal list, plus what
+// the viewer may do with it (rule X19).
+type listedTransactionResponse struct {
+	transactionResponse
+	CanEdit   bool `json:"can_edit"`
+	CanDelete bool `json:"can_delete"`
 }
 
 // deletedTransactionResponse is a soft-deleted transaction that can be
 // restored: the transaction itself plus who deleted it and when.
 type deletedTransactionResponse struct {
 	transactionResponse
-	DeletedAt     string `json:"deleted_at"`
-	DeletedBy     string `json:"deleted_by"`
-	BookedByName  string `json:"booked_by_name"`
-	DeletedByName string `json:"deleted_by_name"`
+	DeletedAt         string  `json:"deleted_at"`
+	DeletedBy         string  `json:"deleted_by"`
+	DeletedByUsername *string `json:"deleted_by_username"`
 }
 
 // POST /ledgers/{ledger}/transactions
@@ -98,7 +146,8 @@ func (s *Server) createTransaction(w http.ResponseWriter, r *http.Request) {
 
 // GET /ledgers/{ledger}/transactions?pot_id=&from=&to=&limit=&offset=
 func (s *Server) listTransactions(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireLedgerAccess(w, r); !ok {
+	userID, ok := s.requireLedgerAccess(w, r)
+	if !ok {
 		return
 	}
 	q := r.URL.Query()
@@ -120,11 +169,55 @@ func (s *Server) listTransactions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out := make([]transactionResponse, 0, len(items))
-	for _, t := range items {
-		out = append(out, newTransactionResponse(t))
+	out, err := s.listedResponses(r.Context(), userID, items)
+	if err != nil {
+		fail(w, err)
+		return
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// GET /ledgers/{ledger}/transactions/{id}
+// Answers with the same fields as one entry of the list.
+func (s *Server) getTransaction(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireLedgerAccess(w, r)
+	if !ok {
+		return
+	}
+	t, err := s.store.GetTransaction(r.Context(), r.PathValue("ledger"), r.PathValue("id"))
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	out, err := s.listedResponses(r.Context(), userID, []ledger.Transaction{t})
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out[0])
+}
+
+// listedResponses converts transactions for viewerID: each with its
+// counterpart (rule X17) and what the viewer may do with it (rule X19).
+func (s *Server) listedResponses(ctx context.Context, viewerID string, items []ledger.Transaction) ([]listedTransactionResponse, error) {
+	counterparts, err := s.counterpartsOf(ctx, viewerID, items)
+	if err != nil {
+		return nil, err
+	}
+	permissions, err := s.store.Permissions(ctx, viewerID, items)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]listedTransactionResponse, 0, len(items))
+	for _, t := range items {
+		p := permissions[t.ID]
+		out = append(out, listedTransactionResponse{
+			transactionResponse: newTransactionResponse(t, counterparts),
+			CanEdit:             p.CanEdit,
+			CanDelete:           p.CanDelete,
+		})
+	}
+	return out, nil
 }
 
 // PATCH /ledgers/{ledger}/transactions/{id}
@@ -171,7 +264,8 @@ func (s *Server) deleteTransaction(w http.ResponseWriter, r *http.Request) {
 
 // GET /ledgers/{ledger}/transactions/deleted
 func (s *Server) listDeletedTransactions(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireLedgerAccess(w, r); !ok {
+	userID, ok := s.requireLedgerAccess(w, r)
+	if !ok {
 		return
 	}
 	items, err := s.store.ListDeletedTransactions(r.Context(), r.PathValue("ledger"), s.now())
@@ -179,14 +273,22 @@ func (s *Server) listDeletedTransactions(w http.ResponseWriter, r *http.Request)
 		fail(w, err)
 		return
 	}
+	plain := make([]ledger.Transaction, 0, len(items))
+	for _, d := range items {
+		plain = append(plain, d.Transaction)
+	}
+	counterparts, err := s.counterpartsOf(r.Context(), userID, plain)
+	if err != nil {
+		fail(w, err)
+		return
+	}
 	out := make([]deletedTransactionResponse, 0, len(items))
 	for _, d := range items {
 		out = append(out, deletedTransactionResponse{
-			transactionResponse: newTransactionResponse(d.Transaction),
+			transactionResponse: newTransactionResponse(d.Transaction, counterparts),
 			DeletedAt:           d.DeletedAt,
 			DeletedBy:           d.DeletedBy,
-			BookedByName:        d.BookedByName,
-			DeletedByName:       d.DeletedByName,
+			DeletedByUsername:   usernameOrNull(d.DeletedByUsername),
 		})
 	}
 	writeJSON(w, http.StatusOK, out)
