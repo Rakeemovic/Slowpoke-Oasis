@@ -54,6 +54,11 @@ export default function TransactionsScreen() {
           </Button>
         </Link>
       </View>
+      <Link href={{ pathname: "/ledgers/[ledgerId]/deleted", params: { ledgerId, kind } }} asChild>
+        <Button variant="outline">
+          <Text>Deleted transactions</Text>
+        </Button>
+      </Link>
       {householdId && (
         <Link href={{ pathname: "/households/[householdId]/members", params: { householdId } }} asChild>
           <Button variant="outline">
