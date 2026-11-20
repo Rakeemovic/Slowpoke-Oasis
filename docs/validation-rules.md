@@ -95,4 +95,4 @@ Every member of a household may read its ledger and book in it. Changing an exis
 - One-time pots have no period. Transactions are assigned only through `pot_id`, so no date-range check exists for them.
 - Soft-deleted transactions (`deleted_at` set) are excluded from all calculations and lists.
 - A category or active pot name that is already taken answers 409.
-- The transaction list returns at most 100 entries per request by default (`limit` up to 500, `offset` to page).
+- The transaction list and the list of deleted transactions return at most 100 entries per request by default (`limit` up to 500, `offset` to page).
