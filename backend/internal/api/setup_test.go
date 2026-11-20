@@ -27,7 +27,7 @@ func decodeID(t *testing.T, body []byte) string {
 func register(t *testing.T, h http.Handler, username string) (userID, token string) {
 	t.Helper()
 	rec := doToken(t, h, http.MethodPost, "/auth/register", "", map[string]any{
-		"username": username, "email": username + "@example.com",
+		"username": username,
 		"password": testPassword, "display_name": "Bob",
 	})
 	if rec.Code != http.StatusCreated {
@@ -81,7 +81,7 @@ func TestLoginFailures(t *testing.T) {
 	}
 
 	rec = doToken(t, h, http.MethodPost, "/auth/register", "", map[string]any{
-		"username": "BOB", "email": "other@example.com", "password": "another password",
+		"username": "BOB", "password": "another password",
 	})
 	if rec.Code != http.StatusConflict {
 		t.Errorf("taken username: status %d, want 409", rec.Code)

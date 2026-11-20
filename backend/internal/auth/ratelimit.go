@@ -5,13 +5,13 @@ import (
 	"time"
 )
 
-// Limits for failed logins and password reset requests. Both are counted per
-// username or email address, so they work without knowing the client's IP.
+// Limits for failed logins and failed password recoveries. Both are counted
+// per username, so they work without knowing the client's IP.
 const (
-	maxFailedLogins  = 10
-	loginWindow      = 15 * time.Minute
-	maxResetRequests = 3
-	resetWindow      = time.Hour
+	maxFailedLogins     = 10
+	loginWindow         = 15 * time.Minute
+	maxFailedRecoveries = 5
+	recoveryWindow      = time.Hour
 )
 
 // limiter counts events per key inside a sliding time window. It is kept in
