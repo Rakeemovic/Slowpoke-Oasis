@@ -60,22 +60,23 @@ func (s *Server) canAccessLedger(w http.ResponseWriter, r *http.Request, userID,
 }
 
 // POST /auth/register
+// The answer carries the recovery code. It is shown only this once; the
+// server keeps nothing but its hash.
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username    string `json:"username"`
-		Email       string `json:"email"`
 		Password    string `json:"password"`
 		DisplayName string `json:"display_name"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	id, err := s.accounts.Register(r.Context(), req.Username, req.Email, req.Password, req.DisplayName, s.createStarterData)
+	id, code, err := s.accounts.Register(r.Context(), req.Username, req.Password, req.DisplayName, s.createStarterData)
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
+	writeJSON(w, http.StatusCreated, map[string]string{"id": id, "recovery_code": code})
 }
 
 // POST /auth/login
@@ -118,34 +119,43 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// POST /auth/password-reset
-// Answers 202 for every well-formed address, so the answer does not reveal
-// which addresses are registered. The code is sent by email.
-func (s *Server) requestPasswordReset(w http.ResponseWriter, r *http.Request) {
+// POST /auth/recover
+// Sets a new password with the recovery code. The code is used up and the
+// answer carries a new one. All logins of the account end.
+func (s *Server) recoverAccount(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Email string `json:"email"`
+		Username     string `json:"username"`
+		RecoveryCode string `json:"recovery_code"`
+		NewPassword  string `json:"new_password"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if err := s.accounts.RequestPasswordReset(r.Context(), req.Email); err != nil {
+	code, err := s.accounts.Recover(r.Context(), req.Username, req.RecoveryCode, req.NewPassword)
+	if err != nil {
 		fail(w, err)
 		return
 	}
-	w.WriteHeader(http.StatusAccepted)
+	writeJSON(w, http.StatusOK, map[string]string{"recovery_code": code})
 }
 
-// POST /auth/password-reset/confirm
-// Sets a new password with the code from the email. All logins end.
-func (s *Server) confirmPasswordReset(w http.ResponseWriter, r *http.Request) {
+// PUT /auth/password
+// Requires the current password. Other logins of the account end; the one
+// making the request stays valid.
+func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
 	var req struct {
-		Token       string `json:"token"`
-		NewPassword string `json:"new_password"`
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if err := s.accounts.ConfirmPasswordReset(r.Context(), req.Token, req.NewPassword); err != nil {
+	token, _ := sessionToken(r)
+	if err := s.accounts.ChangePassword(r.Context(), userID, token, req.CurrentPassword, req.NewPassword); err != nil {
 		fail(w, err)
 		return
 	}

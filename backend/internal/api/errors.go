@@ -7,7 +7,6 @@ import (
 
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/auth"
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/ledger"
-	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/mail"
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/store"
 )
 
@@ -41,11 +40,10 @@ var statusByError = []struct {
 		ledger.ErrSameLedger,
 		auth.ErrInvalidUsername,
 		auth.ErrInvalidPassword,
-		auth.ErrInvalidEmail,
-		auth.ErrInvalidResetToken,
 	}},
 	{http.StatusUnauthorized, []error{
 		auth.ErrInvalidCredentials,
+		auth.ErrInvalidRecovery,
 		auth.ErrUnauthenticated,
 	}},
 	// The user is known but may not do this.
@@ -72,17 +70,13 @@ var statusByError = []struct {
 		ledger.ErrAlreadyMember,
 		ledger.ErrNameTaken,
 		auth.ErrUsernameTaken,
-		auth.ErrEmailTaken,
 	}},
 	{http.StatusTooManyRequests, []error{
 		auth.ErrTooManyAttempts,
 	}},
-	{http.StatusServiceUnavailable, []error{
-		mail.ErrNotConfigured,
-	}},
 }
 
-// fail writes the response for an error from the ledger, auth or mail package.
+// fail writes the response for an error from the ledger or auth package.
 func fail(w http.ResponseWriter, err error) {
 	for _, group := range statusByError {
 		for _, known := range group.errs {

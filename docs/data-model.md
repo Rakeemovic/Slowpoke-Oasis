@@ -13,9 +13,8 @@ This document records the decisions behind the data model. The schema lives in t
 ## Entities
 
 ### Users and households
-- `user`: id, name, username, email, password_hash, created_at. Username and email are unique, ignoring case. The placeholder user `former-member` has neither and cannot log in.
+- `user`: id, name, username, password_hash, recovery_hash, created_at. The username is unique, ignoring case. `recovery_hash` is the Argon2id hash of the recovery code (rule A4); it is empty for accounts created before migration `0011`. The placeholder user `former-member` has no username and no password and cannot log in. No email address is stored.
 - `session`: token_hash, user_id, created_at, expires_at. A login is valid for 30 days. Only the SHA-256 hash of the token is stored.
-- `password_reset`: token_hash, user_id, created_at, expires_at. A reset code is valid for 30 minutes and can be used once.
 - `household`: id, name, created_at
 - `household_member`: household_id, user_id (primary key: both fields), role (`owner` or `member`), joined_at. The creator is the owner. A household has exactly one owner: the owner can hand the role to another member and becomes a regular member. When the owner leaves, the longest-standing member (earliest `joined_at`) becomes owner. When the last member leaves, the household and its ledger are deleted.
 
