@@ -44,3 +44,20 @@ test("a booking can be edited and deleted", async ({ page }) => {
   await expect(transactionRow(page, "Salary")).toHaveCount(0);
   await expect(balance(page, "-45,00")).toBeVisible();
 });
+
+test("a deleted booking can be restored", async ({ page }) => {
+  await book(page, { kind: "Income", amount: "100", category: "Salary", newCategory: true });
+  await transactionRow(page, "Salary").click();
+  await page.getByRole("button", { name: "Delete" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Delete" }).click();
+  await expect(transactionRow(page, "Salary")).toHaveCount(0);
+
+  await page.getByRole("link", { name: "Deleted transactions" }).click();
+  await expect(page.getByText("Salary", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Restore Salary" }).click();
+  await expect(page.getByText("Nothing to restore.")).toBeVisible();
+
+  await page.goBack();
+  await expect(transactionRow(page, "Salary")).toBeVisible();
+  await expect(balance(page, "100,00").last()).toBeVisible();
+});

@@ -1,7 +1,7 @@
 import type { Category, Counterpart, Transaction } from "@/api/types";
 
 /** The heading of a transaction: its category, or what kind of transfer it is. */
-export function transactionTitle(tx: Transaction, categories: Category[]): string {
+export function transactionTitle(tx: Pick<Transaction, "category_id" | "type" | "counterpart">, categories: Category[]): string {
   return categories.find((c) => c.id === tx.category_id)?.name ?? describeType(tx.type, tx.counterpart);
 }
 

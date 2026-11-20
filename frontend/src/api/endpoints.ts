@@ -1,5 +1,5 @@
 import { request } from "@/api/client";
-import type { Balance, Category, Household, Me, Member, NewLedgerTransfer, NewTransaction, Transaction, TransactionChange } from "@/api/types";
+import type { Balance, Category, DeletedTransaction, Household, Me, Member, NewLedgerTransfer, NewTransaction, Transaction, TransactionChange } from "@/api/types";
 
 // One small function per API endpoint, so screens never build URLs themselves.
 
@@ -65,6 +65,14 @@ export const ledgers = {
   /** Soft delete; a transfer between ledgers loses both legs. */
   deleteTransaction: (ledgerId: string, id: string) =>
     request<void>("DELETE", `/ledgers/${enc(ledgerId)}/transactions/${enc(id)}`),
+
+  /** Soft-deleted transactions that can still be restored (they are removed for good after 30 days). */
+  deletedTransactions: (ledgerId: string) =>
+    request<DeletedTransaction[]>("GET", `/ledgers/${enc(ledgerId)}/transactions/deleted`),
+
+  /** A transfer between ledgers comes back with both legs. */
+  restoreTransaction: (ledgerId: string, id: string) =>
+    request<void>("POST", `/ledgers/${enc(ledgerId)}/transactions/${enc(id)}/restore`),
 
   /** asOf is the app's local today, since the server may be in another time zone. */
   balance: (ledgerId: string, asOf: string) =>
