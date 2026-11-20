@@ -50,6 +50,11 @@ export default function SignInScreen() {
       <Button onPress={submit} disabled={busy || !username.trim() || !password}>
         <Text>{busy ? "Signing in…" : "Sign in"}</Text>
       </Button>
+      <Link href="/recover" asChild>
+        <Button variant="link">
+          <Text>Forgot your password?</Text>
+        </Button>
+      </Link>
       <Link href="/register" asChild>
         <Button variant="link">
           <Text>No account yet? Create one</Text>

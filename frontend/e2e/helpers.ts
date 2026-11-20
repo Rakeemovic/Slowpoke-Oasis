@@ -23,14 +23,24 @@ export function balance(scope: Page | Locator, amount: string): Locator {
   return scope.getByText(new RegExp(`^${escape(amount)}\\s€ in all pots$`));
 }
 
-export async function register(page: Page, username: string): Promise<void> {
+/** Creates an account, confirms the recovery code and returns that code. */
+export async function register(page: Page, username: string): Promise<string> {
   await page.goto("/register");
   await page.getByLabel("Username").fill(username);
   await page.getByLabel("Display name").fill(username);
-  await page.getByLabel("Email").fill(`${username}@example.test`);
   await page.getByLabel("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Create account" }).click();
+  const code = await recoveryCode(page);
+  await page.getByRole("button", { name: "I have saved it, continue" }).click();
   await expectOverview(page);
+  return code;
+}
+
+/** The recovery code the app shows after registration or a reset: six words. */
+export async function recoveryCode(page: Page): Promise<string> {
+  const shown = page.getByLabel("Recovery code", { exact: true });
+  await expect(shown).toHaveText(/^\s*\S+( \S+){5}\s*$/);
+  return (await shown.innerText()).trim();
 }
 
 export async function signIn(page: Page, username: string, password = PASSWORD): Promise<void> {

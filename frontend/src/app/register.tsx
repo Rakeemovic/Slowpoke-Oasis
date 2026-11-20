@@ -4,6 +4,7 @@ import { auth } from "@/api/endpoints";
 import { useAuth } from "@/auth/auth-context";
 import { ErrorMessage } from "@/components/error-message";
 import { FormField } from "@/components/form-field";
+import { RecoveryCodePanel } from "@/components/recovery-code-panel";
 import { Screen } from "@/components/screen";
 import { Button } from "@/components/ui/button";
 import { Text } from "@/components/ui/text";
@@ -13,23 +14,35 @@ export default function RegisterScreen() {
   const { signIn } = useAuth();
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [recoveryCode, setRecoveryCode] = useState<string>();
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
 
-  const complete = username.trim() && displayName.trim() && email.trim() && password;
+  const complete = username.trim() && displayName.trim() && password;
 
   async function submit() {
     setBusy(true);
     setError(undefined);
     try {
-      await auth.register({
+      const created = await auth.register({
         username: username.trim(),
         display_name: displayName.trim(),
-        email: email.trim(),
         password,
       });
+      // Signing in would leave this screen at once, so the code is shown first.
+      setRecoveryCode(created.recovery_code);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function continueToApp() {
+    setBusy(true);
+    setError(undefined);
+    try {
       // Log in right away, so nobody has to type the same data twice.
       await signIn(username.trim(), password);
     } catch (e) {
@@ -38,18 +51,24 @@ export default function RegisterScreen() {
     }
   }
 
+  if (recoveryCode) {
+    return (
+      <Screen>
+        <RecoveryCodePanel
+          code={recoveryCode}
+          continueLabel={busy ? "Signing in…" : "I have saved it, continue"}
+          busy={busy}
+          onContinue={continueToApp}
+        />
+        <ErrorMessage message={error} />
+      </Screen>
+    );
+  }
+
   return (
     <Screen>
       <FormField label="Username" value={username} onChangeText={setUsername} autoCapitalize="none" autoComplete="username-new" />
       <FormField label="Display name" value={displayName} onChangeText={setDisplayName} autoComplete="name" />
-      <FormField
-        label="Email"
-        value={email}
-        onChangeText={setEmail}
-        autoCapitalize="none"
-        keyboardType="email-address"
-        autoComplete="email"
-      />
       <FormField
         label="Password"
         value={password}

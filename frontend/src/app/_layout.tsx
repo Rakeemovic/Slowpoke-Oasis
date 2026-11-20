@@ -52,9 +52,11 @@ function RootNavigator() {
         <Stack.Protected guard={!signedIn} redirectTo="/">
           <Stack.Screen name="sign-in" options={{ title: "Sign in" }} />
           <Stack.Screen name="register" options={{ title: "Create account" }} />
+          <Stack.Screen name="recover" options={{ title: "Reset password" }} />
         </Stack.Protected>
         <Stack.Protected guard={signedIn} redirectTo="/sign-in">
           <Stack.Screen name="index" options={{ title: "Overview" }} />
+          <Stack.Screen name="account" options={{ title: "Account" }} />
           <Stack.Screen name="ledgers/[ledgerId]/index" options={{ title: "Transactions" }} />
           <Stack.Screen name="ledgers/[ledgerId]/new" options={{ title: "New transaction" }} />
           <Stack.Screen name="ledgers/[ledgerId]/transfer" options={{ title: "Transfer" }} />

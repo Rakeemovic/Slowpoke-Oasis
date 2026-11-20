@@ -4,8 +4,17 @@ import type { Balance, Category, Household, Me, Member, NewLedgerTransfer, NewTr
 // One small function per API endpoint, so screens never build URLs themselves.
 
 export const auth = {
-  register: (input: { username: string; email: string; password: string; display_name: string }) =>
-    request<{ id: string }>("POST", "/auth/register", input),
+  /** The answer carries the recovery code. The server shows it only this once. */
+  register: (input: { username: string; password: string; display_name: string }) =>
+    request<{ id: string; recovery_code: string }>("POST", "/auth/register", input),
+
+  /** Sets a new password with the recovery code. The code is used up; the answer carries a new one. */
+  recover: (input: { username: string; recovery_code: string; new_password: string }) =>
+    request<{ recovery_code: string }>("POST", "/auth/recover", input),
+
+  /** Other devices are signed out; this one stays signed in. */
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<void>("PUT", "/auth/password", { current_password: currentPassword, new_password: newPassword }),
 
   /** Native apps receive a token. The web app asks for a cookie and gets no body. */
   login: (username: string, password: string, cookie: boolean) =>

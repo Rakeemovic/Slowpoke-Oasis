@@ -45,8 +45,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /auth/register", s.register)
 	mux.HandleFunc("POST /auth/login", s.login)
 	mux.HandleFunc("POST /auth/logout", s.logout)
-	mux.HandleFunc("POST /auth/password-reset", s.requestPasswordReset)
-	mux.HandleFunc("POST /auth/password-reset/confirm", s.confirmPasswordReset)
+	mux.HandleFunc("POST /auth/recover", s.recoverAccount)
+	mux.HandleFunc("PUT /auth/password", s.changePassword)
 	mux.HandleFunc("DELETE /auth/account", s.deleteAccount)
 	mux.HandleFunc("GET /me", s.me)
 

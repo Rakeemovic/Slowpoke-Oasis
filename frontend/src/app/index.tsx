@@ -29,6 +29,11 @@ export default function OverviewScreen() {
         options={{
           headerRight: () => (
             <HeaderActions>
+              <Link href="/account" asChild>
+                <Button variant="ghost" size="sm">
+                  <Text>Account</Text>
+                </Button>
+              </Link>
               <Button variant="ghost" size="sm" onPress={signOut}>
                 <Text>Sign out</Text>
               </Button>

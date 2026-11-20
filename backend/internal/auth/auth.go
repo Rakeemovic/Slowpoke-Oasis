@@ -9,12 +9,10 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
-	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
 
-	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/mail"
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/store"
 )
 
@@ -25,9 +23,7 @@ const SessionTTL = 30 * 24 * time.Hour
 var (
 	ErrInvalidUsername    = errors.New("username must be 3 to 32 characters: lowercase letters, digits or underscore")
 	ErrInvalidPassword    = errors.New("password must have between 8 and 256 characters")
-	ErrInvalidEmail       = errors.New("email address is not valid")
 	ErrUsernameTaken      = errors.New("username is already taken")
-	ErrEmailTaken         = errors.New("username or email address is already in use")
 	ErrTooManyAttempts    = errors.New("too many attempts, please wait a while and try again")
 	ErrInvalidCredentials = errors.New("wrong username or password")
 	ErrUnauthenticated    = errors.New("not logged in or session expired")
@@ -35,33 +31,22 @@ var (
 	ErrUserNotFound       = errors.New("user not found")
 )
 
-// emailPattern is a deliberately simple check: something@something.something.
-// Whether the address really receives mail is only shown by a reset email.
-var emailPattern = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
-
-// Service handles registration, login, sessions and password resets.
+// Service handles registration, login, sessions and password recovery.
 type Service struct {
-	db            *sql.DB
-	now           func() time.Time
-	mailer        mail.Sender
-	loginFailures *limiter
-	resetRequests *limiter
+	db               *sql.DB
+	now              func() time.Time
+	loginFailures    *limiter
+	recoveryFailures *limiter
 }
 
-// New returns a Service backed by db. Without a mailer, password resets fail
-// with mail.ErrNotConfigured.
+// New returns a Service backed by db.
 func New(db *sql.DB) *Service {
 	return &Service{
-		db:            db,
-		now:           time.Now,
-		loginFailures: newLimiter(maxFailedLogins, loginWindow),
-		resetRequests: newLimiter(maxResetRequests, resetWindow),
+		db:               db,
+		now:              time.Now,
+		loginFailures:    newLimiter(maxFailedLogins, loginWindow),
+		recoveryFailures: newLimiter(maxFailedRecoveries, recoveryWindow),
 	}
-}
-
-// SetMailer sets the sender for password reset emails.
-func (s *Service) SetMailer(m mail.Sender) {
-	s.mailer = m
 }
 
 // foldUsername brings a login name into the form it is stored and compared in.
@@ -85,15 +70,6 @@ func normalizeUsername(name string) (string, error) {
 	return u, nil
 }
 
-// normalizeEmail lowercases and checks an email address.
-func normalizeEmail(email string) (string, error) {
-	e := strings.ToLower(strings.TrimSpace(email))
-	if len(e) > 254 || !emailPattern.MatchString(e) {
-		return "", ErrInvalidEmail
-	}
-	return e, nil
-}
-
 // validatePassword checks the length of a new password.
 func validatePassword(password string) error {
 	if l := utf8.RuneCountInString(password); l < 8 || l > 256 {
@@ -108,61 +84,57 @@ func timestamp(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
-// Register creates an account and returns the new user ID.
-// The email address is required and used for password resets.
+// Register creates an account and returns the new user ID and its recovery
+// code. The code is the only way to reset a forgotten password, and it is not
+// stored in readable form, so the caller must show it to the user now.
 // The display name defaults to the username. setupData may be nil; otherwise
 // it runs in the same transaction as the user insert, so the account and its
 // starting data (such as the personal ledger) exist together or not at all.
-func (s *Service) Register(ctx context.Context, username, email, password, displayName string, setupData UserDataFunc) (string, error) {
+func (s *Service) Register(ctx context.Context, username, password, displayName string, setupData UserDataFunc) (userID, recoveryCode string, err error) {
 	u, err := normalizeUsername(username)
 	if err != nil {
-		return "", err
-	}
-	e, err := normalizeEmail(email)
-	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if err := validatePassword(password); err != nil {
-		return "", err
+		return "", "", err
 	}
 	name := strings.TrimSpace(displayName)
 	if name == "" {
 		name = u
 	}
 
+	// Hashed before the transaction: Argon2id takes a moment, and the
+	// database should not wait for it.
+	passwordHash := hashPassword(password)
+	recoveryCode, recoveryHash := newRecoveryCode()
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer tx.Rollback() // no effect after a successful Commit
 
 	id := randomHex(16)
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO user (id, name, username, email, password_hash, created_at)
+		INSERT INTO user (id, name, username, password_hash, recovery_hash, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)`,
-		id, name, u, e, hashPassword(password), timestamp(s.now()),
+		id, name, u, passwordHash, recoveryHash, timestamp(s.now()),
 	)
 	if store.IsUniqueViolation(err) {
-		// Both unique indexes are named, so the error says which value clashed.
-		switch {
-		case strings.Contains(err.Error(), "user_email_unique"):
-			return "", ErrEmailTaken
-		case strings.Contains(err.Error(), "user_username_unique"):
-			return "", ErrUsernameTaken
-		}
+		return "", "", ErrUsernameTaken
 	}
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if setupData != nil {
 		if err := setupData(ctx, tx, id); err != nil {
-			return "", err
+			return "", "", err
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return "", err
+		return "", "", err
 	}
-	return id, nil
+	return id, recoveryCode, nil
 }
 
 // Login checks the credentials and returns a new session token.
@@ -250,8 +222,7 @@ func (s *Service) FindUserID(ctx context.Context, username string) (string, erro
 	return id, err
 }
 
-// Profile is what a user may see about their own account. It leaves out the
-// email address on purpose, so it never leaves the server once stored.
+// Profile is what a user may see about their own account.
 type Profile struct {
 	UserID      string
 	Username    string
@@ -270,23 +241,73 @@ func (s *Service) Profile(ctx context.Context, userID string) (Profile, error) {
 	return p, err
 }
 
-// PurgeExpired removes sessions and password reset codes that are no longer
-// valid. It returns how many rows were removed.
+// PurgeExpired removes sessions that are no longer valid. It returns how many
+// were removed.
 func (s *Service) PurgeExpired(ctx context.Context) (int64, error) {
-	now := timestamp(s.now())
-	var removed int64
-	for _, table := range []string{"session", "password_reset"} {
-		res, err := s.db.ExecContext(ctx, `DELETE FROM `+table+` WHERE expires_at <= ?`, now)
-		if err != nil {
-			return removed, err
-		}
-		n, err := res.RowsAffected()
-		if err != nil {
-			return removed, err
-		}
-		removed += n
+	res, err := s.db.ExecContext(ctx, `DELETE FROM session WHERE expires_at <= ?`, timestamp(s.now()))
+	if err != nil {
+		return 0, err
 	}
-	return removed, nil
+	return res.RowsAffected()
+}
+
+// checkPassword confirms the current password of a logged-in user before a
+// sensitive change. Wrong guesses count towards the login limit of the
+// account, so a stolen session cannot be used to try passwords without limit.
+func (s *Service) checkPassword(ctx context.Context, userID, password string) error {
+	var username sql.NullString
+	var hash sql.NullString
+	err := s.db.QueryRowContext(ctx,
+		`SELECT username, password_hash FROM user WHERE id = ?`, userID,
+	).Scan(&username, &hash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrUnauthenticated
+	}
+	if err != nil {
+		return err
+	}
+	key := foldUsername(username.String)
+	now := s.now()
+	if s.loginFailures.blocked(key, now) {
+		return ErrTooManyAttempts
+	}
+	if !hash.Valid || !verifyPassword(password, hash.String) {
+		s.loginFailures.record(key, now)
+		return ErrWrongPassword
+	}
+	return nil
+}
+
+// ChangePassword sets a new password after checking the current one. All
+// other logins of the account end; the session in keepToken stays, so the
+// user does not have to log in again on the device they are using. The
+// recovery code stays the same.
+func (s *Service) ChangePassword(ctx context.Context, userID, keepToken, currentPassword, newPassword string) error {
+	if err := validatePassword(newPassword); err != nil {
+		return err
+	}
+	if err := s.checkPassword(ctx, userID, currentPassword); err != nil {
+		return err
+	}
+	newHash := hashPassword(newPassword)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() // no effect after a successful Commit
+
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE user SET password_hash = ? WHERE id = ?`, newHash, userID,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM session WHERE user_id = ? AND token_hash != ?`, userID, hashToken(keepToken),
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // UserDataFunc creates or removes what a user owns outside the auth tables.
@@ -295,18 +316,10 @@ type UserDataFunc func(ctx context.Context, tx *sql.Tx, userID string) error
 
 // DeleteAccount removes a user after checking the password. removeData runs in
 // the same transaction as the user deletion, so either all data is removed or
-// nothing is. Sessions and reset codes are removed by the database cascade.
+// nothing is. Sessions are removed by the database cascade.
 func (s *Service) DeleteAccount(ctx context.Context, userID, password string, removeData UserDataFunc) error {
-	var hash sql.NullString
-	err := s.db.QueryRowContext(ctx, `SELECT password_hash FROM user WHERE id = ?`, userID).Scan(&hash)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrUnauthenticated
-	}
-	if err != nil {
+	if err := s.checkPassword(ctx, userID, password); err != nil {
 		return err
-	}
-	if !hash.Valid || !verifyPassword(password, hash.String) {
-		return ErrWrongPassword
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -331,7 +344,7 @@ func hashToken(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// newToken returns 32 random bytes, encoded for use in a URL or a mail.
+// newToken returns 32 random bytes, encoded for use in a URL or a header.
 func newToken() string {
 	raw := make([]byte, 32)
 	rand.Read(raw) // never fails: crypto/rand aborts the program instead
