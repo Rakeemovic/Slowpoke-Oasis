@@ -56,6 +56,13 @@ export interface Transaction {
   can_delete: boolean;
 }
 
+/** A soft-deleted transaction. It has no can_* flags: the server checks the right when restoring. */
+export interface DeletedTransaction extends Omit<Transaction, "can_edit" | "can_delete"> {
+  deleted_at: string;
+  /** Who deleted it; null for a member who has left or deleted their account (rule X18). */
+  deleted_by_username: string | null;
+}
+
 /**
  * The other ledger of a transfer. ledger_id and name are missing when the user
  * cannot open that ledger, e.g. another member's personal ledger.
