@@ -3,10 +3,11 @@ import { useCallback, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 
 import { ledgers } from "@/api/endpoints";
-import type { Category, Transaction, TransactionChange } from "@/api/types";
+import type { Category, NewPotTransfer, Transaction, TransactionChange } from "@/api/types";
 import { BookingForm } from "@/components/booking-form";
 import { ConfirmPanel } from "@/components/confirm-panel";
 import { ErrorMessage } from "@/components/error-message";
+import { MoveForm } from "@/components/move-form";
 import { Screen } from "@/components/screen";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -40,7 +41,10 @@ export default function TransactionScreen() {
   // Only incomes and expenses have a form; transfers are shown as they are.
   const editable = tx.can_edit && (tx.type === "expense" || tx.type === "income");
 
-  async function save(values: TransactionChange) {
+  // A transfer between pots of this ledger has its own form.
+  const movable = tx.can_edit && tx.type === "transfer";
+
+  async function save(values: TransactionChange | NewPotTransfer) {
     await ledgers.updateTransaction(ledgerId, transactionId, values);
     router.back();
   }
@@ -49,6 +53,8 @@ export default function TransactionScreen() {
     <Screen>
       {editable ? (
         <BookingForm ledgerId={ledgerId} initial={toChange(tx)} onSubmit={save} />
+      ) : movable ? (
+        <MoveForm ledgerId={ledgerId} initial={toMove(tx)} onSubmit={save} />
       ) : (
         <Details tx={tx} categories={categories} showAuthor={kind !== "personal"} />
       )}
@@ -57,11 +63,23 @@ export default function TransactionScreen() {
   );
 }
 
+function toMove(tx: Transaction): NewPotTransfer {
+  return {
+    type: "transfer",
+    pot_id: tx.pot_id,
+    counterpart_pot_id: tx.counterpart_pot_id ?? "",
+    amount_cents: Math.abs(tx.amount_cents),
+    booked_on: tx.booked_on,
+    note: tx.note ?? "",
+  };
+}
+
 /** The form wants a positive amount and plain strings; the API sends signed values. */
 function toChange(tx: Transaction): TransactionChange {
   return {
     type: tx.type as TransactionChange["type"],
     category_id: tx.category_id ?? "",
+    pot_id: tx.pot_id,
     amount_cents: Math.abs(tx.amount_cents),
     booked_on: tx.booked_on,
     note: tx.note ?? "",
