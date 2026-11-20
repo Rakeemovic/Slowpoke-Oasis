@@ -2,8 +2,8 @@ import { Link, Stack, useLocalSearchParams } from "expo-router";
 import { useCallback } from "react";
 import { ActivityIndicator, Pressable, View } from "react-native";
 
-import { ledgers } from "@/api/endpoints";
-import type { Category, Transaction } from "@/api/types";
+import { ledgers, pots as potsApi } from "@/api/endpoints";
+import type { Category, Pot, Transaction } from "@/api/types";
 import { ErrorMessage } from "@/components/error-message";
 import { HeaderActions } from "@/components/header-actions";
 import { Screen } from "@/components/screen";
@@ -14,7 +14,7 @@ import { Text } from "@/components/ui/text";
 import { useLoader } from "@/hooks/use-loader";
 import { usePagedLoader } from "@/hooks/use-paged-loader";
 import { formatCents, formatSignedCents } from "@/lib/money";
-import { transactionTitle } from "@/lib/transactions";
+import { potSummary, transactionTitle } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
 
 export default function TransactionsScreen() {
@@ -27,8 +27,9 @@ export default function TransactionsScreen() {
   // In a personal ledger every booking is the user's own, so naming them is noise.
   const showAuthor = kind !== "personal";
 
-  // Category names are needed to show the rows, so both lists load.
+  // Category and pot names are needed to show the rows, so these lists load too.
   const categoryList = useLoader(useCallback(() => ledgers.categories(ledgerId), [ledgerId]));
+  const potList = useLoader(useCallback(() => potsApi.list(ledgerId), [ledgerId]));
   const list = usePagedLoader(
     useCallback((limit: number, offset: number) => ledgers.transactions(ledgerId, { limit, offset }), [ledgerId]),
   );
@@ -73,7 +74,7 @@ export default function TransactionsScreen() {
         </Link>
       )}
       {loading && !transactions && <ActivityIndicator />}
-      <ErrorMessage message={error ?? categoryList.error} onRetry={reload} />
+      <ErrorMessage message={error ?? categoryList.error ?? potList.error} onRetry={reload} />
       {transactions?.length === 0 && <Text variant="muted">No transactions yet. Tap “Add transaction” to book the first one.</Text>}
       {transactions && transactions.length > 0 && (
         <Card className="py-2">
@@ -83,6 +84,7 @@ export default function TransactionsScreen() {
                 key={tx.id}
                 tx={tx}
                 categories={categories ?? []}
+                pots={potList.data ?? []}
                 first={index === 0}
                 showAuthor={showAuthor}
                 kind={kind}
@@ -103,12 +105,14 @@ export default function TransactionsScreen() {
 function TransactionRow({
   tx,
   categories,
+  pots,
   first,
   showAuthor,
   kind,
 }: {
   tx: Transaction;
   categories: Category[];
+  pots: Pot[];
   first: boolean;
   showAuthor: boolean;
   kind?: string;
@@ -118,7 +122,7 @@ function TransactionRow({
   const isTransfer = tx.type === "transfer";
   const isIncoming = !isTransfer && tx.amount_cents > 0;
   const title = transactionTitle(tx, categories);
-  const details = [tx.booked_on, showAuthor && (tx.username ?? "Former member"), tx.note].filter(Boolean).join(" · ");
+  const details = [tx.booked_on, potSummary(tx, pots), showAuthor && (tx.username ?? "Former member"), tx.note].filter(Boolean).join(" · ");
 
   const row = (
     <View className={cn("flex-row items-center gap-3 px-4 py-3", !first && "border-t border-border")}>
