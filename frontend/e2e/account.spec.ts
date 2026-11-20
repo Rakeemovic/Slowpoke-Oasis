@@ -80,3 +80,18 @@ test("a signed-in user can change the password", async ({ page }) => {
   await signIn(page, username, "brand new password");
   await expectOverview(page);
 });
+
+test("the recovery code can be copied to the clipboard", async ({ page, context }) => {
+  // Chromium allows clipboard access on localhost once the permissions are granted.
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/register");
+  await page.getByLabel("Username").fill(uniqueUsername("acc"));
+  await page.getByLabel("Display name").fill("Copy");
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Create account" }).click();
+  const code = await recoveryCode(page);
+
+  await page.getByRole("button", { name: "Copy code" }).click();
+  await expect(page.getByRole("button", { name: "Copied" })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(code);
+});
