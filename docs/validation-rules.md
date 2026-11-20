@@ -57,10 +57,10 @@ Each rule is enforced either by the database (CHECK, UNIQUE, NOT NULL, foreign k
 | X12 | When a member leaves a household or deletes the account, the member's bookings and deletions in the household are handed over to the placeholder user `former-member`. They stay visible to the other members. | App |
 | X13 | `deleted_by` records who deleted a transaction. It is only set while the transaction is soft-deleted. | DB (CHECK) + App |
 | X14 | A transfer between two ledgers is booked as two legs: `transfer_out` (negative) in the source ledger and `transfer_in` (positive) in the target ledger. The legs have no category and no counterpart pot and point at each other with `linked_transaction_id`. They are created, deleted and restored together and cannot be edited. | DB (CHECK) + App |
-| X15 | New accounts need an email address. It is unique, case-insensitive, and used for password resets. | App + DB (unique index) |
+| X15 | Accounts have no email address; the app collects none. A forgotten password is reset with the recovery code (A4) or by the server operator (A9). | App |
 | X16 | When a ledger is deleted, the other leg of a transfer into or out of it stays in its own ledger and loses its link. From then on it is deleted and restored on its own. | DB (`ON DELETE SET NULL`) |
 | X17 | Transaction lists name the other side of a transfer between ledgers as `counterpart`: `kind` (`personal` or `household`) always, `ledger_id` and `name` only if the viewer may access that ledger. A member therefore never learns the ID or name of another member's personal ledger. Legs that lost their link (X16) have no counterpart. | App |
-| X18 | Transaction lists name the author of each booking by `username`, the same name the member list shows (never the display name or email). It is `null` for the `former-member` placeholder, so departed members stay anonymous. The list of deleted transactions names the deleting user the same way as `deleted_by_username`. | App |
+| X18 | Transaction lists name the author of each booking by `username`, the same name the member list shows (never the display name). It is `null` for the `former-member` placeholder, so departed members stay anonymous. The list of deleted transactions names the deleting user the same way as `deleted_by_username`. | App |
 | X19 | Transaction lists tell the viewer, per booking, whether they may change it: `can_edit` and `can_delete` follow the rules for editing and deleting below. A transfer between ledgers (X14) is never editable, and deleting one of its legs needs the right on both legs. The flags only let the app hide actions; the server still checks every change. | App |
 
 ## Permissions
@@ -71,7 +71,7 @@ Every member of a household may read its ledger and book in it. Changing an exis
 |---|---|
 | Edit a transaction | The author and the owner of the ledger. |
 | Delete or restore a transaction | The author. The owner may also delete or restore bookings of a departed member (X12), because nobody else could. For a leg of a transfer between ledgers (X14), the user must be allowed to change both legs, so a household owner cannot change a leg in someone else's personal ledger. |
-| See the members of a household | Every member. Only the user ID, username and role are shown; email addresses and other personal data stay hidden. |
+| See the members of a household | Every member. Only the user ID, username and role are shown; the display name and other personal data stay hidden. |
 | Add a household member | The household owner. |
 | Remove a household member | The household owner. Every member may leave by removing themselves. |
 | Hand over the owner role | The household owner, to another member. The previous owner becomes a regular member, so a household always has exactly one owner. The handover takes effect immediately. |
@@ -83,11 +83,12 @@ Every member of a household may read its ledger and book in it. Changing an exis
 | A1 | Username: 3 to 32 characters, lowercase letters, digits and underscore. Unique, ignoring case. | DB (unique index) + App |
 | A2 | Password: 8 to 256 characters. Only the Argon2id hash is stored. | App |
 | A3 | Session tokens: only the SHA-256 hash is stored. Valid for 30 days. | App |
-| A4 | Password reset: the code is sent by email, valid for 30 minutes, usable once and stored only as a hash. A new code replaces older ones. After a reset, all sessions of the account end. If the mail cannot be sent, the code is removed. | App |
-| A5 | The reset request answers the same way whether or not the address is registered. The mail is sent in the background, so neither the response time nor a mail error reveals it. A taken username or email gives one shared message. | App |
-| A6 | Rate limits: 10 failed logins per username within 15 minutes, 3 reset requests per address within an hour. Both count unknown names too. Above the limit the API answers 429. The counters are kept in memory and start again after a restart. | App |
+| A4 | Recovery code: six words from the EFF Large Wordlist (7776 words, about 77 bits), created at registration and shown only in that answer. Only its Argon2id hash is stored. With username, code and a new password (`POST /auth/recover`) the password is reset; the code is used up and the answer carries a new one. All sessions of the account end. Case and separators (spaces, commas) do not matter when typing the code. A new code is only issued after the code was used (or by A9), not on request. | App |
+| A5 | Recovery answers the same way (401, "wrong username or recovery code") for an unknown username and a wrong code; for unknown names a dummy hash is checked, so the response time matches. | App |
+| A6 | Rate limits: 10 failed logins per username within 15 minutes, 5 failed recoveries per username within an hour. Both count unknown names too. A wrong current password when changing the password or deleting the account counts as a failed login. A successful recovery clears both counters of the name. Above the limit the API answers 429. The counters are kept in memory and start again after a restart. | App |
 | A7 | The login token reaches the API as `Authorization: Bearer` (native apps) or as the `session` cookie (web app, login with `"cookie": true`; the token is then not in the response body). The cookie is HttpOnly, Secure and SameSite=Strict and lives as long as the session. `COOKIE_SECURE=false` drops only the Secure flag, for a home network without HTTPS; the server then logs a warning at startup. Any value other than a boolean stops the server. A bearer token takes precedence. Logout and account deletion clear the cookie. | App |
 | A8 | Requests authenticated by cookie must send the `X-Requested-With` header, otherwise 403 (CSRF protection). CORS is off unless `CORS_ORIGINS` lists exact origins; only those may send credentials and that header. | App |
+| A9 | Password change (`PUT /auth/password`) needs the current password. All other sessions of the account end; the one making the request stays. The recovery code stays the same. The server operator can run `server reset-password <username>` on the server: it sets a temporary password (four words) and a new recovery code, ends all sessions and prints both. It is not reachable over the network. | App |
 
 ## Notes
 

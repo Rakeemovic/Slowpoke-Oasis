@@ -97,7 +97,7 @@ func (s *Store) ListHouseholds(ctx context.Context, userID string) ([]Household,
 }
 
 // Member is a member of a household as other members see it. It deliberately
-// holds no personal data such as the email address.
+// holds no personal data such as the display name.
 type Member struct {
 	UserID   string
 	Username string

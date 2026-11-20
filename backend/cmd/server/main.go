@@ -1,9 +1,13 @@
 // Command server runs the Slowpoke-Oasis HTTP API.
+//
+// Usage:
+//
+//	server                           start the API
+//	server reset-password <username> give a user a new password and recovery code
 package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -16,23 +20,35 @@ import (
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/api"
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/auth"
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/ledger"
-	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/mail"
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/store"
 )
 
 const (
 	// cleanupInterval is how often expired data is removed: soft-deleted
-	// transactions past their retention, old sessions and old reset codes.
+	// transactions past their retention and old sessions.
 	cleanupInterval = time.Hour
 	// shutdownGrace is how long running requests may finish after a stop signal.
 	shutdownGrace = 10 * time.Second
 )
 
 func main() {
-	if err := run(); err != nil {
+	var err error
+	switch {
+	case len(os.Args) == 1:
+		err = run()
+	case os.Args[1] == "reset-password":
+		err = runResetPassword(os.Args[2:], os.Stdout)
+	default:
+		err = fmt.Errorf("unknown command %q\n%s", os.Args[1], usage)
+	}
+	if err != nil {
 		log.Fatal(err)
 	}
 }
+
+const usage = `usage:
+  server                            start the API
+  server reset-password <username>  give a user a new password and recovery code`
 
 // run starts the server and blocks until it is stopped with Ctrl+C or SIGTERM.
 // Returning an error instead of exiting lets the deferred cleanup happen.
@@ -53,15 +69,6 @@ func run() error {
 
 	ledgers := ledger.New(db)
 	accounts := auth.New(db)
-	sender, err := smtpFromEnv()
-	switch {
-	case errors.Is(err, mail.ErrNotConfigured):
-		log.Printf("SMTP_HOST is not set: password reset is disabled")
-	case err != nil:
-		return err
-	default:
-		accounts.SetMailer(sender)
-	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -119,9 +126,9 @@ func runCleanup(ctx context.Context, ledgers *ledger.Store, accounts *auth.Servi
 			log.Printf("purged %d deleted transactions", n)
 		}
 		if n, err := accounts.PurgeExpired(ctx); err != nil {
-			log.Printf("purge expired sessions and reset codes: %v", err)
+			log.Printf("purge expired sessions: %v", err)
 		} else if n > 0 {
-			log.Printf("purged %d expired sessions and reset codes", n)
+			log.Printf("purged %d expired sessions", n)
 		}
 
 		select {
@@ -153,25 +160,4 @@ func cookieSecureFromEnv() (bool, error) {
 		return false, fmt.Errorf("COOKIE_SECURE must be true or false, got %q", v)
 	}
 	return secure, nil
-}
-
-// smtpFromEnv reads the mail server settings from the environment. The server
-// works with a hosted provider or a self-hosted mail server, as long as it is
-// reachable over SMTP. Without SMTP_HOST it returns mail.ErrNotConfigured, and
-// password resets are disabled.
-func smtpFromEnv() (mail.SMTPSender, error) {
-	s := mail.SMTPSender{
-		Host:     os.Getenv("SMTP_HOST"),
-		Port:     envOr("SMTP_PORT", "587"),
-		Username: os.Getenv("SMTP_USER"),
-		Password: os.Getenv("SMTP_PASSWORD"),
-		From:     os.Getenv("SMTP_FROM"),
-	}
-	if s.Host == "" {
-		return mail.SMTPSender{}, mail.ErrNotConfigured
-	}
-	if s.From == "" {
-		return mail.SMTPSender{}, errors.New("SMTP_HOST is set but SMTP_FROM is missing: mails need a sender address")
-	}
-	return s, nil
 }
