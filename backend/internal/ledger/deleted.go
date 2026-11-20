@@ -26,10 +26,15 @@ type DeletedTransaction struct {
 
 // ListDeletedTransactions returns the transactions of a ledger that were
 // soft-deleted within the retention period, most recent deletion first.
-func (s *Store) ListDeletedTransactions(ctx context.Context, ledgerID string, now time.Time) ([]DeletedTransaction, error) {
+// Limit and offset page through the result; a limit of 0 returns everything.
+func (s *Store) ListDeletedTransactions(ctx context.Context, ledgerID string, now time.Time, limit, offset int) ([]DeletedTransaction, error) {
 	if ledgerID == "" {
 		return nil, ErrLedgerRequired
 	}
+	pc, pargs := pageClause(limit, offset)
+	args := append([]any{ledgerID, retentionCutoff(now)}, pargs...)
+	// The id breaks ties between deletions at the same moment, so pages keep
+	// a stable order and no entry shows up twice or not at all.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT `+transactionColumns+`,
 		       t.deleted_at, COALESCE(t.deleted_by, ''),
@@ -37,8 +42,8 @@ func (s *Store) ListDeletedTransactions(ctx context.Context, ledgerID string, no
 		FROM `+transactionTables+`
 		LEFT JOIN user deleter ON deleter.id = t.deleted_by
 		WHERE t.ledger_id = ? AND t.deleted_at IS NOT NULL AND t.deleted_at >= ?
-		ORDER BY t.deleted_at DESC`,
-		ledgerID, retentionCutoff(now),
+		ORDER BY t.deleted_at DESC, t.id`+pc,
+		args...,
 	)
 	if err != nil {
 		return nil, err

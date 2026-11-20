@@ -6,8 +6,8 @@ const API = "http://localhost:9090";
 // Requests authenticated by cookie must carry this header (rule A8).
 const HEADERS = { "X-Requested-With": "slowpoke-e2e" };
 
-/** Books `count` small expenses through the API: far faster than the form. */
-async function seedExpenses(page: Page, count: number): Promise<void> {
+/** Books `count` small expenses through the API (far faster than the form) and returns the ledger and their ids. */
+async function seedExpenses(page: Page, count: number): Promise<{ ledger: string; ids: string[] }> {
   const me = await (await page.request.get(`${API}/me`, { headers: HEADERS })).json();
   const ledger = me.personal_ledger_id as string;
   const category = await (
@@ -16,13 +16,16 @@ async function seedExpenses(page: Page, count: number): Promise<void> {
       data: { name: "Snacks", is_income: false },
     })
   ).json();
+  const ids: string[] = [];
   for (let i = 1; i <= count; i++) {
     const response = await page.request.post(`${API}/ledgers/${ledger}/transactions`, {
       headers: HEADERS,
       data: { type: "expense", category_id: category.id, amount_cents: 100, booked_on: "2026-01-01", note: `Snack ${i}` },
     });
     expect(response.ok()).toBeTruthy();
+    ids.push((await response.json()).id);
   }
+  return { ledger, ids };
 }
 
 test("a long list is shown in pages", async ({ page }) => {
@@ -45,4 +48,25 @@ test("a long list is shown in pages", async ({ page }) => {
   await page.goBack();
   await expect(page.getByText("Available today")).toBeVisible();
   await expect(rows).toHaveCount(105);
+});
+
+test("the list of deleted transactions is shown in pages", async ({ page }) => {
+  await register(page, uniqueUsername("page"));
+  const { ledger, ids } = await seedExpenses(page, 105);
+  for (const id of ids) {
+    const response = await page.request.delete(`${API}/ledgers/${ledger}/transactions/${id}`, { headers: HEADERS });
+    expect(response.ok()).toBeTruthy();
+  }
+  await openLedger(page, "Personal");
+  await page.getByRole("link", { name: "Deleted transactions" }).click();
+
+  const restoreButtons = page.getByRole("button", { name: /^Restore / });
+  await expect(restoreButtons).toHaveCount(100);
+  await page.getByRole("button", { name: "Load more" }).click();
+  await expect(restoreButtons).toHaveCount(105);
+  await expect(page.getByRole("button", { name: "Load more" })).toHaveCount(0);
+
+  // Restoring reloads the list; the entries already shown stay, minus the restored one.
+  await restoreButtons.first().click();
+  await expect(restoreButtons).toHaveCount(104);
 });

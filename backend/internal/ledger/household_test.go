@@ -120,7 +120,7 @@ func TestDeletionShowsDeleterAndCanBeRestoredWithinRetention(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	deleted, err := s.ListDeletedTransactions(ctx, "l1", now)
+	deleted, err := s.ListDeletedTransactions(ctx, "l1", now, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestDeletionShowsDeleterAndCanBeRestoredWithinRetention(t *testing.T) {
 	if err := s.RestoreTransaction(ctx, "l1", id, now); err != nil {
 		t.Fatalf("restore: %v", err)
 	}
-	deleted, _ = s.ListDeletedTransactions(ctx, "l1", now)
+	deleted, _ = s.ListDeletedTransactions(ctx, "l1", now, 0, 0)
 	if len(deleted) != 0 {
 		t.Errorf("%d deleted entries after restore, want 0", len(deleted))
 	}
@@ -158,7 +158,7 @@ func TestRestoreFailsAfterRetentionPeriod(t *testing.T) {
 	if err := s.RestoreTransaction(ctx, "l1", id, now); !errors.Is(err, ErrTransactionNotFound) {
 		t.Errorf("restore after 31 days: err = %v, want ErrTransactionNotFound", err)
 	}
-	deleted, _ := s.ListDeletedTransactions(ctx, "l1", now)
+	deleted, _ := s.ListDeletedTransactions(ctx, "l1", now, 0, 0)
 	if len(deleted) != 0 {
 		t.Errorf("%d entries listed after retention, want 0", len(deleted))
 	}
