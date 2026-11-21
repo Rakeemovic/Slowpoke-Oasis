@@ -68,6 +68,8 @@ test("a booking goes into a chosen pot and money moves between pots", async ({
   // The money sits in the savings pot, so nothing is available yet.
   await expect(balance(page, "100,00")).toBeVisible();
   await expect(shown(page, "0,00")).toBeVisible();
+  // With more than one pot the list names the pot of each booking.
+  await expect(transactionRow(page, "Salary")).toContainText("Holiday");
 
   // Move 30 € out of Holiday into the default pot.
   await openPots(page);
@@ -89,6 +91,7 @@ test("a booking goes into a chosen pot and money moves between pots", async ({
   await page.goBack();
   await expect(shown(page, "30,00")).toBeVisible();
   await expect(balance(page, "100,00")).toBeVisible();
+  await expect(transactionRow(page, "Transfer between pots")).toContainText("Holiday → Monthly");
 
   // The move can be edited: change the amount.
   await transactionRow(page, "Transfer between pots").click();
