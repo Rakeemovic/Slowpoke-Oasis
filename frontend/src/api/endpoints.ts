@@ -84,8 +84,11 @@ export const ledgers = {
     request<void>("DELETE", `/ledgers/${enc(ledgerId)}/transactions/${enc(id)}`),
 
   /** Soft-deleted transactions that can still be restored (they are removed for good after 30 days). */
-  deletedTransactions: (ledgerId: string) =>
-    request<DeletedTransaction[]>("GET", `/ledgers/${enc(ledgerId)}/transactions/deleted`),
+  deletedTransactions: (ledgerId: string, page: { limit: number; offset: number }) =>
+    request<DeletedTransaction[]>(
+      "GET",
+      `/ledgers/${enc(ledgerId)}/transactions/deleted?limit=${page.limit}&offset=${page.offset}`,
+    ),
 
   /** A transfer between ledgers comes back with both legs. */
   restoreTransaction: (ledgerId: string, id: string) =>

@@ -262,13 +262,18 @@ func (s *Server) deleteTransaction(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// GET /ledgers/{ledger}/transactions/deleted
+// GET /ledgers/{ledger}/transactions/deleted?limit=&offset=
 func (s *Server) listDeletedTransactions(w http.ResponseWriter, r *http.Request) {
 	userID, ok := s.requireLedgerAccess(w, r)
 	if !ok {
 		return
 	}
-	items, err := s.store.ListDeletedTransactions(r.Context(), r.PathValue("ledger"), s.now())
+	limit, offset, err := parsePaging(r.URL.Query())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	items, err := s.store.ListDeletedTransactions(r.Context(), r.PathValue("ledger"), s.now(), limit, offset)
 	if err != nil {
 		fail(w, err)
 		return
