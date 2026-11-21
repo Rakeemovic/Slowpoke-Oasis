@@ -1,8 +1,26 @@
-import type { Category, Counterpart, Transaction } from "@/api/types";
+import type { Category, Counterpart, Pot, Transaction } from "@/api/types";
 
 /** The heading of a transaction: its category, or what kind of transfer it is. */
 export function transactionTitle(tx: Pick<Transaction, "category_id" | "type" | "counterpart">, categories: Category[]): string {
   return categories.find((c) => c.id === tx.category_id)?.name ?? describeType(tx.type, tx.counterpart);
+}
+
+/**
+ * Which pot a transaction belongs to, for the list. A transfer between pots
+ * reads "from → to" (money leaves pot_id and enters counterpart_pot_id).
+ * With a single pot the name says nothing new, so there is none.
+ */
+export function potSummary(tx: Pick<Transaction, "type" | "pot_id" | "counterpart_pot_id">, pots: Pot[]): string | undefined {
+  if (pots.length < 2) {
+    return undefined;
+  }
+  const name = (id?: string) => pots.find((p) => p.id === id)?.name;
+  const from = name(tx.pot_id);
+  if (tx.type === "transfer") {
+    const to = name(tx.counterpart_pot_id);
+    return from && to ? `${from} → ${to}` : undefined;
+  }
+  return from;
 }
 
 /** Transfers between ledgers can only be deleted, never edited (rule X14). */
