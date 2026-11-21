@@ -81,10 +81,9 @@ func (s *Store) ListTransactions(ctx context.Context, f ListFilter) ([]Transacti
 	rc, rargs := rangeClause(f.From, f.To)
 	query += rc + ` ORDER BY t.booked_on DESC, t.created_at DESC`
 	args = append(args, rargs...)
-	if f.Limit > 0 {
-		query += ` LIMIT ? OFFSET ?`
-		args = append(args, f.Limit, f.Offset)
-	}
+	pc, pargs := pageClause(f.Limit, f.Offset)
+	query += pc
+	args = append(args, pargs...)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -101,6 +100,15 @@ func (s *Store) ListTransactions(ctx context.Context, f ListFilter) ([]Transacti
 		out = append(out, t)
 	}
 	return out, rows.Err()
+}
+
+// pageClause returns the LIMIT/OFFSET part of a list query and its arguments.
+// A limit of 0 means "everything", so there is no clause.
+func pageClause(limit, offset int) (string, []any) {
+	if limit <= 0 {
+		return "", nil
+	}
+	return ` LIMIT ? OFFSET ?`, []any{limit, offset}
 }
 
 // GetTransaction returns one non-deleted transaction of a ledger, or

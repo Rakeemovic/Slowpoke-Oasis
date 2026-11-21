@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Text } from "@/components/ui/text";
 import { useLoader } from "@/hooks/use-loader";
+import { usePagedLoader } from "@/hooks/use-paged-loader";
 import { errorMessage } from "@/lib/errors";
 import { formatCents, formatSignedCents } from "@/lib/money";
 import { transactionTitle } from "@/lib/transactions";
@@ -19,12 +20,13 @@ export default function DeletedTransactionsScreen() {
   const { ledgerId, kind } = useLocalSearchParams<{ ledgerId: string; kind?: string }>();
   const showAuthor = kind !== "personal";
 
-  const load = useCallback(
-    () => Promise.all([ledgers.deletedTransactions(ledgerId), ledgers.categories(ledgerId)]),
-    [ledgerId],
+  // Category names are needed to show the rows; the deleted entries come in pages.
+  const categoryList = useLoader(useCallback(() => ledgers.categories(ledgerId), [ledgerId]));
+  const list = usePagedLoader(
+    useCallback((limit: number, offset: number) => ledgers.deletedTransactions(ledgerId, { limit, offset }), [ledgerId]),
   );
-  const { data, error, loading, reload } = useLoader(load);
-  const [items, categories] = data ?? [];
+  const { items, error, loading, reload } = list;
+  const categories = categoryList.data;
 
   // Only one restore at a time, so the buttons cannot race each other.
   const [restoringId, setRestoringId] = useState<string>();
@@ -47,8 +49,8 @@ export default function DeletedTransactionsScreen() {
   return (
     <Screen>
       <Text variant="muted">Deleted transactions are removed for good 30 days after deletion.</Text>
-      {loading && !data && <ActivityIndicator />}
-      <ErrorMessage message={error} onRetry={reload} />
+      {loading && !items && <ActivityIndicator />}
+      <ErrorMessage message={error ?? categoryList.error} onRetry={reload} />
       <ErrorMessage message={restoreError} />
       {items?.length === 0 && <Text variant="muted">Nothing to restore.</Text>}
       {items && items.length > 0 && (
@@ -67,6 +69,11 @@ export default function DeletedTransactionsScreen() {
             ))}
           </CardContent>
         </Card>
+      )}
+      {list.hasMore && (
+        <Button variant="outline" onPress={list.loadMore} disabled={list.loadingMore}>
+          <Text>{list.loadingMore ? "Loading…" : "Load more"}</Text>
+        </Button>
       )}
     </Screen>
   );
