@@ -44,10 +44,14 @@ Each rule is enforced either by the database (CHECK, UNIQUE, NOT NULL, foreign k
 |---|---|---|
 | P1 | `amount_cents` is greater than or equal to 0. | DB |
 | P2 | The category and the pot belong to the same ledger. | DB (composite foreign keys) |
-| P3 | A category is planned in at most one monthly pot of a ledger, per month and in the templates. One-time pots are not limited. Otherwise the answer is 409. | DB (`period_plan`), App (templates) |
-| P4 | The plan of a month is copied from the templates of all active monthly pots once, on the first access in that month. Future months show the template without storing it; past months are never filled in afterwards. | App |
-| P5 | Only the plan of the current month can be changed, with `scope` `this_month` or `from_now_on` (also changes the template). One-time pots take no scope. Otherwise the answer is 400. | App |
+| P3 | A category is planned in at most one monthly pot of a ledger per month. Since P7 only the main pot is planned, so the rule always holds; the index stays for old data (409). | DB (`period_plan`) |
+| P4 | The plan of a month is copied from the template of the main pot once, on the first access in that month. Future months show the template without storing it; past months are never filled in afterwards. | App |
+| P5 | Only the plan of the current month can be changed, with `scope` `this_month` or `from_now_on` (also changes the template). Otherwise the answer is 400. | App |
 | P6 | Reports of a monthly pot cover one month (`month`, default the current one); `from`/`to` are rejected with 400. | App |
+| P7 | Only the main pot (default pot) of a ledger has a budget. Planning a category in another pot is rejected with 400; old plans of other pots stay stored but are no longer copied or changed. | App |
+| P8 | The budget (`GET /ledgers/{l}/budget`) shows per category the freely planned part and, below it, lines for monthly recurring payments and reserve rates. These lines are never part of the plan. The actual of the plan line counts only bookings in the main pot without `recurring_payment_id`. | App |
+| P9 | A recurring line is one occurrence of a monthly recurring payment of the main pot that is due in the month (since tracking started, R5), or any occurrence of the month with bookings in the main pot. Bookings count in the month of their due date (`recurring_due_on`), not of their booking date. A skipped occurrence stays visible with `skipped` and no planned amount. | App |
+| P10 | A reserve line shows the rate of an active reserve (R14) for the current month; future months show a preview (the current rate until the due date it saves for, afterwards the amount divided by the interval); past months show only the net transfers into the reserve (`planned_cents` null). Payments paid from a reserve do not weigh on the month: their occurrences appear in `reserve_dues` with the part the reserve covers today (`covered_cents`), skipped ones left out. | App |
 
 ## Recurring payments (`recurring_payment`, `recurring_skip`)
 
