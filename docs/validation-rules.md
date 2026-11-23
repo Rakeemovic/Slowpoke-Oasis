@@ -21,6 +21,7 @@ Each rule is enforced either by the database (CHECK, UNIQUE, NOT NULL, foreign k
 | K1 | Name is not empty after trimming and has at most 50 characters. Names are unique per ledger, case-insensitive. | DB |
 | K2 | A category that has transactions is archived, never deleted. | App |
 | K3 | Expense categories have `is_income = false`, income categories `is_income = true`. The transaction type must match. | App |
+| K4 | Every new ledger (personal or household) starts with 14 default categories (Salary, Other income, Groceries, Rent, Utilities, Transport, Insurance, Health, Eating out, Leisure, Clothing, Subscriptions, Household, Other). Users rename or archive them like any other category. Migration 0012 added them to existing ledgers that had no category at all. | App |
 
 ## Pots
 

@@ -22,7 +22,7 @@ func TestOnlyAuthorDeletesAndOwnerEditsOthers(t *testing.T) {
 	if err := s.AddHouseholdMember(ctx, hid, "carol"); err != nil {
 		t.Fatal(err)
 	}
-	cat, err := s.CreateCategory(ctx, lid, "Rent", false)
+	cat, err := s.CreateCategory(ctx, lid, "Garden", false)
 	if err != nil {
 		t.Fatal(err)
 	}

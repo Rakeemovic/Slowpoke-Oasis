@@ -73,3 +73,39 @@ func TestCategoryNamesAreUniquePerLedgerIgnoringCase(t *testing.T) {
 		t.Errorf("new name should be accepted: %v", err)
 	}
 }
+
+// Personal and household ledgers both start with the default categories
+// (rule K4), so a new user can book without creating a category first.
+func TestNewLedgersStartWithDefaultCategories(t *testing.T) {
+	_, s := setup(t)
+	ctx := context.Background()
+
+	personal, err := s.CreatePersonalLedger(ctx, "u1", "Savings", 0, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, household, err := s.CreateHousehold(ctx, "u1", "Flat", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, ledgerID := range []string{personal, household} {
+		got, err := s.ListCategories(ctx, ledgerID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != len(defaultCategories) {
+			t.Fatalf("ledger %s: got %d categories, want %d", ledgerID, len(got), len(defaultCategories))
+		}
+		income := map[string]bool{}
+		for _, c := range got {
+			income[c.Name] = c.IsIncome
+		}
+		for _, want := range defaultCategories {
+			isIncome, ok := income[want.name]
+			if !ok || isIncome != want.isIncome {
+				t.Errorf("ledger %s: category %q missing or wrong is_income", ledgerID, want.name)
+			}
+		}
+	}
+}

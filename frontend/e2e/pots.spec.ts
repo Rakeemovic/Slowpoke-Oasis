@@ -59,7 +59,6 @@ test("a booking goes into a chosen pot and money moves between pots", async ({
     kind: "Income",
     amount: "100",
     category: "Salary",
-    newCategory: true,
   });
   await page.getByRole("button", { name: "Holiday", exact: true }).click();
   await page.getByRole("button", { name: "Save" }).click();

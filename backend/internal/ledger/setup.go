@@ -57,7 +57,50 @@ func insertLedger(ctx context.Context, tx *sql.Tx, owner ledgerOwner, name strin
 	); err != nil {
 		return "", err
 	}
+	if err := insertDefaultCategories(ctx, tx, ledgerID); err != nil {
+		return "", err
+	}
 	return ledgerID, nil
+}
+
+// defaultCategory is a category every new ledger starts with (rule K4).
+type defaultCategory struct {
+	name     string
+	isIncome bool
+}
+
+// defaultCategories lets a new ledger book right away instead of starting
+// with an empty category list. Users rename or archive what they do not need.
+// Migration 0012 holds a copy of this list for ledgers that existed before;
+// a change here does not reach those ledgers.
+var defaultCategories = []defaultCategory{
+	{"Salary", true},
+	{"Other income", true},
+	{"Groceries", false},
+	{"Rent", false},
+	{"Utilities", false},
+	{"Transport", false},
+	{"Insurance", false},
+	{"Health", false},
+	{"Eating out", false},
+	{"Leisure", false},
+	{"Clothing", false},
+	{"Subscriptions", false},
+	{"Household", false},
+	{"Other", false},
+}
+
+// insertDefaultCategories adds the default categories to a new ledger in tx.
+func insertDefaultCategories(ctx context.Context, tx *sql.Tx, ledgerID string) error {
+	for _, c := range defaultCategories {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO category (id, ledger_id, name, is_income) VALUES (?, ?, ?, ?)`,
+			newID(), ledgerID, c.name, c.isIncome,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // CreatePersonalLedger creates a ledger owned by a user together with its

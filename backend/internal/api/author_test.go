@@ -25,7 +25,7 @@ func TestTransactionListNamesAuthor(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("add alice: status %d, body %s", rec.Code, rec.Body)
 	}
-	rec = doToken(t, h, http.MethodPost, "/ledgers/"+ledgerID+"/categories", bobToken, map[string]any{"name": "Groceries"})
+	rec = doToken(t, h, http.MethodPost, "/ledgers/"+ledgerID+"/categories", bobToken, map[string]any{"name": "Snacks"})
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create category: status %d, body %s", rec.Code, rec.Body)
 	}
