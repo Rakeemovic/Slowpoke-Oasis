@@ -232,10 +232,11 @@ type DeletedCategory struct {
 }
 
 // DeleteCategory removes a category (rule K2). Its transactions, including
-// soft-deleted ones, move to targetID, and its planned amounts are added to
-// the target's. The target must be another active category of the same kind
-// (rule K8). An empty targetID means the fallback category of that kind (rule
-// K6). Everything happens in one database transaction.
+// soft-deleted ones, move to targetID, its planned amounts are added to the
+// target's, and its recurring payments switch to the target. The target must
+// be another active category of the same kind (rule K8). An empty targetID
+// means the fallback category of that kind (rule K6). Everything happens in
+// one database transaction.
 func (s *Store) DeleteCategory(ctx context.Context, ledgerID, categoryID, targetID string) (DeletedCategory, error) {
 	var out DeletedCategory
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
@@ -250,6 +251,13 @@ func (s *Store) DeleteCategory(ctx context.Context, ledgerID, categoryID, target
 			return err
 		}
 		if err := movePlannedAmounts(ctx, tx, ledgerID, categoryID, out.TargetID); err != nil {
+			return err
+		}
+		// Recurring payments keep reminding, now with the new category.
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE recurring_payment SET category_id = ? WHERE ledger_id = ? AND category_id = ?`,
+			out.TargetID, ledgerID, categoryID,
+		); err != nil {
 			return err
 		}
 		res, err := tx.ExecContext(ctx,
@@ -370,11 +378,11 @@ func movePlannedAmounts(ctx context.Context, tx *sql.Tx, ledgerID, from, to stri
 	return nil
 }
 
-// AuthorizeCategoryChange checks whether a user may rename, archive or delete
-// the categories of a ledger (rule K9): the owner of a personal ledger, or the
-// owner of the household. Every member may still create categories.
-// It returns ErrNotOwner otherwise.
-func (s *Store) AuthorizeCategoryChange(ctx context.Context, userID, ledgerID string) error {
+// AuthorizeLedgerOwner checks whether a user owns a ledger: the owner of a
+// personal ledger, or the owner of the household. Only the owner may rename,
+// archive or delete categories (rule K9) and change recurring payments (rule
+// R8); every member may still create both. It returns ErrNotOwner otherwise.
+func (s *Store) AuthorizeLedgerOwner(ctx context.Context, userID, ledgerID string) error {
 	var isOwner bool
 	err := s.db.QueryRowContext(ctx,
 		`SELECT `+ownsLedger("l")+` FROM ledger l WHERE l.id = ?`,

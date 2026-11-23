@@ -158,9 +158,8 @@ func (s *Server) deletePlannedAmount(w http.ResponseWriter, r *http.Request) {
 // planChange builds a change of a planned amount from the path and the
 // date parameter. It writes the error response and returns false on failure.
 func (s *Server) planChange(w http.ResponseWriter, r *http.Request, scope ledger.PlanScope) (ledger.PlanChange, bool) {
-	today, err := ledger.Today(r.URL.Query().Get("date"), s.now())
-	if err != nil {
-		fail(w, err)
+	today, ok := s.today(w, r)
+	if !ok {
 		return ledger.PlanChange{}, false
 	}
 	return ledger.PlanChange{
