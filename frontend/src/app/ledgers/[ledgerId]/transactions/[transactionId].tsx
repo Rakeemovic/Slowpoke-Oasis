@@ -56,6 +56,8 @@ export default function TransactionScreen() {
           ledgerId={ledgerId}
           initial={toChange(tx)}
           canMarkSpontaneous={tx.user_id === me.user_id}
+          // A booking of a recurring payment stays an expense (rule R6).
+          expenseOnly={tx.recurring_payment_id !== undefined}
           onSubmit={save}
         />
       ) : movable ? (
