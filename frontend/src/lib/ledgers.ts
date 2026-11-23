@@ -9,13 +9,15 @@ export interface LedgerSummary {
   householdId?: string;
   /** A short line under the name, such as the user's role in the household. */
   description: string;
+  /** True for the personal ledger, and for a household ledger when the user owns the household. */
+  isOwner: boolean;
 }
 
 /** The user's personal ledger first, then the ledgers of all their households. */
 export async function loadMyLedgers(): Promise<LedgerSummary[]> {
   const [me, list] = await Promise.all([auth.me(), households.list()]);
   const personal: LedgerSummary[] = me.personal_ledger_id
-    ? [{ id: me.personal_ledger_id, name: "Personal", kind: "personal", description: "Only you can see this ledger" }]
+    ? [{ id: me.personal_ledger_id, name: "Personal", kind: "personal", description: "Only you can see this ledger", isOwner: true }]
     : [];
   return [
     ...personal,
@@ -25,6 +27,7 @@ export async function loadMyLedgers(): Promise<LedgerSummary[]> {
       kind: "household" as const,
       householdId: h.id,
       description: h.role === "owner" ? "Owner" : "Member",
+      isOwner: h.role === "owner",
     })),
   ];
 }

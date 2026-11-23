@@ -56,11 +56,18 @@ export default function TransactionsScreen() {
           </Button>
         </Link>
       </View>
-      <Link href={{ pathname: "/ledgers/[ledgerId]/pots", params: { ledgerId } }} asChild>
-        <Button variant="outline">
-          <Text>Pots</Text>
-        </Button>
-      </Link>
+      <View className="flex-row gap-2">
+        <Link href={{ pathname: "/ledgers/[ledgerId]/pots", params: { ledgerId } }} asChild>
+          <Button className="flex-1" variant="outline">
+            <Text>Pots</Text>
+          </Button>
+        </Link>
+        <Link href={{ pathname: "/ledgers/[ledgerId]/categories", params: { ledgerId } }} asChild>
+          <Button className="flex-1" variant="outline">
+            <Text>Categories</Text>
+          </Button>
+        </Link>
+      </View>
       <Link href={{ pathname: "/ledgers/[ledgerId]/deleted", params: { ledgerId, kind } }} asChild>
         <Button variant="outline">
           <Text>Deleted transactions</Text>
@@ -127,7 +134,10 @@ function TransactionRow({
   const row = (
     <View className={cn("flex-row items-center gap-3 px-4 py-3", !first && "border-t border-border")}>
       <View className="flex-1 gap-0.5">
-        <Text className="font-medium">{title}</Text>
+        <Text className="font-medium">
+          {title}
+          {tx.is_spontaneous && " ⚡"}
+        </Text>
         <Text variant="muted" numberOfLines={1}>
           {details}
         </Text>
