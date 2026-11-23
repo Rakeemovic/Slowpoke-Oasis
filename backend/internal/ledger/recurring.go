@@ -26,7 +26,10 @@ type NewRecurringPayment struct {
 	Name        string
 	AmountCents int64
 	CategoryID  string
-	PotID       string // empty means the ledger's default pot
+	// PotID is the pot to book from; empty means the ledger's default pot. A
+	// payment due every few months books from its own reserve instead and
+	// takes no pot (rule R10).
+	PotID string
 	Schedule
 	// Today is the app's local date (YYYY-MM-DD). Occurrences due before it
 	// are never open (rule R5).
@@ -43,6 +46,9 @@ type RecurringPayment struct {
 	Schedule
 	TrackedFrom string
 	Archived    bool
+	// ReservePotID is the active reserve of the payment, or "" (rule R10). It
+	// stays when the payment is archived or becomes monthly.
+	ReservePotID string
 }
 
 // RecurringPaymentUpdate changes some fields of a recurring payment. Nil
@@ -86,6 +92,9 @@ func (s *Store) CreateRecurringPayment(ctx context.Context, in NewRecurringPayme
 	if !validDate(in.Today) {
 		return "", ErrInvalidDate
 	}
+	if in.PotID != "" && in.IntervalMonths > 1 {
+		return "", ErrReservePotFixed
+	}
 
 	id := newID()
 	err = s.inTx(ctx, func(tx *sql.Tx) error {
@@ -94,6 +103,9 @@ func (s *Store) CreateRecurringPayment(ctx context.Context, in NewRecurringPayme
 			return err
 		}
 		if err := ensurePotActive(ctx, tx, in.LedgerID, potID); err != nil {
+			return err
+		}
+		if err := ensurePotChoosable(ctx, tx, in.LedgerID, potID, id); err != nil {
 			return err
 		}
 		if err := ensureCategoryFits(ctx, tx, in.LedgerID, in.CategoryID, TypeExpense, true); err != nil {
@@ -107,7 +119,15 @@ func (s *Store) CreateRecurringPayment(ctx context.Context, in NewRecurringPayme
 			id, in.LedgerID, name, in.AmountCents, in.CategoryID, potID,
 			in.IntervalMonths, in.DueDay, in.FirstMonth, nullIfEmpty(in.LastMonth), in.Today, timestamp(now),
 		)
-		return err
+		if err != nil {
+			return err
+		}
+		// The reserve refers to the payment, so it comes second (rule R10).
+		p := RecurringPayment{ID: id, Name: name, AmountCents: in.AmountCents, PotID: potID, Schedule: in.Schedule}
+		if err := syncReserve(ctx, tx, in.LedgerID, &p); err != nil {
+			return err
+		}
+		return setPaymentPot(ctx, tx, id, potID, p.PotID)
 	})
 	if err != nil {
 		return "", err
@@ -127,11 +147,14 @@ func recurringCategoryError(err error) error {
 // recurringColumns lists the columns of a RecurringPayment, in the order of
 // scanTargets.
 const recurringColumns = `id, name, amount_cents, category_id, pot_id,
-	interval_months, due_day, first_month, COALESCE(last_month, ''), tracked_from, archived`
+	interval_months, due_day, first_month, COALESCE(last_month, ''), tracked_from, archived,
+	COALESCE((SELECT p.id FROM pot p
+	          WHERE p.reserve_for = recurring_payment.id AND p.archived = 0), '')`
 
 func (p *RecurringPayment) scanTargets() []any {
 	return []any{&p.ID, &p.Name, &p.AmountCents, &p.CategoryID, &p.PotID,
-		&p.IntervalMonths, &p.DueDay, &p.FirstMonth, &p.LastMonth, &p.TrackedFrom, &p.Archived}
+		&p.IntervalMonths, &p.DueDay, &p.FirstMonth, &p.LastMonth, &p.TrackedFrom, &p.Archived,
+		&p.ReservePotID}
 }
 
 // ListRecurringPayments returns all recurring payments of a ledger, archived
@@ -188,7 +211,13 @@ func (s *Store) UpdateRecurringPayment(ctx context.Context, ledgerID, id string,
 		if err != nil {
 			return err
 		}
+		if p.savesInReserve() && p.PotID != old.PotID {
+			return ErrReservePotFixed
+		}
 		if err := checkChangedReferences(ctx, tx, ledgerID, old, p); err != nil {
+			return err
+		}
+		if err := syncReserve(ctx, tx, ledgerID, &p); err != nil {
 			return err
 		}
 		if !p.Schedule.sameDates(old.Schedule) || (old.Archived && !p.Archived) {
@@ -247,7 +276,19 @@ func checkChangedReferences(ctx context.Context, tx *sql.Tx, ledgerID string, ol
 		}
 	}
 	if p.PotID != old.PotID {
-		return ensurePotActive(ctx, tx, ledgerID, p.PotID)
+		if err := ensurePotActive(ctx, tx, ledgerID, p.PotID); err != nil {
+			return err
+		}
+		return ensurePotChoosable(ctx, tx, ledgerID, p.PotID, p.ID)
 	}
 	return nil
+}
+
+// setPaymentPot stores the pot a payment books from, if it changed.
+func setPaymentPot(ctx context.Context, tx *sql.Tx, paymentID, oldPotID, potID string) error {
+	if potID == oldPotID {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, `UPDATE recurring_payment SET pot_id = ? WHERE id = ?`, potID, paymentID)
+	return err
 }

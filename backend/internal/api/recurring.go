@@ -21,6 +21,9 @@ type recurringPaymentResponse struct {
 	// NextDueOn is the first due date from today on, booked or not; null when
 	// the payment has ended.
 	NextDueOn *string `json:"next_due_on"`
+	// ReservePotID is the active reserve of the payment (rule R10), also
+	// after it was archived or became monthly; null if there is none.
+	ReservePotID *string `json:"reserve_pot_id"`
 }
 
 func newRecurringPaymentResponse(p ledger.RecurringPayment, today string) recurringPaymentResponse {
@@ -36,6 +39,7 @@ func newRecurringPaymentResponse(p ledger.RecurringPayment, today string) recurr
 		LastMonth:      nullIfEmpty(p.LastMonth),
 		Archived:       p.Archived,
 		NextDueOn:      nullIfEmpty(p.NextDueOn(today)),
+		ReservePotID:   nullIfEmpty(p.ReservePotID),
 	}
 }
 
@@ -238,4 +242,52 @@ func (s *Server) undoSkip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// reserveRateResponse is the rate of one reserve in the current payday period.
+type reserveRateResponse struct {
+	RecurringPaymentID string `json:"recurring_payment_id"`
+	Name               string `json:"name"`
+	AmountCents        int64  `json:"amount_cents"`
+	PotID              string `json:"pot_id"`
+	DueOn              string `json:"due_on"`
+	Periods            int    `json:"periods"`
+	BalanceCents       int64  `json:"balance_cents"`
+	RateCents          int64  `json:"rate_cents"`
+	SavedCents         int64  `json:"saved_cents"`
+	OpenCents          int64  `json:"open_cents"`
+}
+
+// GET /ledgers/{ledger}/recurring-payments/reserves?date=YYYY-MM-DD
+// Lists the rates of the current payday period for the active reserves
+// (rule R14).
+func (s *Server) listReserveRates(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireLedgerAccess(w, r); !ok {
+		return
+	}
+	today, ok := s.today(w, r)
+	if !ok {
+		return
+	}
+	rates, err := s.store.ReserveRates(r.Context(), r.PathValue("ledger"), today)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	out := make([]reserveRateResponse, 0, len(rates))
+	for _, rate := range rates {
+		out = append(out, reserveRateResponse{
+			RecurringPaymentID: rate.Payment.ID,
+			Name:               rate.Payment.Name,
+			AmountCents:        rate.Payment.AmountCents,
+			PotID:              rate.Payment.ReservePotID,
+			DueOn:              rate.DueOn,
+			Periods:            rate.Periods,
+			BalanceCents:       rate.BalanceCents,
+			RateCents:          rate.RateCents,
+			SavedCents:         rate.SavedCents,
+			OpenCents:          rate.OpenCents,
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
 }

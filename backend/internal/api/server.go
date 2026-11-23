@@ -76,6 +76,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /ledgers/{ledger}/recurring-payments", s.listRecurringPayments)
 	mux.HandleFunc("POST /ledgers/{ledger}/recurring-payments", s.createRecurringPayment)
 	mux.HandleFunc("GET /ledgers/{ledger}/recurring-payments/due", s.listOpenOccurrences)
+	mux.HandleFunc("GET /ledgers/{ledger}/recurring-payments/reserves", s.listReserveRates)
 	mux.HandleFunc("PATCH /ledgers/{ledger}/recurring-payments/{payment}", s.updateRecurringPayment)
 	mux.HandleFunc("PUT /ledgers/{ledger}/recurring-payments/{payment}/skips/{due_on}", s.skipOccurrence)
 	mux.HandleFunc("DELETE /ledgers/{ledger}/recurring-payments/{payment}/skips/{due_on}", s.undoSkip)

@@ -52,6 +52,9 @@ var statusByError = []struct {
 		ledger.ErrRecurringLinkRequired,
 		ledger.ErrNotAnOccurrence,
 		ledger.ErrInvalidCategoryScope,
+		ledger.ErrReservePotFixed,
+		ledger.ErrPotIsReserve,
+		ledger.ErrTopUpNeedsReserve,
 		auth.ErrInvalidUsername,
 		auth.ErrInvalidPassword,
 	}},
@@ -94,6 +97,8 @@ var statusByError = []struct {
 		ledger.ErrRecurringArchived,
 		ledger.ErrOccurrenceBooked,
 		ledger.ErrOccurrenceSkipped,
+		ledger.ErrReserveShort,
+		ledger.ErrReserveInUse,
 		auth.ErrUsernameTaken,
 	}},
 	{http.StatusTooManyRequests, []error{
