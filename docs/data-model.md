@@ -26,7 +26,7 @@ A container for categories, pots and transactions. It belongs to exactly one use
 ### Categories
 Categories belong to a ledger. The personal ledger has its own categories, and the household ledger has its own.
 
-- `category`: id, ledger_id, name, is_income, archived. Names are unique per ledger. The category list also contains archived categories, because older transactions still refer to them.
+- `category`: id, ledger_id, name, is_income, archived. Names are unique per ledger. The category list also contains archived categories, because older transactions still refer to them. New ledgers start with a set of default categories (rule K4).
 
 ### Pots
 A pot groups planned amounts and collects transactions.

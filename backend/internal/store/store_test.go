@@ -116,6 +116,48 @@ func TestPrimaryLedgerMigrationMarksOldestPersonalLedger(t *testing.T) {
 	}
 }
 
+// Ledgers from before migration 0012 without any category get the defaults;
+// ledgers that already have categories, even only archived ones, keep them.
+func TestDefaultCategoryMigrationFillsOnlyEmptyLedgers(t *testing.T) {
+	old, path := openSchemaBefore(t, "0012_default_categories.sql")
+	seed := []string{
+		`INSERT INTO user (id, name, created_at) VALUES ('u1', 'Alice', '2026-01-01T00:00:00Z')`,
+		`INSERT INTO ledger (id, name, user_id, created_at) VALUES ('empty', 'Personal', 'u1', '2026-01-01T00:00:00Z')`,
+		`INSERT INTO ledger (id, name, user_id, created_at) VALUES ('own', 'Savings', 'u1', '2026-01-01T00:00:00Z')`,
+		`INSERT INTO category (id, ledger_id, name, archived) VALUES ('c1', 'own', 'Old', 1)`,
+	}
+	for _, q := range seed {
+		if _, err := old.Exec(q); err != nil {
+			t.Fatalf("seed %q: %v", q, err)
+		}
+	}
+	old.Close()
+
+	db, err := Open(path)
+	if err != nil {
+		t.Fatalf("upgrade: %v", err)
+	}
+	defer db.Close()
+
+	counts := map[string]int{"empty": 14, "own": 1}
+	for ledgerID, want := range counts {
+		var got int
+		if err := db.QueryRow(`SELECT count(*) FROM category WHERE ledger_id = ?`, ledgerID).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("ledger %s: %d categories, want %d", ledgerID, got, want)
+		}
+	}
+	var badIDs int
+	if err := db.QueryRow(`SELECT count(*) FROM category WHERE ledger_id = 'empty' AND (length(id) != 32 OR id != lower(id))`).Scan(&badIDs); err != nil {
+		t.Fatal(err)
+	}
+	if badIDs != 0 {
+		t.Errorf("%d category IDs are not 32 lower-case hex characters", badIDs)
+	}
+}
+
 // Transfers between ledgers that were booked before migration 0007 must
 // survive the table rebuild with their links, and afterwards a ledger with
 // one leg of such a transfer can be deleted.
