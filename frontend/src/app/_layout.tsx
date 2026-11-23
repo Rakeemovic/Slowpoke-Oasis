@@ -67,6 +67,9 @@ function RootNavigator() {
           <Stack.Screen name="ledgers/[ledgerId]/categories/index" options={{ title: "Categories" }} />
           <Stack.Screen name="ledgers/[ledgerId]/categories/new" options={{ title: "New category" }} />
           <Stack.Screen name="ledgers/[ledgerId]/categories/[categoryId]" options={{ title: "Category" }} />
+          <Stack.Screen name="ledgers/[ledgerId]/recurring/index" options={{ title: "Recurring payments" }} />
+          <Stack.Screen name="ledgers/[ledgerId]/recurring/new" options={{ title: "New recurring payment" }} />
+          <Stack.Screen name="ledgers/[ledgerId]/recurring/[paymentId]" options={{ title: "Recurring payment" }} />
           <Stack.Screen name="ledgers/[ledgerId]/transactions/[transactionId]" options={{ title: "Transaction" }} />
           <Stack.Screen name="households/[householdId]/members" options={{ title: "Members" }} />
         </Stack.Protected>
