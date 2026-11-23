@@ -164,6 +164,45 @@ export interface Pot {
   balance_cents: number;
 }
 
+/**
+ * Which months a change to the plan of a monthly pot affects (rule P5):
+ * only the current month, or also the template for the months to come.
+ */
+export type PlanScope = "this_month" | "from_now_on";
+
+/**
+ * Where the planned amounts of a summary come from: "pot" (one-time pot),
+ * "month" (stored plan of the month), "preview" (future month, from the
+ * template) or "none" (past month without a plan).
+ */
+export type PlanSource = "pot" | "month" | "preview" | "none";
+
+/** Plan versus actual of one category. Only categories with a plan or a booking appear. */
+export interface PlanLine {
+  category_id: string;
+  name: string;
+  is_income: boolean;
+  /** 0 when the category is not planned. */
+  planned_cents: number;
+  /** Spent (expenses) or received (income), always positive. */
+  actual_cents: number;
+  /** What is left of the plan: planned − spent for expenses, received − planned for income. */
+  difference_cents: number;
+}
+
+export interface PotSummary {
+  pot_id: string;
+  /** YYYY-MM for monthly pots, empty for one-time pots. */
+  month: string;
+  plan_source: PlanSource;
+  /** First and last day covered, YYYY-MM-DD; empty when not limited. */
+  from: string;
+  to: string;
+  lines: PlanLine[];
+  transfers_in_cents: number;
+  transfers_out_cents: number;
+}
+
 /** What a new pot needs. A target of 0 or a missing one means no goal. */
 export interface NewPot {
   name: string;
