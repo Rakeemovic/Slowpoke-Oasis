@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from "expo-router";
+import { Link, router, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 
@@ -40,6 +40,11 @@ export default function PotScreen() {
         hideGoal={pot.is_default}
         onSubmit={save}
       />
+      <Link href={{ pathname: "/ledgers/[ledgerId]/pots/[potId]/plan", params: { ledgerId, potId } }} asChild>
+        <Button variant="outline">
+          <Text>Plan</Text>
+        </Button>
+      </Link>
       {/* Rule T2: the default pot is never archived. */}
       {!pot.is_default && <ArchiveSection ledgerId={ledgerId} pot={pot} />}
     </Screen>
