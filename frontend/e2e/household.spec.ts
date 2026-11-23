@@ -16,7 +16,7 @@ test("a transfer moves money into a household and deleting it undoes both sides"
   await register(page, uniqueUsername("hh"));
   await createHousehold(page, "Oasis");
   await openLedger(page, "Personal");
-  await book(page, { kind: "Income", amount: "100", category: "Salary", newCategory: true });
+  await book(page, { kind: "Income", amount: "100", category: "Salary" });
 
   await page.getByRole("link", { name: "Transfer" }).click();
   await page.getByRole("button", { name: "Oasis", exact: true }).click();
