@@ -2,8 +2,9 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 
-import { recurring } from "@/api/endpoints";
-import type { RecurringPayment, RecurringPaymentInput } from "@/api/types";
+import { ledgers, pots, recurring } from "@/api/endpoints";
+import type { Pot, RecurringPayment, RecurringPaymentInput } from "@/api/types";
+import { ConfirmPanel } from "@/components/confirm-panel";
 import { ErrorMessage } from "@/components/error-message";
 import { RecurringForm } from "@/components/recurring-form";
 import { Screen } from "@/components/screen";
@@ -12,12 +13,28 @@ import { Text } from "@/components/ui/text";
 import { useLoader } from "@/hooks/use-loader";
 import { today } from "@/lib/dates";
 import { errorMessage } from "@/lib/errors";
+import { formatCents } from "@/lib/money";
+import { defaultPot } from "@/lib/pots";
 
-/** Owner only (rule R8): change a recurring payment, archive it or bring it back. */
+/**
+ * Owner only (rule R8): change a recurring payment, archive it or bring it
+ * back. When its reserve is no longer needed (archived, or now monthly), the
+ * screen offers to move what is left to the default pot and archive the
+ * reserve; declined, the reserve stays an ordinary pot.
+ */
 export default function RecurringPaymentScreen() {
   const { ledgerId, paymentId } = useLocalSearchParams<{ ledgerId: string; paymentId: string }>();
   const { data, error, loading, reload } = useLoader(useCallback(() => recurring.list(ledgerId, today()), [ledgerId]));
   const payment = data?.find((p) => p.id === paymentId);
+  const [leftover, setLeftover] = useState<Leftover>();
+
+  if (leftover) {
+    return (
+      <Screen>
+        <LeftoverOffer ledgerId={ledgerId} leftover={leftover} />
+      </Screen>
+    );
+  }
 
   if (!data || !payment) {
     return (
@@ -30,7 +47,7 @@ export default function RecurringPaymentScreen() {
 
   async function save(values: RecurringPaymentInput) {
     await recurring.update(ledgerId, paymentId, values, today());
-    router.back();
+    await afterChange(ledgerId, payment!, values.interval_months > 1 && !payment!.archived, setLeftover);
   }
 
   return (
@@ -40,7 +57,7 @@ export default function RecurringPaymentScreen() {
       <Text variant="muted">
         Changing how often or on which day it is due counts from today: earlier due dates are not shown as overdue.
       </Text>
-      <ArchiveSection ledgerId={ledgerId} payment={payment} />
+      <ArchiveSection ledgerId={ledgerId} payment={payment} onLeftover={setLeftover} />
     </Screen>
   );
 }
@@ -58,7 +75,15 @@ function toInput(p: RecurringPayment): RecurringPaymentInput {
   };
 }
 
-function ArchiveSection({ ledgerId, payment }: { ledgerId: string; payment: RecurringPayment }) {
+function ArchiveSection({
+  ledgerId,
+  payment,
+  onLeftover,
+}: {
+  ledgerId: string;
+  payment: RecurringPayment;
+  onLeftover: (leftover: Leftover) => void;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -67,7 +92,7 @@ function ArchiveSection({ ledgerId, payment }: { ledgerId: string; payment: Recu
     setError(undefined);
     try {
       await recurring.update(ledgerId, payment.id, { archived }, today());
-      router.back();
+      await afterChange(ledgerId, payment, !archived && payment.interval_months > 1, onLeftover);
     } catch (e) {
       setError(errorMessage(e));
       setBusy(false);
@@ -90,5 +115,82 @@ function ArchiveSection({ ledgerId, payment }: { ledgerId: string; payment: Recu
       )}
       <ErrorMessage message={error} />
     </View>
+  );
+}
+
+/** A reserve its payment no longer needs, and the pot its money can go back to. */
+interface Leftover {
+  reserve: Pot;
+  defaultPotId: string;
+}
+
+/**
+ * After a change, either goes back or, when the payment had an active reserve
+ * that it no longer saves in, hands that reserve to onLeftover.
+ */
+async function afterChange(
+  ledgerId: string,
+  before: RecurringPayment,
+  stillSaves: boolean,
+  onLeftover: (leftover: Leftover) => void,
+) {
+  const hadReserve = before.reserve_pot_id && before.interval_months > 1 && !before.archived;
+  if (hadReserve && !stillSaves) {
+    const list = await pots.list(ledgerId).catch(() => []);
+    const reserve = list.find((p) => p.id === before.reserve_pot_id && !p.archived);
+    const defaultPotId = defaultPot(list)?.id;
+    if (reserve && defaultPotId) {
+      onLeftover({ reserve, defaultPotId });
+      return;
+    }
+  }
+  router.back();
+}
+
+function LeftoverOffer({ ledgerId, leftover }: { ledgerId: string; leftover: Leftover }) {
+  const { reserve, defaultPotId } = leftover;
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const amount = formatCents(reserve.balance_cents);
+  const message =
+    reserve.balance_cents > 0
+      ? `The payment no longer saves in its reserve “${reserve.name}”, which still holds ${amount}. Move it to the default pot and archive the reserve?`
+      : `The payment no longer saves in its reserve “${reserve.name}”. Archive the reserve?`;
+
+  async function clearReserve() {
+    setBusy(true);
+    setError(undefined);
+    try {
+      if (reserve.balance_cents > 0) {
+        await ledgers.createTransaction(ledgerId, {
+          type: "transfer",
+          pot_id: reserve.id,
+          counterpart_pot_id: defaultPotId,
+          amount_cents: reserve.balance_cents,
+          booked_on: today(),
+        });
+      }
+      await pots.update(ledgerId, reserve.id, { archived: true });
+      router.back();
+    } catch (e) {
+      setError(errorMessage(e));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <Text variant="muted">Saved.</Text>
+      <ConfirmPanel
+        tone="default"
+        message={message}
+        confirmLabel={reserve.balance_cents > 0 ? `Move ${amount} and archive` : "Archive reserve"}
+        busy={busy}
+        onConfirm={clearReserve}
+        onCancel={() => router.back()}
+      />
+      <Text variant="muted">Cancel keeps “{reserve.name}” as an ordinary pot.</Text>
+      <ErrorMessage message={error} />
+    </>
   );
 }

@@ -14,12 +14,14 @@ import { bookingProblem } from "@/lib/booking";
 import { today } from "@/lib/dates";
 import { errorMessage } from "@/lib/errors";
 import { centsToAmountInput, parseAmountToCents } from "@/lib/money";
-import { potLabel, selectablePots } from "@/lib/pots";
+import { defaultPot, potLabel, selectablePots } from "@/lib/pots";
 
 /**
  * The form for moving money from one pot to another in the same ledger, used
  * both for a new move and to edit an existing one. onSubmit saves the values
- * and throws on failure; the form shows the error.
+ * and throws on failure; the form shows the error. `initial` may prefill only
+ * some fields; without a "from" pot, a prefilled move starts from the default
+ * pot, e.g. a rate into a reserve.
  */
 export function MoveForm({
   ledgerId,
@@ -27,14 +29,15 @@ export function MoveForm({
   onSubmit,
 }: {
   ledgerId: string;
-  initial?: NewPotTransfer;
+  initial?: Partial<NewPotTransfer>;
   onSubmit: (values: NewPotTransfer) => Promise<void>;
 }) {
   const potList = useLoader(useCallback(() => pots.list(ledgerId), [ledgerId]));
 
-  const [fromId, setFromId] = useState<string | undefined>(initial?.pot_id);
+  const [chosenFromId, setFromId] = useState<string | undefined>(initial?.pot_id);
+  const fromId = chosenFromId ?? (initial ? defaultPot(potList.data ?? [])?.id : undefined);
   const [toId, setToId] = useState<string | undefined>(initial?.counterpart_pot_id);
-  const [amount, setAmount] = useState(initial ? centsToAmountInput(initial.amount_cents) : "");
+  const [amount, setAmount] = useState(initial?.amount_cents ? centsToAmountInput(initial.amount_cents) : "");
   const [bookedOn, setBookedOn] = useState(initial?.booked_on ?? today);
   const [note, setNote] = useState(initial?.note ?? "");
   const [error, setError] = useState<string>();
