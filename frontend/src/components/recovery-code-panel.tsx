@@ -1,3 +1,5 @@
+import * as Clipboard from "expo-clipboard";
+import { useState } from "react";
 import { View } from "react-native";
 
 import { Button } from "@/components/ui/button";
@@ -19,6 +21,15 @@ export function RecoveryCodePanel({
   busy: boolean;
   onContinue: () => void;
 }) {
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+
+  async function copyCode() {
+    // isSensitive keeps the code out of Android's clipboard preview.
+    // On web the browser may refuse; then the user can still select the text.
+    const saved = await Clipboard.setStringAsync(code, { android: { isSensitive: true } }).catch(() => false);
+    setCopyState(saved ? "copied" : "failed");
+  }
+
   return (
     <View className="gap-4">
       <Text variant="h3">Your recovery code</Text>
@@ -31,6 +42,12 @@ export function RecoveryCodePanel({
           {code}
         </Text>
       </View>
+      <Button variant="outline" onPress={copyCode}>
+        <Text>{copyState === "copied" ? "Copied" : "Copy code"}</Text>
+      </Button>
+      {copyState === "failed" ? (
+        <Text variant="muted">Copying did not work here. Please select the code and copy it by hand.</Text>
+      ) : null}
       <Text variant="muted">
         The code works once. After you use it to reset your password, you get a new one.
       </Text>
