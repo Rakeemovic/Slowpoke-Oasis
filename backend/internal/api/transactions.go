@@ -34,6 +34,25 @@ type transactionPatchRequest struct {
 	BookedOn         *string        `json:"booked_on"`
 	Note             *string        `json:"note"`
 	IsSpontaneous    *bool          `json:"is_spontaneous"`
+	// CategoryScope also gives the new category to other bookings of the
+	// same recurring payment (rule R9). Left out, only this booking changes.
+	CategoryScope ledger.CategoryScope `json:"category_scope"`
+}
+
+// patch turns the request into the change for the ledger package.
+func (req transactionPatchRequest) patch(editorID string) ledger.TransactionPatch {
+	return ledger.TransactionPatch{
+		Type:             req.Type,
+		CategoryID:       req.CategoryID,
+		PotID:            req.PotID,
+		CounterpartPotID: req.CounterpartPotID,
+		AmountCents:      req.AmountCents,
+		BookedOn:         req.BookedOn,
+		Note:             req.Note,
+		IsSpontaneous:    req.IsSpontaneous,
+		CategoryScope:    req.CategoryScope,
+		EditorID:         editorID,
+	}
 }
 
 // transactionResponse is the JSON representation of a stored transaction.
@@ -256,7 +275,7 @@ func (s *Server) updateTransaction(w http.ResponseWriter, r *http.Request) {
 		err = s.store.AuthorizeTransactionChange(r.Context(), userID, ledgerID, id, ledger.ActionMarkSpontaneous)
 	}
 	if err == nil {
-		err = s.store.UpdateTransaction(r.Context(), ledgerID, id, ledger.TransactionPatch(req), s.now())
+		err = s.store.UpdateTransaction(r.Context(), ledgerID, id, req.patch(userID), s.now())
 	}
 	if err != nil {
 		fail(w, err)
