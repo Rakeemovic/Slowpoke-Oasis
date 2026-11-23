@@ -107,7 +107,7 @@ test("household members add categories, only the owner changes them", async ({ p
   await fillBooking(memberPage, { kind: "Expense", amount: "8", category: "Plants" });
   await memberPage.getByRole("button", { name: "⚡ Spontaneous" }).click();
   await memberPage.getByRole("button", { name: "Save" }).click();
-  await expect(memberPage.getByText("Available today")).toBeVisible();
+  await expect(memberPage.getByText("Estimated account balance", { exact: true })).toBeVisible();
 
   await ownerPage.goBack();
   await ownerPage.getByRole("button", { name: "Refresh" }).click();

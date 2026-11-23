@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
  * this period (rule R14); "Transfer" opens a prefilled move into the reserve.
  * Without anything due or to save, the card is not shown.
  */
-export function DuePayments({ ledgerId }: { ledgerId: string }) {
+export function DuePayments({ ledgerId, onChanged }: { ledgerId: string; onChanged?: () => void }) {
   const { data, error, reload } = useLoader(
     useCallback(async () => {
       const date = today();
@@ -64,7 +64,11 @@ export function DuePayments({ ledgerId }: { ledgerId: string }) {
               occurrence={o}
               first={index === 0}
               skipped={skippedKeys.has(key(o))}
-              onSkipped={(isSkipped) => markSkipped(o, isSkipped)}
+              onSkipped={(isSkipped) => {
+                markSkipped(o, isSkipped);
+                // A skip changes the estimated balance shown above.
+                onChanged?.();
+              }}
             />
           ))}
           {rates.map((rate, index) => (

@@ -156,6 +156,13 @@ export interface Balance {
   available_cents: number;
   /** All pots together. */
   total_cents: number;
+  /** Name of the default pot, usually "Main". */
+  default_pot_name: string;
+  /** All pots minus the unbooked payments: what the bank account most likely shows. */
+  estimated_cents: number;
+  /** Recurring payments due or overdue on as_of that are neither booked nor skipped. */
+  unbooked_count: number;
+  unbooked_cents: number;
 }
 
 /** A transfer between two ledgers. Without pot IDs, both sides use the default pot. */

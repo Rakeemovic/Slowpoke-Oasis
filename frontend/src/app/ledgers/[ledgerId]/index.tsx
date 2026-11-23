@@ -1,5 +1,5 @@
 import { Link, Stack, useLocalSearchParams } from "expo-router";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, View } from "react-native";
 
 import { ledgers, pots as potsApi } from "@/api/endpoints";
@@ -36,13 +36,15 @@ export default function TransactionsScreen() {
   );
   const { items: transactions, loading, error, reload } = list;
   const categories = categoryList.data;
+  // Bumped when a due payment is skipped, so the estimated balance reloads.
+  const [balanceVersion, setBalanceVersion] = useState(0);
 
   return (
     <Screen>
       <Stack.Screen options={{ title: name ?? "Transactions", headerRight: () => <HeaderActions /> }} />
       <Card>
         <CardContent>
-          <LedgerBalance ledgerId={ledgerId} size="large" />
+          <LedgerBalance ledgerId={ledgerId} size="large" version={balanceVersion} />
         </CardContent>
       </Card>
       <View className="flex-row gap-2">
@@ -63,7 +65,7 @@ export default function TransactionsScreen() {
             <Text>Pots</Text>
           </Button>
         </Link>
-        <PlanButton ledgerId={ledgerId} pots={potList.data} />
+        <BudgetButton ledgerId={ledgerId} pots={potList.data} />
         <Link href={{ pathname: "/ledgers/[ledgerId]/categories", params: { ledgerId } }} asChild>
           <Button className="flex-1" variant="outline">
             <Text>Categories</Text>
@@ -89,7 +91,7 @@ export default function TransactionsScreen() {
           </Button>
         </Link>
       )}
-      <DuePayments ledgerId={ledgerId} />
+      <DuePayments ledgerId={ledgerId} onChanged={() => setBalanceVersion((v) => v + 1)} />
       {loading && !transactions && <ActivityIndicator />}
       <ErrorMessage message={error ?? categoryList.error ?? potList.error} onRetry={reload} />
       {transactions?.length === 0 && <Text variant="muted">No transactions yet. Tap “Add transaction” to book the first one.</Text>}
@@ -172,13 +174,13 @@ function TransactionRow({
   );
 }
 
-/** Opens the plan of the default pot, which holds the monthly budget. */
-function PlanButton({ ledgerId, pots }: { ledgerId: string; pots?: Pot[] }) {
+/** Opens the budget of the default pot. */
+function BudgetButton({ ledgerId, pots }: { ledgerId: string; pots?: Pot[] }) {
   const defaultPot = pots?.find((p) => p.is_default);
   if (!defaultPot) {
     return (
       <Button className="flex-1" variant="outline" disabled>
-        <Text>Plan</Text>
+        <Text>Budget</Text>
       </Button>
     );
   }
@@ -188,7 +190,7 @@ function PlanButton({ ledgerId, pots }: { ledgerId: string; pots?: Pot[] }) {
       asChild
     >
       <Button className="flex-1" variant="outline">
-        <Text>Plan</Text>
+        <Text>Budget</Text>
       </Button>
     </Link>
   );

@@ -24,7 +24,7 @@ async function createYearlyDueToday(page: Page, name: string, amount: string): P
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText(`Yearly on day ${new Date().getDate()}`)).toBeVisible();
   await page.goBack();
-  await expect(page.getByText("Available today")).toBeVisible();
+  await expect(page.getByText("Estimated account balance", { exact: true })).toBeVisible();
 }
 
 /** A row of the "Due payments" card whose first line is title. */
@@ -76,12 +76,12 @@ test("archiving a payment offers to archive its reserve", async ({ page }) => {
 
   // The money is back in the default pot; the reserve is archived and empty.
   await page.goBack();
-  await expect(page.getByText("Available today")).toBeVisible();
+  await expect(page.getByText("Estimated account balance", { exact: true })).toBeVisible();
   await expect(page.getByText("Due payments", { exact: true })).toBeHidden();
   await page.getByRole("link", { name: "Pots", exact: true }).click();
   await expect(page.getByText("Reserves", { exact: true })).toBeHidden();
   await expect(linkRow(page, "Bike")).toContainText(euros("0,00"));
-  await expect(linkRow(page, "Monthly")).toContainText(euros("0,00"));
+  await expect(linkRow(page, "Main")).toContainText(euros("0,00"));
 });
 
 /** A row on a list of payments or pots; earlier screens stay hidden in the DOM. */
