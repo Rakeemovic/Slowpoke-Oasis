@@ -12,7 +12,7 @@ func TestPotSummaryComparesPlanWithActual(t *testing.T) {
 	createExpense(t, s, "p-default", "2026-11-10", 1000)
 	createExpense(t, s, "p-default", "2026-12-01", 999) // outside the period
 
-	sum, err := s.PotSummary(ctx, "l1", "p-default", "2026-11-01", "2026-11-30")
+	sum, err := s.PotSummary(ctx, monthQuery("p-default", "2026-11"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,14 +37,14 @@ func TestPotSummaryCountsTransfers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	holiday, err := s.PotSummary(ctx, "l1", "p-holiday", "", "")
+	holiday, err := s.PotSummary(ctx, SummaryQuery{LedgerID: "l1", PotID: "p-holiday", Today: today})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if holiday.TransfersInCents != 200 || holiday.TransfersOutCents != 0 {
 		t.Errorf("holiday transfers in/out = %d/%d, want 200/0", holiday.TransfersInCents, holiday.TransfersOutCents)
 	}
-	defaultPot, err := s.PotSummary(ctx, "l1", "p-default", "", "")
+	defaultPot, err := s.PotSummary(ctx, monthQuery("p-default", ""))
 	if err != nil {
 		t.Fatal(err)
 	}

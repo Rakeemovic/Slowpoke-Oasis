@@ -1,6 +1,10 @@
 package api
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/ledger"
+)
 
 // planLineResponse compares plan and actual for one category.
 type planLineResponse struct {
@@ -12,20 +16,31 @@ type planLineResponse struct {
 	DifferenceCents int64  `json:"difference_cents"`
 }
 
-// GET /ledgers/{ledger}/pots/{pot}/summary?month=YYYY-MM or ?from=&to=
-// With neither parameter, the summary covers all dates.
+// GET /ledgers/{ledger}/pots/{pot}/summary?month=YYYY-MM&date=YYYY-MM-DD
+// Monthly pots are reported by month; without month, the current month is
+// used, which date (the app's local date) decides. One-time pots also take
+// ?from=&to=, and with no parameter the summary covers all dates.
+// plan_source says where the planned amounts come from: "pot" (one-time
+// pot), "month" (stored plan of the month), "preview" (future month, from the
+// template) or "none" (past month without a plan).
 func (s *Server) potSummary(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireLedgerAccess(w, r); !ok {
 		return
 	}
-	ledgerID := r.PathValue("ledger")
 	q := r.URL.Query()
-	from, to, err := s.store.ResolvePeriod(r.Context(), ledgerID, q.Get("month"), q.Get("from"), q.Get("to"))
+	today, err := ledger.Today(q.Get("date"), s.now())
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	sum, err := s.store.PotSummary(r.Context(), ledgerID, r.PathValue("pot"), from, to)
+	sum, err := s.store.PotSummary(r.Context(), ledger.SummaryQuery{
+		LedgerID: r.PathValue("ledger"),
+		PotID:    r.PathValue("pot"),
+		Month:    q.Get("month"),
+		From:     q.Get("from"),
+		To:       q.Get("to"),
+		Today:    today,
+	})
 	if err != nil {
 		fail(w, err)
 		return
@@ -44,6 +59,8 @@ func (s *Server) potSummary(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"pot_id":              sum.PotID,
+		"month":               sum.Month,
+		"plan_source":         sum.PlanSource,
 		"from":                sum.From,
 		"to":                  sum.To,
 		"lines":               lines,
