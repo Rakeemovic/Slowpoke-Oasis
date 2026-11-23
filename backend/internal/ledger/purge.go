@@ -44,6 +44,9 @@ func deletePersonalLedgers(ctx context.Context, tx *sql.Tx, userID string) error
 func deleteLedgers(ctx context.Context, tx *sql.Tx, ledgerIDs []string) error {
 	statements := []string{
 		`DELETE FROM transactions WHERE ledger_id = ?`,
+		`DELETE FROM recurring_skip WHERE recurring_payment_id IN
+			(SELECT id FROM recurring_payment WHERE ledger_id = ?)`,
+		`DELETE FROM recurring_payment WHERE ledger_id = ?`,
 		`DELETE FROM pot_line WHERE ledger_id = ?`,
 		`DELETE FROM period_plan WHERE ledger_id = ?`,
 		`DELETE FROM period_plan_month WHERE ledger_id = ?`,

@@ -3,6 +3,8 @@ package ledger
 import (
 	"context"
 	"time"
+
+	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/store"
 )
 
 // retentionDays is how long soft-deleted transactions stay in the database (rule X10).
@@ -71,6 +73,10 @@ func (s *Store) RestoreTransaction(ctx context.Context, ledgerID, id string, now
 		WHERE deleted_at IS NOT NULL AND deleted_at >= ? AND `+selfAndLinkedLeg,
 		timestamp(now), retentionCutoff(now), id, ledgerID, id, ledgerID,
 	)
+	if store.IsUniqueViolation(err) {
+		// The occurrence it paid was booked again meanwhile (rule R6).
+		return ErrOccurrenceBooked
+	}
 	if err != nil {
 		return err
 	}

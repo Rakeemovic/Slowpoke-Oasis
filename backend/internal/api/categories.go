@@ -81,14 +81,15 @@ func (s *Server) createCategory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
 }
 
-// requireCategoryOwner checks ledger access and that the user may change the
-// ledger's categories (rule K9). If not, it writes the response.
-func (s *Server) requireCategoryOwner(w http.ResponseWriter, r *http.Request) bool {
+// requireLedgerOwner checks ledger access and that the user owns the ledger,
+// as needed to change categories (rule K9) and recurring payments (rule R8).
+// If not, it writes the response.
+func (s *Server) requireLedgerOwner(w http.ResponseWriter, r *http.Request) bool {
 	userID, ok := s.requireLedgerAccess(w, r)
 	if !ok {
 		return false
 	}
-	if err := s.store.AuthorizeCategoryChange(r.Context(), userID, r.PathValue("ledger")); err != nil {
+	if err := s.store.AuthorizeLedgerOwner(r.Context(), userID, r.PathValue("ledger")); err != nil {
 		fail(w, err)
 		return false
 	}
@@ -98,7 +99,7 @@ func (s *Server) requireCategoryOwner(w http.ResponseWriter, r *http.Request) bo
 // PATCH /ledgers/{ledger}/categories/{category}
 // Fields that are left out stay unchanged; "purpose": "" removes the purpose.
 func (s *Server) updateCategory(w http.ResponseWriter, r *http.Request) {
-	if !s.requireCategoryOwner(w, r) {
+	if !s.requireLedgerOwner(w, r) {
 		return
 	}
 	var req struct {
@@ -122,7 +123,7 @@ func (s *Server) updateCategory(w http.ResponseWriter, r *http.Request) {
 // The transactions move to move_to, or without it to the fallback category.
 // Answers with the category that took over the transactions.
 func (s *Server) deleteCategory(w http.ResponseWriter, r *http.Request) {
-	if !s.requireCategoryOwner(w, r) {
+	if !s.requireLedgerOwner(w, r) {
 		return
 	}
 	res, err := s.store.DeleteCategory(r.Context(), r.PathValue("ledger"), r.PathValue("category"),

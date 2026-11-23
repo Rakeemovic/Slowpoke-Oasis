@@ -72,6 +72,14 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PUT /ledgers/{ledger}/pots/{pot}/lines/{category}", s.setPlannedAmount)
 	mux.HandleFunc("DELETE /ledgers/{ledger}/pots/{pot}/lines/{category}", s.deletePlannedAmount)
 
+	// Recurring payments and their occurrences.
+	mux.HandleFunc("GET /ledgers/{ledger}/recurring-payments", s.listRecurringPayments)
+	mux.HandleFunc("POST /ledgers/{ledger}/recurring-payments", s.createRecurringPayment)
+	mux.HandleFunc("GET /ledgers/{ledger}/recurring-payments/due", s.listOpenOccurrences)
+	mux.HandleFunc("PATCH /ledgers/{ledger}/recurring-payments/{payment}", s.updateRecurringPayment)
+	mux.HandleFunc("PUT /ledgers/{ledger}/recurring-payments/{payment}/skips/{due_on}", s.skipOccurrence)
+	mux.HandleFunc("DELETE /ledgers/{ledger}/recurring-payments/{payment}/skips/{due_on}", s.undoSkip)
+
 	// Transactions
 	mux.HandleFunc("POST /ledgers/{ledger}/transactions", s.createTransaction)
 	mux.HandleFunc("GET /ledgers/{ledger}/transactions", s.listTransactions)
