@@ -45,6 +45,8 @@ func deleteLedgers(ctx context.Context, tx *sql.Tx, ledgerIDs []string) error {
 	statements := []string{
 		`DELETE FROM transactions WHERE ledger_id = ?`,
 		`DELETE FROM pot_line WHERE ledger_id = ?`,
+		`DELETE FROM period_plan WHERE ledger_id = ?`,
+		`DELETE FROM period_plan_month WHERE ledger_id = ?`,
 		// The default pot is protected from deletion by a trigger, so clear its flag first.
 		`UPDATE pot SET is_default = 0 WHERE ledger_id = ?`,
 		`DELETE FROM pot WHERE ledger_id = ?`,

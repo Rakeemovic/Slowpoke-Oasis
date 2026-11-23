@@ -339,22 +339,35 @@ func ensureFallback(ctx context.Context, tx *sql.Tx, ledgerID string, isIncome b
 }
 
 // movePlannedAmounts adds the planned amounts of category from to those of
-// category to, pot by pot, and removes the ones of from.
+// category to, pot by pot and month by month, in the templates (pot_line) and
+// in the monthly plans (period_plan), and removes the ones of from.
+// If to is already planned in another monthly pot, rule P3 rejects the move.
 func movePlannedAmounts(ctx context.Context, tx *sql.Tx, ledgerID, from, to string) error {
 	// "WHERE true" lets SQLite tell the upsert clause apart from a join.
-	if _, err := tx.ExecContext(ctx, `
+	statements := []string{`
 		INSERT INTO pot_line (pot_id, ledger_id, category_id, amount_cents)
 		SELECT pot_id, ledger_id, ?, amount_cents
 		FROM pot_line WHERE ledger_id = ? AND category_id = ? AND true
 		ON CONFLICT (pot_id, category_id)
+		DO UPDATE SET amount_cents = amount_cents + excluded.amount_cents`, `
+		INSERT INTO period_plan (pot_id, ledger_id, category_id, month, amount_cents)
+		SELECT pot_id, ledger_id, ?, month, amount_cents
+		FROM period_plan WHERE ledger_id = ? AND category_id = ? AND true
+		ON CONFLICT (pot_id, category_id, month)
 		DO UPDATE SET amount_cents = amount_cents + excluded.amount_cents`,
-		to, ledgerID, from,
-	); err != nil {
-		return err
 	}
-	_, err := tx.ExecContext(ctx,
-		`DELETE FROM pot_line WHERE ledger_id = ? AND category_id = ?`, ledgerID, from)
-	return err
+	for _, q := range statements {
+		if _, err := tx.ExecContext(ctx, q, to, ledgerID, from); err != nil {
+			return planConflict(err)
+		}
+	}
+	for _, table := range []string{"pot_line", "period_plan"} {
+		if _, err := tx.ExecContext(ctx,
+			`DELETE FROM `+table+` WHERE ledger_id = ? AND category_id = ?`, ledgerID, from); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // AuthorizeCategoryChange checks whether a user may rename, archive or delete

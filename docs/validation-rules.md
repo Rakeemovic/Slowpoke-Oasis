@@ -19,7 +19,7 @@ Each rule is enforced either by the database (CHECK, UNIQUE, NOT NULL, foreign k
 | ID | Rule | Enforced by |
 |---|---|---|
 | K1 | Name is not empty after trimming and has at most 50 characters. Names are unique per ledger, case-insensitive. | DB |
-| K2 | Deleting a category moves all its transactions, soft-deleted ones included, to a target category, and adds its planned amounts to the target's planned amounts in the same pots. The owner may choose the target (`move_to`): another active category of the same kind, otherwise the answer is 400. Without a choice, the target is the fallback category of the same kind (K6): expenses to "Other", income to "Other income". The answer names the target (`moved_to`) and the number of moved transactions. | App |
+| K2 | Deleting a category moves all its transactions, soft-deleted ones included, to a target category, and adds its planned amounts to the target's planned amounts in the same pots (templates and monthly plans, month by month; P3 may reject the move with 409). The owner may choose the target (`move_to`): another active category of the same kind, otherwise the answer is 400. Without a choice, the target is the fallback category of the same kind (K6): expenses to "Other", income to "Other income". The answer names the target (`moved_to`) and the number of moved transactions. | App |
 | K3 | Expense categories have `is_income = false`, income categories `is_income = true`. The transaction type must match. | App |
 | K4 | Every new ledger (personal or household) starts with 14 default categories (Salary, Other income, Groceries, Rent, Utilities, Transport, Insurance, Health, Eating out, Leisure, Clothing, Subscriptions, Household, Other). Expense categories come with a purpose (K5): need for Groceries, Rent, Utilities, Transport, Insurance, Health and Household; want for Eating out, Leisure, Clothing and Subscriptions; none for Other. Users rename, archive or delete them like any other category. Migration 0012 added the names, without purposes, to existing ledgers that had no category at all. | App |
 | K5 | An expense category may have a `purpose`: `need`, `want` or `saving` (UI: Needs, Wants, Savings). It is optional. Income categories never have one. | DB + App |
@@ -38,12 +38,16 @@ Each rule is enforced either by the database (CHECK, UNIQUE, NOT NULL, foreign k
 | T4 | `target_date` may only be set if `target_cents` is set. | DB |
 | T5 | An archived pot accepts no new transactions. Existing transactions stay visible. | App |
 
-## Planned amounts (`pot_line`)
+## Planned amounts (`pot_line`, `period_plan`)
 
 | ID | Rule | Enforced by |
 |---|---|---|
 | P1 | `amount_cents` is greater than or equal to 0. | DB |
 | P2 | The category and the pot belong to the same ledger. | DB (composite foreign keys) |
+| P3 | A category is planned in at most one monthly pot of a ledger, per month and in the templates. One-time pots are not limited. Otherwise the answer is 409. | DB (`period_plan`), App (templates) |
+| P4 | The plan of a month is copied from the templates of all active monthly pots once, on the first access in that month. Future months show the template without storing it; past months are never filled in afterwards. | App |
+| P5 | Only the plan of the current month can be changed, with `scope` `this_month` or `from_now_on` (also changes the template). One-time pots take no scope. Otherwise the answer is 400. | App |
+| P6 | Reports of a monthly pot cover one month (`month`, default the current one); `from`/`to` are rejected with 400. | App |
 
 ## Transactions
 

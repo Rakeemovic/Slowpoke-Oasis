@@ -40,7 +40,7 @@ func TestLinkedTransferMovesMoneyBetweenLedgers(t *testing.T) {
 		t.Errorf("target balance = %d, want 5000", got)
 	}
 
-	summary, err := s.PotSummary(context.Background(), "l2", "p-l2", "", "")
+	summary, err := s.PotSummary(context.Background(), SummaryQuery{LedgerID: "l2", PotID: "p-l2", Today: today})
 	if err != nil {
 		t.Fatalf("summary: %v", err)
 	}
