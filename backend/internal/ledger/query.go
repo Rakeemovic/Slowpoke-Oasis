@@ -32,6 +32,10 @@ type Transaction struct {
 	Username string
 	// IsSpontaneous marks an unplanned expense (rule X20).
 	IsSpontaneous bool
+	// RecurringPaymentID and RecurringDueOn name the occurrence of a
+	// recurring payment that the expense pays (rule R6), or are empty.
+	RecurringPaymentID string
+	RecurringDueOn     string
 }
 
 // transactionColumns lists the columns of a Transaction for a query that
@@ -40,7 +44,7 @@ const transactionColumns = `
 	t.id, t.ledger_id, t.user_id, t.type,
 	COALESCE(t.category_id, ''), t.pot_id, COALESCE(t.counterpart_pot_id, ''),
 	t.amount_cents, t.booked_on, COALESCE(t.note, ''), COALESCE(author.username, ''),
-	t.is_spontaneous`
+	t.is_spontaneous, COALESCE(t.recurring_payment_id, ''), COALESCE(t.recurring_due_on, '')`
 
 // transactionTables names the transactions table t and joins its author.
 const transactionTables = `transactions t LEFT JOIN user author ON author.id = t.user_id`
@@ -48,7 +52,7 @@ const transactionTables = `transactions t LEFT JOIN user author ON author.id = t
 func (t *Transaction) scanTargets() []any {
 	return []any{&t.ID, &t.LedgerID, &t.UserID, &t.Type, &t.CategoryID,
 		&t.PotID, &t.CounterpartPotID, &t.AmountCents, &t.BookedOn, &t.Note, &t.Username,
-		&t.IsSpontaneous}
+		&t.IsSpontaneous, &t.RecurringPaymentID, &t.RecurringDueOn}
 }
 
 // ListFilter selects transactions of one ledger. Empty optional fields mean

@@ -29,15 +29,17 @@ func PeriodFor(month string, payday int) (string, string, error) {
 	if err != nil {
 		return "", "", ErrInvalidMonth
 	}
-	start := paydayIn(first, payday)
-	nextStart := paydayIn(first.AddDate(0, 1, 0), payday)
+	start := dayIn(first, payday)
+	nextStart := dayIn(first.AddDate(0, 1, 0), payday)
 	return start.Format(dateLayout), nextStart.AddDate(0, 0, -1).Format(dateLayout), nil
 }
 
-// paydayIn returns the payday of the month that starts at firstOfMonth.
-func paydayIn(firstOfMonth time.Time, payday int) time.Time {
+// dayIn returns the given day of the month that starts at firstOfMonth. A day
+// that does not exist in that month (e.g. the 30th in February) falls back to
+// the month's last day. Paydays and due days of recurring payments use it.
+func dayIn(firstOfMonth time.Time, day int) time.Time {
 	lastDay := firstOfMonth.AddDate(0, 1, -1).Day()
-	return time.Date(firstOfMonth.Year(), firstOfMonth.Month(), min(payday, lastDay), 0, 0, 0, 0, time.UTC)
+	return time.Date(firstOfMonth.Year(), firstOfMonth.Month(), min(day, lastDay), 0, 0, 0, 0, time.UTC)
 }
 
 // MonthOf returns the month (YYYY-MM) of the payday period that contains the
@@ -52,7 +54,7 @@ func MonthOf(date string, payday int) (string, error) {
 		return "", ErrInvalidDate
 	}
 	first := time.Date(d.Year(), d.Month(), 1, 0, 0, 0, 0, time.UTC)
-	if d.Before(paydayIn(first, payday)) {
+	if d.Before(dayIn(first, payday)) {
 		first = first.AddDate(0, -1, 0)
 	}
 	return first.Format(monthLayout), nil

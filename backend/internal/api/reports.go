@@ -28,9 +28,8 @@ func (s *Server) potSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	today, err := ledger.Today(q.Get("date"), s.now())
-	if err != nil {
-		fail(w, err)
+	today, ok := s.today(w, r)
+	if !ok {
 		return
 	}
 	sum, err := s.store.PotSummary(r.Context(), ledger.SummaryQuery{

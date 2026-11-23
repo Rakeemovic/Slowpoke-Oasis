@@ -66,12 +66,14 @@ func (s *Store) UpdateTransaction(ctx context.Context, ledgerID, id string, p Tr
 		old := NewTransaction{LedgerID: ledgerID}
 		err := tx.QueryRowContext(ctx, `
 			SELECT user_id, type, COALESCE(category_id, ''), pot_id, COALESCE(counterpart_pot_id, ''),
-			       abs(amount_cents), booked_on, COALESCE(note, ''), is_spontaneous
+			       abs(amount_cents), booked_on, COALESCE(note, ''), is_spontaneous,
+			       COALESCE(recurring_payment_id, ''), COALESCE(recurring_due_on, '')
 			FROM transactions
 			WHERE id = ? AND ledger_id = ? AND deleted_at IS NULL`,
 			id, ledgerID,
 		).Scan(&old.UserID, &old.Type, &old.CategoryID, &old.PotID, &old.CounterpartPotID,
-			&old.AmountCents, &old.BookedOn, &old.Note, &old.IsSpontaneous)
+			&old.AmountCents, &old.BookedOn, &old.Note, &old.IsSpontaneous,
+			&old.RecurringPaymentID, &old.RecurringDueOn)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrTransactionNotFound
 		}
@@ -82,6 +84,8 @@ func (s *Store) UpdateTransaction(ctx context.Context, ledgerID, id string, p Tr
 			return ErrLinkedTransaction
 		}
 
+		// The link to a recurring payment stays (rule R6), so a booking that
+		// pays an occurrence cannot become income or a transfer.
 		in := p.apply(old)
 		if err := in.Validate(); err != nil {
 			return err

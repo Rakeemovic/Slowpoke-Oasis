@@ -19,7 +19,7 @@ Each rule is enforced either by the database (CHECK, UNIQUE, NOT NULL, foreign k
 | ID | Rule | Enforced by |
 |---|---|---|
 | K1 | Name is not empty after trimming and has at most 50 characters. Names are unique per ledger, case-insensitive. | DB |
-| K2 | Deleting a category moves all its transactions, soft-deleted ones included, to a target category, and adds its planned amounts to the target's planned amounts in the same pots (templates and monthly plans, month by month; P3 may reject the move with 409). The owner may choose the target (`move_to`): another active category of the same kind, otherwise the answer is 400. Without a choice, the target is the fallback category of the same kind (K6): expenses to "Other", income to "Other income". The answer names the target (`moved_to`) and the number of moved transactions. | App |
+| K2 | Deleting a category moves all its transactions, soft-deleted ones included, to a target category, and adds its planned amounts to the target's planned amounts in the same pots (templates and monthly plans, month by month; P3 may reject the move with 409). The owner may choose the target (`move_to`): another active category of the same kind, otherwise the answer is 400. Without a choice, the target is the fallback category of the same kind (K6): expenses to "Other", income to "Other income". Its recurring payments switch to the target too (R8). The answer names the target (`moved_to`) and the number of moved transactions. | App |
 | K3 | Expense categories have `is_income = false`, income categories `is_income = true`. The transaction type must match. | App |
 | K4 | Every new ledger (personal or household) starts with 14 default categories (Salary, Other income, Groceries, Rent, Utilities, Transport, Insurance, Health, Eating out, Leisure, Clothing, Subscriptions, Household, Other). Expense categories come with a purpose (K5): need for Groceries, Rent, Utilities, Transport, Insurance, Health and Household; want for Eating out, Leisure, Clothing and Subscriptions; none for Other. Users rename, archive or delete them like any other category. Migration 0012 added the names, without purposes, to existing ledgers that had no category at all. | App |
 | K5 | An expense category may have a `purpose`: `need`, `want` or `saving` (UI: Needs, Wants, Savings). It is optional. Income categories never have one. | DB + App |
@@ -48,6 +48,23 @@ Each rule is enforced either by the database (CHECK, UNIQUE, NOT NULL, foreign k
 | P4 | The plan of a month is copied from the templates of all active monthly pots once, on the first access in that month. Future months show the template without storing it; past months are never filled in afterwards. | App |
 | P5 | Only the plan of the current month can be changed, with `scope` `this_month` or `from_now_on` (also changes the template). One-time pots take no scope. Otherwise the answer is 400. | App |
 | P6 | Reports of a monthly pot cover one month (`month`, default the current one); `from`/`to` are rejected with 400. | App |
+
+## Recurring payments (`recurring_payment`, `recurring_skip`)
+
+A recurring payment is a reminder. It is never booked automatically.
+
+| ID | Rule | Enforced by |
+|---|---|---|
+| R1 | `amount_cents` is greater than 0 and at most 10,000,000,000. The name has 1 to 50 characters. | DB + App |
+| R2 | Only expenses: the category is an active expense category of the same ledger, the pot an active pot of the same ledger (empty: the default pot). Otherwise 400 (income category) or 409 (archived). | DB (composite foreign keys) + App |
+| R3 | Schedule: every `interval_months` months (1, 3, 6 or 12) on `due_day` (1–31), counted from `first_month`. A day that a month lacks falls back to the month's last day. | DB + App |
+| R4 | `last_month` is optional (no end) and not before `first_month`. | DB + App |
+| R5 | Occurrences due before `tracked_from` are never open. It is the app's date when the payment was created, and moves to the app's date when the due dates change (`interval_months`, `due_day`, `first_month`) or the payment leaves the archive. Changing the amount, name, category, pot or end keeps it. | App |
+| R6 | An expense may pay one occurrence (`recurring_payment_id` and `recurring_due_on`, set together and only on creation). The date must be a due date of an active payment of the same ledger. At most one booking per occurrence that is not deleted (otherwise 409); deleting it opens the occurrence again, restoring it fails with 409 while another booking pays it. The booking cannot become income or a transfer. | DB (CHECK, unique index) + App |
+| R7 | Every member may skip an occurrence that is not booked and undo the skip. A skipped occurrence cannot be booked (409). | App |
+| R8 | Every member may create recurring payments; only the owner of the ledger may change or archive them (otherwise 403). They are not deleted, only archived. Deleting a category moves its recurring payments along with its bookings (K2). | App |
+
+Open occurrences (`GET /ledgers/{ledger}/recurring-payments/due?date=`) are those of active payments from `tracked_from` to the end of the current payday period that are neither booked nor skipped, each with `status` `overdue`, `due` (today) or `upcoming`.
 
 ## Transactions
 
@@ -85,6 +102,8 @@ Every member of a household may read its ledger and book in it. Changing an exis
 | Mark a transaction as spontaneous or remove the mark (X20) | Only the author, not even the owner, because the mark describes the author's own decision. |
 | Create a category | Every member of the ledger. |
 | Rename, archive, delete a category or change its purpose | The owner of the ledger (in a household the household owner). |
+| Create a recurring payment, book or skip an occurrence, undo a skip | Every member of the ledger (R7, R8). |
+| Change or archive a recurring payment | The owner of the ledger (R8). |
 | See the members of a household | Every member. Only the user ID, username and role are shown; the display name and other personal data stay hidden. |
 | Add a household member | The household owner. |
 | Remove a household member | The household owner. Every member may leave by removing themselves. |
