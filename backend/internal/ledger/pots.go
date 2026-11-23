@@ -279,22 +279,3 @@ func ensurePotActive(ctx context.Context, q queryer, ledgerID, potID string) err
 	}
 	return nil
 }
-
-// ensureCategoryKind checks that income uses income categories and expenses
-// use expense categories (rule K3). An unknown category is left to the foreign key.
-func ensureCategoryKind(ctx context.Context, q queryer, ledgerID, categoryID string, typ TxType) error {
-	var isIncome bool
-	err := q.QueryRowContext(ctx,
-		`SELECT is_income FROM category WHERE id = ? AND ledger_id = ?`, categoryID, ledgerID,
-	).Scan(&isIncome)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if isIncome != (typ == TypeIncome) {
-		return ErrCategoryKindMismatch
-	}
-	return nil
-}

@@ -7,6 +7,7 @@ import { ChoicePicker } from "@/components/choice-picker";
 import { ErrorMessage } from "@/components/error-message";
 import { PotPicker } from "@/components/pot-picker";
 import { FormField } from "@/components/form-field";
+import { KindButton } from "@/components/kind-button";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Text } from "@/components/ui/text";
@@ -23,14 +24,20 @@ type Kind = TransactionChange["type"];
  * The form for an income or expense, used both to book a new one and to edit
  * an existing one. `initial` prefills it; without it the form starts empty.
  * onSubmit saves the values and throws on failure; the form shows the error.
+ *
+ * Only the author may mark an expense as spontaneous (rule X20). For a booking
+ * of someone else, canMarkSpontaneous is false: the switch is hidden and the
+ * field is not sent, so the owner can still correct the booking.
  */
 export function BookingForm({
   ledgerId,
   initial,
+  canMarkSpontaneous = true,
   onSubmit,
 }: {
   ledgerId: string;
   initial?: TransactionChange;
+  canMarkSpontaneous?: boolean;
   onSubmit: (values: TransactionChange) => Promise<void>;
 }) {
   const categories = useLoader(useCallback(() => ledgers.categories(ledgerId), [ledgerId]));
@@ -43,6 +50,7 @@ export function BookingForm({
   const [amount, setAmount] = useState(initial ? centsToAmountInput(initial.amount_cents) : "");
   const [bookedOn, setBookedOn] = useState(initial?.booked_on ?? today);
   const [note, setNote] = useState(initial?.note ?? "");
+  const [spontaneous, setSpontaneous] = useState(initial?.is_spontaneous ?? false);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
 
@@ -68,7 +76,18 @@ export function BookingForm({
     setBusy(true);
     setError(undefined);
     try {
-      await onSubmit({ type: kind, category_id: categoryId!, pot_id: potId!, amount_cents: cents!, booked_on: bookedOn, note: note.trim() });
+      const values: TransactionChange = {
+        type: kind,
+        category_id: categoryId!,
+        pot_id: potId!,
+        amount_cents: cents!,
+        booked_on: bookedOn,
+        note: note.trim(),
+      };
+      if (canMarkSpontaneous) {
+        values.is_spontaneous = kind === "expense" && spontaneous;
+      }
+      await onSubmit(values);
     } catch (e) {
       setError(errorMessage(e));
       setBusy(false);
@@ -116,6 +135,14 @@ export function BookingForm({
       />
 
       <FormField label="Note (optional)" value={note} onChangeText={setNote} />
+      {canMarkSpontaneous && kind === "expense" && (
+        <Button
+          variant={spontaneous ? "default" : "outline"}
+          onPress={() => setSpontaneous(!spontaneous)}
+          aria-pressed={spontaneous}>
+          <Text>⚡ Spontaneous</Text>
+        </Button>
+      )}
       <ErrorMessage message={error} />
       <Button onPress={submit} disabled={busy}>
         <Text>{busy ? "Saving…" : "Save"}</Text>
@@ -127,14 +154,6 @@ export function BookingForm({
 /** Returns a message for the first invalid input, or undefined if all are fine. */
 function validate(cents: number | null, bookedOn: string, categoryId?: string): string | undefined {
   return bookingProblem(cents, bookedOn) ?? (categoryId ? undefined : "Choose a category.");
-}
-
-function KindButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  return (
-    <Button className="flex-1" variant={active ? "default" : "outline"} onPress={onPress} aria-selected={active}>
-      <Text>{label}</Text>
-    </Button>
-  );
 }
 
 function AddCategory({
@@ -154,7 +173,7 @@ function AddCategory({
     setBusy(true);
     setError(undefined);
     try {
-      const { id } = await ledgers.createCategory(ledgerId, name.trim(), isIncome);
+      const { id } = await ledgers.createCategory(ledgerId, { name: name.trim(), is_income: isIncome });
       setName("");
       onAdded(id);
     } catch (e) {

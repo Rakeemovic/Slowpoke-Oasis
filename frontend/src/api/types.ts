@@ -25,11 +25,34 @@ export interface Member {
   role: Role;
 }
 
+/** What kind of spending an expense category stands for (rule K5). Income categories have none. */
+export type Purpose = "need" | "want" | "saving";
+
 export interface Category {
   id: string;
   name: string;
   is_income: boolean;
+  /** Archived categories accept no new bookings (rule K8). */
   archived: boolean;
+  purpose: Purpose | null;
+  /** "Other" or "Other income": takes over the bookings of deleted categories and cannot be deleted (rule K6). */
+  is_fallback: boolean;
+  /** Bookings that are not deleted. */
+  transaction_count: number;
+}
+
+export interface NewCategory {
+  name: string;
+  is_income: boolean;
+  /** Only for expense categories; empty for none. */
+  purpose?: Purpose | "";
+}
+
+/** Owner only. Fields left out stay unchanged; an empty purpose removes it. */
+export interface CategoryChange {
+  name?: string;
+  purpose?: Purpose | "";
+  archived?: boolean;
 }
 
 export type TransactionType = "expense" | "income" | "transfer" | "transfer_out" | "transfer_in";
@@ -49,6 +72,8 @@ export interface Transaction {
   /** Date as YYYY-MM-DD. */
   booked_on: string;
   note?: string;
+  /** An unplanned expense, marked by its author (rule X20). */
+  is_spontaneous: boolean;
   /** Only for transfers between ledgers (rule X17). */
   counterpart?: Counterpart;
   /** What the signed-in user may do with it (rule X19). The server checks again. */
@@ -82,6 +107,8 @@ export interface NewTransaction {
   amount_cents: number;
   booked_on: string;
   note?: string;
+  /** Only for expenses (rule X20). */
+  is_spontaneous?: boolean;
 }
 
 /**
@@ -96,6 +123,11 @@ export interface TransactionChange {
   amount_cents: number;
   booked_on: string;
   note: string;
+  /**
+   * Only the author may send it (rule X20); left out, the mark stays. The
+   * form leaves it out for bookings of others, so an owner can still edit them.
+   */
+  is_spontaneous?: boolean;
 }
 
 /** Balance of a ledger on one day (rule L7). Planned transactions after as_of do not count. */

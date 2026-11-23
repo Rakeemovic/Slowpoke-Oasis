@@ -2,10 +2,12 @@ import { request } from "@/api/client";
 import type {
   Balance,
   Category,
+  CategoryChange,
   DeletedTransaction,
   Household,
   Me,
   Member,
+  NewCategory,
   NewLedgerTransfer,
   NewPot,
   NewPotTransfer,
@@ -62,8 +64,23 @@ export const households = {
 export const ledgers = {
   categories: (ledgerId: string) => request<Category[]>("GET", `/ledgers/${enc(ledgerId)}/categories`),
 
-  createCategory: (ledgerId: string, name: string, isIncome: boolean) =>
-    request<{ id: string }>("POST", `/ledgers/${enc(ledgerId)}/categories`, { name, is_income: isIncome }),
+  /** Every member may create categories; a ledger has at most 50 (rule K7). */
+  createCategory: (ledgerId: string, category: NewCategory) =>
+    request<{ id: string }>("POST", `/ledgers/${enc(ledgerId)}/categories`, category),
+
+  /** Owner only (rule K9). */
+  updateCategory: (ledgerId: string, categoryId: string, change: CategoryChange) =>
+    request<void>("PATCH", `/ledgers/${enc(ledgerId)}/categories/${enc(categoryId)}`, change),
+
+  /**
+   * Owner only. The bookings move to moveTo, another active category of the
+   * same kind, or without it to the fallback category (rules K2, K6).
+   */
+  deleteCategory: (ledgerId: string, categoryId: string, moveTo?: string) =>
+    request<{ moved_to: string; moved_transactions: number }>(
+      "DELETE",
+      `/ledgers/${enc(ledgerId)}/categories/${enc(categoryId)}${moveTo ? `?move_to=${enc(moveTo)}` : ""}`,
+    ),
 
   /** Newest first. The server returns at most 100 by default and 500 at most; page with limit and offset. */
   transactions: (ledgerId: string, page: { limit: number; offset: number }) =>

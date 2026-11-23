@@ -54,7 +54,7 @@ func TestOwnerLeavingHandsOverAndLastMemberDeletesHousehold(t *testing.T) {
 	if err := s.AddHouseholdMember(ctx, hid, "carol"); err != nil {
 		t.Fatal(err)
 	}
-	cat, err := s.CreateCategory(ctx, lid, "Garden", false)
+	cat, err := s.CreateCategory(ctx, NewCategory{LedgerID: lid, Name: "Garden"})
 	if err != nil {
 		t.Fatal(err)
 	}

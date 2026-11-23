@@ -53,10 +53,10 @@ func TestInvalidNamesAreRejected(t *testing.T) {
 	_, s := setup(t)
 	ctx := context.Background()
 
-	if _, err := s.CreateCategory(ctx, "l1", strings.Repeat("x", 51), false); !errors.Is(err, ErrInvalidName) {
+	if _, err := s.CreateCategory(ctx, NewCategory{LedgerID: "l1", Name: strings.Repeat("x", 51)}); !errors.Is(err, ErrInvalidName) {
 		t.Errorf("51-character category name: err = %v, want ErrInvalidName", err)
 	}
-	if _, err := s.CreateCategory(ctx, "l1", "   ", false); !errors.Is(err, ErrInvalidName) {
+	if _, err := s.CreateCategory(ctx, NewCategory{LedgerID: "l1", Name: "   "}); !errors.Is(err, ErrInvalidName) {
 		t.Errorf("blank category name: err = %v, want ErrInvalidName", err)
 	}
 }
@@ -66,10 +66,10 @@ func TestCategoryNamesAreUniquePerLedgerIgnoringCase(t *testing.T) {
 	ctx := context.Background()
 
 	// "Groceries" already exists in the test setup for ledger l1.
-	if _, err := s.CreateCategory(ctx, "l1", "groceries", false); err == nil {
+	if _, err := s.CreateCategory(ctx, NewCategory{LedgerID: "l1", Name: "groceries"}); err == nil {
 		t.Fatal("expected a duplicate name to be rejected, got nil")
 	}
-	if _, err := s.CreateCategory(ctx, "l1", "Rent", false); err != nil {
+	if _, err := s.CreateCategory(ctx, NewCategory{LedgerID: "l1", Name: "Rent"}); err != nil {
 		t.Errorf("new name should be accepted: %v", err)
 	}
 }
