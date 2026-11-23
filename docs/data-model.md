@@ -48,8 +48,14 @@ A pot groups planned amounts and collects transactions.
 - Past months are never filled in afterwards. A past month that was never opened has no plan.
 - Only the current month can be changed (rule P5): "this month only" (`scope=this_month`) or "this month and the months to come" (`scope=from_now_on`, also changes the template).
 
+### Recurring payments
+- `recurring_payment`: id, ledger_id, name, amount_cents, category_id, pot_id, interval_months (1, 3, 6, 12), due_day (1–31), first_month, last_month (optional, `YYYY-MM`), tracked_from (date from which occurrences can be open), archived, created_at. Only expenses (rules R1–R5, R8).
+- `recurring_skip`: recurring_payment_id, due_on. Occurrences a member chose not to book (rule R7).
+
+**Occurrences** are not stored. They are calculated from the schedule: one due date per `interval_months` months from `first_month` on. An occurrence is *open* if it is due on or after `tracked_from`, is neither booked nor skipped, and the payment is not archived. The app lists open occurrences up to the end of the current payday period and books one with a tap as a normal expense that remembers the occurrence (rule R6). Nothing is booked automatically.
+
 ### Transactions
-- `transactions`: id, ledger_id, user_id (who booked it), type, category_id, pot_id, counterpart_pot_id, amount_cents, booked_on, note, created_at, updated_at, deleted_at, deleted_by (who deleted it), linked_transaction_id (the other leg of a transfer between ledgers), is_spontaneous (expenses only, set by the author, rule X20)
+- `transactions`: id, ledger_id, user_id (who booked it), type, category_id, pot_id, counterpart_pot_id, amount_cents, booked_on, note, created_at, updated_at, deleted_at, deleted_by (who deleted it), linked_transaction_id (the other leg of a transfer between ledgers), is_spontaneous (expenses only, set by the author, rule X20), recurring_payment_id and recurring_due_on (the occurrence of a recurring payment that the expense pays, rule R6)
 
 **Types:**
 - `expense`: negative amount, category required

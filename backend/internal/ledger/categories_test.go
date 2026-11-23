@@ -291,7 +291,7 @@ func TestFallbackNameUsedByOtherKind(t *testing.T) {
 	}
 }
 
-func TestAuthorizeCategoryChange(t *testing.T) {
+func TestAuthorizeLedgerOwner(t *testing.T) {
 	db, s := setup(t)
 	ctx := context.Background()
 	mustExec(t, db, `INSERT INTO user (id, name, created_at) VALUES ('bob', 'Bob', '2026-01-01T00:00:00Z')`)
@@ -314,7 +314,7 @@ func TestAuthorizeCategoryChange(t *testing.T) {
 		{"u1", "missing", ErrLedgerNotFound},
 	}
 	for _, c := range cases {
-		if err := s.AuthorizeCategoryChange(ctx, c.user, c.ledger); !errors.Is(err, c.want) {
+		if err := s.AuthorizeLedgerOwner(ctx, c.user, c.ledger); !errors.Is(err, c.want) {
 			t.Errorf("%s on %s: err = %v, want %v", c.user, c.ledger, err, c.want)
 		}
 	}

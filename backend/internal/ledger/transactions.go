@@ -5,6 +5,8 @@ import (
 	"errors"
 	"time"
 	"unicode/utf8"
+
+	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/store"
 )
 
 // TxType is the kind of a transaction (rules X2–X4).
@@ -51,13 +53,20 @@ type NewTransaction struct {
 	Note             string
 	// IsSpontaneous marks an unplanned expense (rule X20).
 	IsSpontaneous bool
+	// RecurringPaymentID and RecurringDueOn name the occurrence of a
+	// recurring payment that this expense pays (rule R6). Both or neither.
+	RecurringPaymentID string
+	RecurringDueOn     string
 }
 
 // Validate checks the rules that do not need the database (X1–X4, X8, X9,
-// X20).
+// X20, R6).
 func (in NewTransaction) Validate() error {
 	if in.IsSpontaneous && in.Type != TypeExpense {
 		return ErrSpontaneousExpense
+	}
+	if err := in.validateRecurringLink(); err != nil {
+		return err
 	}
 	switch in.Type {
 	case TypeExpense, TypeIncome:
@@ -81,6 +90,23 @@ func (in NewTransaction) Validate() error {
 		return ErrInvalidType
 	}
 	return validateBooking(in.AmountCents, in.BookedOn, in.Note)
+}
+
+// validateRecurringLink checks the link to a recurring payment (rule R6).
+func (in NewTransaction) validateRecurringLink() error {
+	if (in.RecurringPaymentID == "") != (in.RecurringDueOn == "") {
+		return ErrRecurringLinkRequired
+	}
+	if in.RecurringPaymentID == "" {
+		return nil
+	}
+	if in.Type != TypeExpense {
+		return ErrRecurringNeedsExpense
+	}
+	if !validDate(in.RecurringDueOn) {
+		return ErrInvalidDate
+	}
+	return nil
 }
 
 // validateBooking checks the rules that every booking shares, whatever its
@@ -134,18 +160,29 @@ func (s *Store) CreateTransaction(ctx context.Context, in NewTransaction, now ti
 			return "", err
 		}
 	}
+	if in.RecurringPaymentID != "" {
+		if err := ensureOccurrenceOpen(ctx, s.db, in.LedgerID, in.RecurringPaymentID, in.RecurringDueOn); err != nil {
+			return "", err
+		}
+	}
 
 	id := newID()
 	ts := timestamp(now)
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO transactions
 			(id, ledger_id, user_id, type, category_id, pot_id, counterpart_pot_id,
-			 amount_cents, booked_on, note, is_spontaneous, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 amount_cents, booked_on, note, is_spontaneous,
+			 recurring_payment_id, recurring_due_on, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, in.LedgerID, in.UserID, in.Type,
 		nullIfEmpty(in.CategoryID), potID, nullIfEmpty(in.CounterpartPotID),
-		in.storedAmount(), in.BookedOn, nullIfEmpty(in.Note), in.IsSpontaneous, ts, ts,
+		in.storedAmount(), in.BookedOn, nullIfEmpty(in.Note), in.IsSpontaneous,
+		nullIfEmpty(in.RecurringPaymentID), nullIfEmpty(in.RecurringDueOn), ts, ts,
 	)
+	if store.IsUniqueViolation(err) {
+		// Another booking for the same occurrence came first (rule R6).
+		return "", ErrOccurrenceBooked
+	}
 	if err != nil {
 		return "", err
 	}

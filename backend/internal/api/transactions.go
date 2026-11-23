@@ -17,6 +17,10 @@ type transactionRequest struct {
 	BookedOn         string `json:"booked_on"`
 	Note             string `json:"note"`
 	IsSpontaneous    bool   `json:"is_spontaneous"`
+	// RecurringPaymentID and RecurringDueOn book one occurrence of a
+	// recurring payment (rule R6). They cannot be changed afterwards.
+	RecurringPaymentID string `json:"recurring_payment_id"`
+	RecurringDueOn     string `json:"recurring_due_on"`
 }
 
 // transactionPatchRequest is the JSON body for changing a transaction.
@@ -47,6 +51,9 @@ type transactionResponse struct {
 	BookedOn         string  `json:"booked_on"`
 	Note             string  `json:"note,omitempty"`
 	IsSpontaneous    bool    `json:"is_spontaneous"`
+	// The occurrence of a recurring payment this expense pays (rule R6).
+	RecurringPaymentID string `json:"recurring_payment_id,omitempty"`
+	RecurringDueOn     string `json:"recurring_due_on,omitempty"`
 	// Counterpart is set for transfers between ledgers (rule X17).
 	Counterpart *counterpartResponse `json:"counterpart,omitempty"`
 }
@@ -75,6 +82,9 @@ func newTransactionResponse(t ledger.Transaction, counterparts map[string]ledger
 		Note:             t.Note,
 		IsSpontaneous:    t.IsSpontaneous,
 		Username:         usernameOrNull(t.Username),
+
+		RecurringPaymentID: t.RecurringPaymentID,
+		RecurringDueOn:     t.RecurringDueOn,
 	}
 	if c, ok := counterparts[t.ID]; ok {
 		resp.Counterpart = &counterpartResponse{Kind: c.Kind, LedgerID: c.LedgerID, Name: c.Name}
@@ -141,6 +151,9 @@ func (s *Server) createTransaction(w http.ResponseWriter, r *http.Request) {
 		BookedOn:         req.BookedOn,
 		Note:             req.Note,
 		IsSpontaneous:    req.IsSpontaneous,
+
+		RecurringPaymentID: req.RecurringPaymentID,
+		RecurringDueOn:     req.RecurringDueOn,
 	}, s.now())
 	if err != nil {
 		fail(w, err)
