@@ -218,33 +218,6 @@ func (s *Store) UpdatePot(ctx context.Context, ledgerID, potID string, u PotUpda
 	})
 }
 
-// SetPlannedAmount sets the planned amount of a category in a pot (rule P1).
-// An existing plan for the same category is replaced.
-func (s *Store) SetPlannedAmount(ctx context.Context, ledgerID, potID, categoryID string, amountCents int64) error {
-	if amountCents < 0 {
-		return ErrInvalidAmount
-	}
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO pot_line (pot_id, ledger_id, category_id, amount_cents)
-		VALUES (?, ?, ?, ?)
-		ON CONFLICT (pot_id, category_id) DO UPDATE SET amount_cents = excluded.amount_cents`,
-		potID, ledgerID, categoryID, amountCents,
-	)
-	return err
-}
-
-// DeletePlannedAmount removes a planned amount from a pot.
-func (s *Store) DeletePlannedAmount(ctx context.Context, ledgerID, potID, categoryID string) error {
-	res, err := s.db.ExecContext(ctx, `
-		DELETE FROM pot_line WHERE pot_id = ? AND ledger_id = ? AND category_id = ?`,
-		potID, ledgerID, categoryID,
-	)
-	if err != nil {
-		return err
-	}
-	return requireAffected(res, ErrPotLineNotFound)
-}
-
 // resolvePot returns potID, or the default pot of the ledger if potID is empty
 // (rule X5).
 func resolvePot(ctx context.Context, q queryer, ledgerID, potID string) (string, error) {

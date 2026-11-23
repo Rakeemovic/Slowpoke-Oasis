@@ -170,7 +170,7 @@ func TestDeleteCategoryMovesTransactionsAndPlans(t *testing.T) {
 	if err := s.DeleteTransaction(ctx, "l1", deleted, "u1", now); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetPlannedAmount(ctx, "l1", "p-default", "c-food", 30000); err != nil {
+	if err := s.SetPlannedAmount(ctx, planChange("p-default", "c-food", 30000, ScopeFromNowOn)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -200,7 +200,7 @@ func TestDeleteCategoryMovesTransactionsAndPlans(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetPlannedAmount(ctx, "l1", "p-default", garden, 5000); err != nil {
+	if err := s.SetPlannedAmount(ctx, planChange("p-default", garden, 5000, ScopeFromNowOn)); err != nil {
 		t.Fatal(err)
 	}
 	if res, err = s.DeleteCategory(ctx, "l1", garden, ""); err != nil || res.TargetID != other.ID {
@@ -366,7 +366,7 @@ func TestDeleteCategoryMovesToChosenTarget(t *testing.T) {
 	if _, err := s.CreateTransaction(ctx, baseExpense(), time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetPlannedAmount(ctx, "l1", "p-default", "c-food", 1000); err != nil {
+	if err := s.SetPlannedAmount(ctx, planChange("p-default", "c-food", 1000, ScopeFromNowOn)); err != nil {
 		t.Fatal(err)
 	}
 

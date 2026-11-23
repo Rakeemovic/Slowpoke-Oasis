@@ -19,18 +19,16 @@ type Balance struct {
 // booked on or before asOf. Planned transactions after that day do not count
 // yet. An empty asOf means today in the server's time zone.
 func (s *Store) LedgerBalance(ctx context.Context, ledgerID, asOf string, now time.Time) (Balance, error) {
-	if asOf == "" {
-		asOf = now.Format(dateLayout)
-	}
-	if !validDate(asOf) {
-		return Balance{}, ErrInvalidDate
+	asOf, err := Today(asOf, now)
+	if err != nil {
+		return Balance{}, err
 	}
 
 	// Pot balances follow the same rules as in ListPots. A transfer between
 	// two pots of the ledger leaves the total unchanged, but moves money out
 	// of (pot_id) or into (counterpart_pot_id) the default pot.
 	b := Balance{AsOf: asOf}
-	err := s.db.QueryRowContext(ctx, `
+	err = s.db.QueryRowContext(ctx, `
 		SELECT
 		  COALESCE(SUM(CASE WHEN t.type <> 'transfer' THEN t.amount_cents ELSE 0 END), 0),
 		  COALESCE(SUM(CASE

@@ -89,3 +89,48 @@ func TestPotErrorStatuses(t *testing.T) {
 		})
 	}
 }
+
+func TestMonthlyPlanOverHTTP(t *testing.T) {
+	h := newTestHandler(t)
+	line := "/ledgers/l1/pots/p-default/lines/c-food?date=2026-11-16"
+
+	rec := do(t, h, http.MethodPut, line, "u1", map[string]any{"amount_cents": 5000})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("monthly pot without scope: status %d, want 400", rec.Code)
+	}
+	rec = do(t, h, http.MethodPut, line, "u1", map[string]any{"amount_cents": 5000, "scope": "from_now_on"})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("set plan: status %d, body %s", rec.Code, rec.Body)
+	}
+
+	rec = do(t, h, http.MethodGet, "/ledgers/l1/pots/p-default/summary?date=2026-11-16", "u1", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("summary: status %d, body %s", rec.Code, rec.Body)
+	}
+	var sum struct {
+		Month      string `json:"month"`
+		PlanSource string `json:"plan_source"`
+		Lines      []struct {
+			PlannedCents int64 `json:"planned_cents"`
+		} `json:"lines"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &sum); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if sum.Month != "2026-11" || sum.PlanSource != "month" || len(sum.Lines) != 1 || sum.Lines[0].PlannedCents != 5000 {
+		t.Errorf("summary = %+v, want month 2026-11 from the stored plan with 5000", sum)
+	}
+
+	rec = do(t, h, http.MethodGet, "/ledgers/l1/pots/p-default/summary?from=2026-11-01", "u1", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("monthly pot with from: status %d, want 400", rec.Code)
+	}
+	rec = do(t, h, http.MethodDelete, line+"&scope=this_month", "u1", nil)
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("remove for this month: status %d, body %s", rec.Code, rec.Body)
+	}
+	rec = do(t, h, http.MethodDelete, line+"&scope=this_month", "u1", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("remove again: status %d, want 404", rec.Code)
+	}
+}
