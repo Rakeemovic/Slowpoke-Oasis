@@ -44,6 +44,7 @@ var statusByError = []struct {
 		ledger.ErrPurposeNeedsExpense,
 		ledger.ErrInvalidPlanScope,
 		ledger.ErrMonthlyPotNeedsMonth,
+		ledger.ErrBudgetOnlyMainPot,
 		ledger.ErrInvalidInterval,
 		ledger.ErrInvalidDueDay,
 		ledger.ErrInvalidMonthRange,

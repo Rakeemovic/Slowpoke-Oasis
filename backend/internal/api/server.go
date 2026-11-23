@@ -92,6 +92,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /transfers", s.createLinkedTransfer)
 
 	// Reports
+	mux.HandleFunc("GET /ledgers/{ledger}/budget", s.budget)
 	mux.HandleFunc("GET /ledgers/{ledger}/pots/{pot}/summary", s.potSummary)
 	mux.HandleFunc("GET /ledgers/{ledger}/analytics", s.analytics)
 	mux.HandleFunc("GET /ledgers/{ledger}/balance", s.ledgerBalance)
