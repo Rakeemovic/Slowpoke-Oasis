@@ -3,7 +3,7 @@ import { useCallback, useState } from "react";
 import { View } from "react-native";
 
 import { recurring } from "@/api/endpoints";
-import type { Occurrence } from "@/api/types";
+import type { Occurrence, ReserveRate } from "@/api/types";
 import { ErrorMessage } from "@/components/error-message";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,28 +13,38 @@ import { today } from "@/lib/dates";
 import { errorMessage } from "@/lib/errors";
 import { formatCents } from "@/lib/money";
 import { describeOccurrence } from "@/lib/recurring";
+import { describeRate } from "@/lib/reserves";
 import { cn } from "@/lib/utils";
 
 /**
  * The open occurrences of a ledger's recurring payments up to the end of the
  * current period. "Book" opens a prefilled booking, "Skip" closes one without
  * booking (rule R7). A skipped row stays while the ledger is open, so the
- * skip can be undone. Without anything due, the card is not shown.
+ * skip can be undone. Below them, the rates the reserves should receive in
+ * this period (rule R14); "Transfer" opens a prefilled move into the reserve.
+ * Without anything due or to save, the card is not shown.
  */
 export function DuePayments({ ledgerId }: { ledgerId: string }) {
-  const { data, error, reload } = useLoader(useCallback(() => recurring.due(ledgerId, today()), [ledgerId]));
+  const { data, error, reload } = useLoader(
+    useCallback(async () => {
+      const date = today();
+      const [due, rates] = await Promise.all([recurring.due(ledgerId, date), recurring.reserveRates(ledgerId, date)]);
+      return { due, rates: rates.filter((r) => r.rate_cents > 0) };
+    }, [ledgerId]),
+  );
   // Occurrences skipped here, so they can be undone. If someone else undid
   // the skip meanwhile, the loaded list has the row again; it is shown once.
   const [skipped, setSkipped] = useState<Occurrence[]>([]);
   const skippedKeys = new Set(skipped.map(key));
-  const rows = [...(data ?? []).filter((o) => !skippedKeys.has(key(o))), ...skipped].sort((a, b) =>
+  const rows = [...(data?.due ?? []).filter((o) => !skippedKeys.has(key(o))), ...skipped].sort((a, b) =>
     a.due_on.localeCompare(b.due_on),
   );
 
   if (error) {
     return <ErrorMessage message={error} onRetry={reload} />;
   }
-  if (rows.length === 0) {
+  const rates = data?.rates ?? [];
+  if (rows.length === 0 && rates.length === 0) {
     return null;
   }
 
@@ -56,6 +66,9 @@ export function DuePayments({ ledgerId }: { ledgerId: string }) {
               skipped={skippedKeys.has(key(o))}
               onSkipped={(isSkipped) => markSkipped(o, isSkipped)}
             />
+          ))}
+          {rates.map((rate, index) => (
+            <RateRow key={rate.recurring_payment_id} ledgerId={ledgerId} rate={rate} first={rows.length === 0 && index === 0} />
           ))}
         </CardContent>
       </Card>
@@ -129,6 +142,35 @@ function DueRow({
         </Button>
       </View>
       <ErrorMessage message={error} />
+    </View>
+  );
+}
+
+function RateRow({ ledgerId, rate, first }: { ledgerId: string; rate: ReserveRate; first: boolean }) {
+  const done = rate.open_cents === 0;
+  return (
+    <View className={cn("gap-2 px-4 py-3", !first && "border-t border-border")}>
+      <View className="flex-row items-center gap-3">
+        <View className="flex-1 gap-0.5">
+          <Text className="font-medium">Save for {rate.name}</Text>
+          <Text variant="muted">{done ? "Saved for this period" : describeRate(rate)}</Text>
+        </View>
+        <Text className={cn("font-semibold", done && "text-muted-foreground")}>{formatCents(rate.open_cents)}</Text>
+      </View>
+      {!done && (
+        <View className="flex-row gap-2">
+          <Link
+            href={{
+              pathname: "/ledgers/[ledgerId]/move",
+              params: { ledgerId, toPotId: rate.pot_id, amountCents: String(rate.open_cents) },
+            }}
+            asChild>
+            <Button size="sm" aria-label={`Transfer to ${rate.name}`}>
+              <Text>Transfer</Text>
+            </Button>
+          </Link>
+        </View>
+      )}
     </View>
   );
 }
