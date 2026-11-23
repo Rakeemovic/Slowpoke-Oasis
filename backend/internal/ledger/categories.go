@@ -383,14 +383,7 @@ func movePlannedAmounts(ctx context.Context, tx *sql.Tx, ledgerID, from, to stri
 // archive or delete categories (rule K9) and change recurring payments (rule
 // R8); every member may still create both. It returns ErrNotOwner otherwise.
 func (s *Store) AuthorizeLedgerOwner(ctx context.Context, userID, ledgerID string) error {
-	var isOwner bool
-	err := s.db.QueryRowContext(ctx,
-		`SELECT `+ownsLedger("l")+` FROM ledger l WHERE l.id = ?`,
-		userID, userID, ledgerID,
-	).Scan(&isOwner)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrLedgerNotFound
-	}
+	isOwner, err := ownsLedgerOf(ctx, s.db, userID, ledgerID)
 	if err != nil {
 		return err
 	}
@@ -398,6 +391,20 @@ func (s *Store) AuthorizeLedgerOwner(ctx context.Context, userID, ledgerID strin
 		return ErrNotOwner
 	}
 	return nil
+}
+
+// ownsLedgerOf reports whether userID owns the ledger: a personal ledger's
+// user, or the owner of the household.
+func ownsLedgerOf(ctx context.Context, q queryer, userID, ledgerID string) (bool, error) {
+	var isOwner bool
+	err := q.QueryRowContext(ctx,
+		`SELECT `+ownsLedger("l")+` FROM ledger l WHERE l.id = ?`,
+		userID, userID, ledgerID,
+	).Scan(&isOwner)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, ErrLedgerNotFound
+	}
+	return isOwner, err
 }
 
 // ensureCategoryFits checks that income uses income categories and expenses

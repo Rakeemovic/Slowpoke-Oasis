@@ -3,8 +3,9 @@ import { useCallback, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 
 import { auth, ledgers } from "@/api/endpoints";
-import type { Category, NewPotTransfer, Transaction, TransactionChange } from "@/api/types";
+import type { Category, CategoryScope, NewPotTransfer, Transaction, TransactionChange } from "@/api/types";
 import { BookingForm } from "@/components/booking-form";
+import { CategoryScopeChoice } from "@/components/category-scope-choice";
 import { ConfirmPanel } from "@/components/confirm-panel";
 import { ErrorMessage } from "@/components/error-message";
 import { MoveForm } from "@/components/move-form";
@@ -14,6 +15,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Text } from "@/components/ui/text";
 import { useLoader } from "@/hooks/use-loader";
 import { errorMessage } from "@/lib/errors";
+import { loadMyLedgers } from "@/lib/ledgers";
 import { formatCents, formatSignedCents } from "@/lib/money";
 import { isLinkedTransfer, transactionTitle } from "@/lib/transactions";
 
@@ -24,10 +26,17 @@ export default function TransactionScreen() {
     kind?: string;
   }>();
   const load = useCallback(
-    () => Promise.all([ledgers.transaction(ledgerId, transactionId), ledgers.categories(ledgerId), auth.me()]),
+    () =>
+      Promise.all([
+        ledgers.transaction(ledgerId, transactionId),
+        ledgers.categories(ledgerId),
+        auth.me(),
+        loadMyLedgers(),
+      ]),
     [ledgerId, transactionId],
   );
   const { data, error, loading, reload } = useLoader(load);
+  const series = useSeriesCategoryChange(ledgerId, transactionId);
 
   if (!data) {
     return (
@@ -37,7 +46,8 @@ export default function TransactionScreen() {
       </Screen>
     );
   }
-  const [tx, categories, me] = data;
+  const [tx, categories, me, myLedgers] = data;
+  const isOwner = myLedgers.find((l) => l.id === ledgerId)?.isOwner ?? false;
   // Only incomes and expenses have a form; transfers are shown as they are.
   const editable = tx.can_edit && (tx.type === "expense" || tx.type === "income");
 
@@ -45,8 +55,29 @@ export default function TransactionScreen() {
   const movable = tx.can_edit && tx.type === "transfer";
 
   async function save(values: TransactionChange | NewPotTransfer) {
+    // A new category for a booking of a recurring payment may reach its other
+    // bookings too, so ask first (rule R9).
+    if (values.type === "expense" && tx.recurring_payment_id && values.category_id !== tx.category_id) {
+      series.ask(values);
+      return;
+    }
     await ledgers.updateTransaction(ledgerId, transactionId, values);
     router.back();
+  }
+
+  if (series.pending) {
+    return (
+      <Screen>
+        <CategoryScopeChoice
+          categoryName={categories.find((c) => c.id === series.pending?.category_id)?.name ?? ""}
+          isOwner={isOwner}
+          busy={series.busy}
+          error={series.error}
+          onChoose={series.choose}
+          onCancel={series.cancel}
+        />
+      </Screen>
+    );
   }
 
   return (
@@ -54,7 +85,8 @@ export default function TransactionScreen() {
       {editable ? (
         <BookingForm
           ledgerId={ledgerId}
-          initial={toChange(tx)}
+          // Back from the scope question, the form keeps what was typed.
+          initial={series.draft ?? toChange(tx)}
           canMarkSpontaneous={tx.user_id === me.user_id}
           // A booking of a recurring payment stays an expense (rule R6).
           expenseOnly={tx.recurring_payment_id !== undefined}
@@ -68,6 +100,45 @@ export default function TransactionScreen() {
       {tx.can_delete && <DeleteSection tx={tx} categories={categories} />}
     </Screen>
   );
+}
+
+/**
+ * Holds a change of category for a booking of a recurring payment while the
+ * user picks the scope, then saves it with that scope.
+ */
+function useSeriesCategoryChange(ledgerId: string, transactionId: string) {
+  const [pending, setPending] = useState<TransactionChange>();
+  const [draft, setDraft] = useState<TransactionChange>();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+
+  async function choose(scope: CategoryScope) {
+    setBusy(true);
+    setError(undefined);
+    try {
+      await ledgers.updateTransaction(ledgerId, transactionId, { ...pending!, category_scope: scope });
+      router.back();
+    } catch (e) {
+      setError(errorMessage(e));
+      setBusy(false);
+    }
+  }
+
+  return {
+    pending,
+    draft,
+    busy,
+    error,
+    ask: (values: TransactionChange) => {
+      setPending(values);
+      setDraft(values);
+    },
+    choose,
+    cancel: () => {
+      setPending(undefined);
+      setError(undefined);
+    },
+  };
 }
 
 function toMove(tx: Transaction): NewPotTransfer {

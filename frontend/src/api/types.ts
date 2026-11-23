@@ -134,7 +134,15 @@ export interface TransactionChange {
    * form leaves it out for bookings of others, so an owner can still edit them.
    */
   is_spontaneous?: boolean;
+  /**
+   * Which bookings of the same recurring payment get the new category too
+   * (rule R9). Left out, only this booking changes.
+   */
+  category_scope?: CategoryScope;
 }
+
+/** "this_and_later" and "all" also change the recurring payment; owner only. */
+export type CategoryScope = "this" | "this_and_earlier" | "this_and_later" | "all";
 
 /** Balance of a ledger on one day (rule L7). Planned transactions after as_of do not count. */
 export interface Balance {
