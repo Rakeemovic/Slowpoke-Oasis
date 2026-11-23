@@ -123,3 +123,69 @@ func TestRecurringPaymentsInHousehold(t *testing.T) {
 		t.Fatalf("after undo: %+v", got)
 	}
 }
+
+func TestCategoryScopeInHousehold(t *testing.T) {
+	h := newTestHandler(t)
+	_, bobToken := register(t, h, "bob")
+	_, carolToken := register(t, h, "carol")
+	rec := doToken(t, h, http.MethodPost, "/households", bobToken, map[string]any{"name": "Flat"})
+	householdID := decodeID(t, rec.Body.Bytes())
+	ledgerID := decodeField(t, rec.Body.Bytes(), "ledger_id")
+	if rec = doToken(t, h, http.MethodPost, "/households/"+householdID+"/members", bobToken, map[string]any{"username": "carol"}); rec.Code != http.StatusNoContent {
+		t.Fatalf("add carol: status %d", rec.Code)
+	}
+	categories := listCategoriesOf(t, h, bobToken, ledgerID)
+	rent, utilities := categories["Rent"].ID, categories["Utilities"].ID
+
+	rec = doToken(t, h, http.MethodPost, "/ledgers/"+ledgerID+"/recurring-payments?date=2026-10-01", bobToken, map[string]any{
+		"name": "Rent", "amount_cents": 80000, "category_id": rent,
+		"interval_months": 1, "due_day": 20, "first_month": "2026-10",
+	})
+	paymentID := decodeID(t, rec.Body.Bytes())
+
+	// Bob pays October, Carol November and December.
+	bookings := map[string]string{}
+	for due, token := range map[string]string{"2026-10-20": bobToken, "2026-11-20": carolToken, "2026-12-20": carolToken} {
+		rec = doToken(t, h, http.MethodPost, "/ledgers/"+ledgerID+"/transactions", token, map[string]any{
+			"type": "expense", "category_id": rent, "amount_cents": 80000, "booked_on": due,
+			"recurring_payment_id": paymentID, "recurring_due_on": due,
+		})
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("book %s: status %d, body %s", due, rec.Code, rec.Body)
+		}
+		bookings[due] = decodeID(t, rec.Body.Bytes())
+	}
+	categoryOf := func(due string) string {
+		rec := doToken(t, h, http.MethodGet, "/ledgers/"+ledgerID+"/transactions/"+bookings[due], bobToken, nil)
+		var tx transactionResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &tx); err != nil {
+			t.Fatal(err)
+		}
+		return tx.CategoryID
+	}
+	change := func(token, due, scope string) int {
+		return doToken(t, h, http.MethodPatch, "/ledgers/"+ledgerID+"/transactions/"+bookings[due], token,
+			map[string]any{"category_id": utilities, "category_scope": scope}).Code
+	}
+
+	// A member's earlier scope changes only their own bookings (rule R9).
+	if code := change(carolToken, "2026-12-20", "this_and_earlier"); code != http.StatusNoContent {
+		t.Fatalf("member, earlier: status %d", code)
+	}
+	if categoryOf("2026-11-20") != utilities || categoryOf("2026-10-20") != rent {
+		t.Errorf("member changed the wrong bookings")
+	}
+	// Scopes that change the payment are for the owner only.
+	if code := change(carolToken, "2026-12-20", "all"); code != http.StatusForbidden {
+		t.Errorf("member, all: status %d, want 403", code)
+	}
+	if code := change(bobToken, "2026-12-20", "all"); code != http.StatusNoContent {
+		t.Fatalf("owner, all: status %d", code)
+	}
+	if categoryOf("2026-10-20") != utilities {
+		t.Errorf("owner did not change Bob's October booking")
+	}
+	if code := change(bobToken, "2026-12-20", "sometimes"); code != http.StatusBadRequest {
+		t.Errorf("unknown scope: status %d, want 400", code)
+	}
+}

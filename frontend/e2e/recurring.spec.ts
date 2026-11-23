@@ -73,3 +73,24 @@ test("a due payment can be skipped, the skip undone, and the payment archived", 
   await expect(page.getByText("Available today")).toBeVisible();
   await expect(page.getByText("Due payments")).toBeHidden();
 });
+
+test("a new category for a booking of a recurring payment asks how far it reaches", async ({ page }) => {
+  await createDueToday(page, "Flat", "800", "Rent");
+  await page.getByRole("link", { name: "Book Flat" }).click();
+  await page.getByRole("button", { name: "Save" }).click();
+
+  await transactionRow(page, "Rent").click();
+  await page.getByRole("button", { name: "Utilities", exact: true }).click();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText(/Which of its bookings move to “Utilities”\?/)).toBeVisible();
+
+  // Cancel goes back to the form, which keeps the choice.
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "All of this series" }).click();
+  await expect(transactionRow(page, "Utilities")).toBeVisible();
+
+  // "All" also changes the recurring payment for future bookings.
+  await page.getByRole("link", { name: "Recurring", exact: true }).click();
+  await expect(paymentRow(page, "Flat")).toContainText("Utilities");
+});

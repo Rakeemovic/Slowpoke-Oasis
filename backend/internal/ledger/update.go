@@ -17,6 +17,12 @@ type TransactionPatch struct {
 	BookedOn         *string
 	Note             *string
 	IsSpontaneous    *bool
+	// CategoryScope says which bookings of the same recurring payment take
+	// the new category too (rule R9). Empty means only this booking.
+	CategoryScope CategoryScope
+	// EditorID is the user who makes the change. Only needed with a
+	// CategoryScope: a member changes only their own other bookings.
+	EditorID string
 }
 
 // apply returns in with the fields of the patch that are set.
@@ -86,6 +92,9 @@ func (s *Store) UpdateTransaction(ctx context.Context, ledgerID, id string, p Tr
 
 		// The link to a recurring payment stays (rule R6), so a booking that
 		// pays an occurrence cannot become income or a transfer.
+		if !p.CategoryScope.valid() {
+			return ErrInvalidCategoryScope
+		}
 		in := p.apply(old)
 		if err := in.Validate(); err != nil {
 			return err
@@ -120,6 +129,13 @@ func (s *Store) UpdateTransaction(ctx context.Context, ledgerID, id string, p Tr
 			in.storedAmount(), in.BookedOn, nullIfEmpty(in.Note), in.IsSpontaneous, timestamp(now),
 			id, ledgerID,
 		)
-		return err
+		if err != nil || !p.CategoryScope.series() {
+			return err
+		}
+		return applyCategoryToSeries(ctx, tx, seriesChange{
+			ledgerID: ledgerID, bookingID: id, paymentID: old.RecurringPaymentID, dueOn: old.RecurringDueOn,
+			categoryID: in.CategoryID, categoryGiven: p.CategoryID != nil,
+			scope: p.CategoryScope, editorID: p.EditorID, now: now,
+		})
 	})
 }

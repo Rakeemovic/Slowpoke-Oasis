@@ -63,6 +63,7 @@ A recurring payment is a reminder. It is never booked automatically.
 | R6 | An expense may pay one occurrence (`recurring_payment_id` and `recurring_due_on`, set together and only on creation). The date must be a due date of an active payment of the same ledger. At most one booking per occurrence that is not deleted (otherwise 409); deleting it opens the occurrence again, restoring it fails with 409 while another booking pays it. The booking cannot become income or a transfer. | DB (CHECK, unique index) + App |
 | R7 | Every member may skip an occurrence that is not booked and undo the skip. A skipped occurrence cannot be booked (409). | App |
 | R8 | Every member may create recurring payments; only the owner of the ledger may change or archive them (otherwise 403). They are not deleted, only archived. Deleting a category moves its recurring payments along with its bookings (K2). | App |
+| R9 | Changing the category of a booking that pays a recurring payment may take `category_scope`: `this` (default), `this_and_earlier`, `this_and_later` or `all`. The other bookings of the same payment in that range (by the due date they pay, the edited one included) get the new category; deleted bookings keep theirs. The owner changes every booking, a member only their own. `this_and_later` and `all` also change the payment's category, so only the owner may use them (403). A scope other than `this` needs `category_id` and a booking of a recurring payment, otherwise 400. | App |
 
 Open occurrences (`GET /ledgers/{ledger}/recurring-payments/due?date=`) are those of active payments from `tracked_from` to the end of the current payday period that are neither booked nor skipped, each with `status` `overdue`, `due` (today) or `upcoming`.
 
@@ -104,6 +105,8 @@ Every member of a household may read its ledger and book in it. Changing an exis
 | Rename, archive, delete a category or change its purpose | The owner of the ledger (in a household the household owner). |
 | Create a recurring payment, book or skip an occurrence, undo a skip | Every member of the ledger (R7, R8). |
 | Change or archive a recurring payment | The owner of the ledger (R8). |
+| Give earlier bookings of a recurring payment the new category (R9) | The owner for all bookings; a member for their own. |
+| Give later or all bookings the new category, which also changes the payment (R9) | The owner of the ledger. |
 | See the members of a household | Every member. Only the user ID, username and role are shown; the display name and other personal data stay hidden. |
 | Add a household member | The household owner. |
 | Remove a household member | The household owner. Every member may leave by removing themselves. |
