@@ -51,6 +51,7 @@ var statusByError = []struct {
 		ledger.ErrRecurringAmount,
 		ledger.ErrRecurringLinkRequired,
 		ledger.ErrNotAnOccurrence,
+		ledger.ErrInvalidCategoryScope,
 		auth.ErrInvalidUsername,
 		auth.ErrInvalidPassword,
 	}},
