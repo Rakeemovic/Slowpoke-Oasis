@@ -146,16 +146,39 @@ const selfAndLinkedLeg = `(
 
 // DeleteTransaction soft-deletes a transaction (rule X10): it sets deleted_at
 // and deleted_by and keeps the row until the cleanup job removes it after 30 days.
+// Deleting money that went into a reserve must not take it below zero (R12).
 func (s *Store) DeleteTransaction(ctx context.Context, ledgerID, id, userID string, now time.Time) error {
 	ts := timestamp(now)
-	res, err := s.db.ExecContext(ctx, `
-		UPDATE transactions
-		SET deleted_at = ?, deleted_by = ?, updated_at = ?
-		WHERE deleted_at IS NULL AND `+selfAndLinkedLeg,
-		ts, userID, ts, id, ledgerID, id, ledgerID,
-	)
-	if err != nil {
-		return err
-	}
-	return requireAffected(res, ErrTransactionNotFound)
+	return s.changeGuarded(ctx, ledgerID, id, func(tx *sql.Tx) (sql.Result, error) {
+		return tx.ExecContext(ctx, `
+			UPDATE transactions
+			SET deleted_at = ?, deleted_by = ?, updated_at = ?
+			WHERE deleted_at IS NULL AND `+selfAndLinkedLeg,
+			ts, userID, ts, id, ledgerID, id, ledgerID,
+		)
+	})
+}
+
+// changeGuarded runs an update of a transaction and its linked leg in a
+// database transaction. It fails with ErrTransactionNotFound if no row
+// changed, and with ErrReserveShort if a reserve falls below zero (R12).
+func (s *Store) changeGuarded(ctx context.Context, ledgerID, id string, change func(tx *sql.Tx) (sql.Result, error)) error {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		pots, err := transactionPots(ctx, tx, ledgerID, id)
+		if err != nil {
+			return err
+		}
+		guard, err := guardReserves(ctx, tx, pots...)
+		if err != nil {
+			return err
+		}
+		res, err := change(tx)
+		if err != nil {
+			return err
+		}
+		if err := requireAffected(res, ErrTransactionNotFound); err != nil {
+			return err
+		}
+		return guard.check(ctx, tx)
+	})
 }

@@ -120,6 +120,10 @@ func (s *Store) UpdateTransaction(ctx context.Context, ledgerID, id string, p Tr
 			}
 		}
 
+		guard, err := guardReserves(ctx, tx, old.PotID, old.CounterpartPotID, in.PotID, in.CounterpartPotID)
+		if err != nil {
+			return err
+		}
 		_, err = tx.ExecContext(ctx, `
 			UPDATE transactions
 			SET type = ?, category_id = ?, pot_id = ?, counterpart_pot_id = ?,
@@ -129,8 +133,14 @@ func (s *Store) UpdateTransaction(ctx context.Context, ledgerID, id string, p Tr
 			in.storedAmount(), in.BookedOn, nullIfEmpty(in.Note), in.IsSpontaneous, timestamp(now),
 			id, ledgerID,
 		)
-		if err != nil || !p.CategoryScope.series() {
+		if err != nil {
 			return err
+		}
+		if err := guard.check(ctx, tx); err != nil {
+			return err
+		}
+		if !p.CategoryScope.series() {
+			return nil
 		}
 		return applyCategoryToSeries(ctx, tx, seriesChange{
 			ledgerID: ledgerID, bookingID: id, paymentID: old.RecurringPaymentID, dueOn: old.RecurringDueOn,

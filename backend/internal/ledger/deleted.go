@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/store"
@@ -65,20 +66,20 @@ func (s *Store) ListDeletedTransactions(ctx context.Context, ledgerID string, no
 }
 
 // RestoreTransaction undoes a soft delete. It only works within the retention
-// period, because older deletions may already have been purged.
+// period, because older deletions may already have been purged. Restoring an
+// expense must not take a reserve below zero (rule R12).
 func (s *Store) RestoreTransaction(ctx context.Context, ledgerID, id string, now time.Time) error {
-	res, err := s.db.ExecContext(ctx, `
-		UPDATE transactions
-		SET deleted_at = NULL, deleted_by = NULL, updated_at = ?
-		WHERE deleted_at IS NOT NULL AND deleted_at >= ? AND `+selfAndLinkedLeg,
-		timestamp(now), retentionCutoff(now), id, ledgerID, id, ledgerID,
-	)
+	err := s.changeGuarded(ctx, ledgerID, id, func(tx *sql.Tx) (sql.Result, error) {
+		return tx.ExecContext(ctx, `
+			UPDATE transactions
+			SET deleted_at = NULL, deleted_by = NULL, updated_at = ?
+			WHERE deleted_at IS NOT NULL AND deleted_at >= ? AND `+selfAndLinkedLeg,
+			timestamp(now), retentionCutoff(now), id, ledgerID, id, ledgerID,
+		)
+	})
 	if store.IsUniqueViolation(err) {
 		// The occurrence it paid was booked again meanwhile (rule R6).
 		return ErrOccurrenceBooked
 	}
-	if err != nil {
-		return err
-	}
-	return requireAffected(res, ErrTransactionNotFound)
+	return err
 }

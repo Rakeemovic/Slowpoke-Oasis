@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"time"
 	"unicode/utf8"
@@ -139,43 +140,88 @@ func (in NewTransaction) storedAmount() int64 {
 // Rules that need the database (foreign keys, CHECK constraints) are enforced
 // by the schema, so an error from the insert is returned as-is.
 func (s *Store) CreateTransaction(ctx context.Context, in NewTransaction, now time.Time) (string, error) {
-	if err := in.Validate(); err != nil {
-		return "", err
-	}
+	id, _, err := s.createTransaction(ctx, in, false, now)
+	return id, err
+}
 
-	potID, err := resolvePot(ctx, s.db, in.LedgerID, in.PotID)
-	if err != nil {
-		return "", err
+// CreateTransactionWithTopUp books an expense from the reserve of a recurring
+// payment like CreateTransaction, but first moves what the reserve lacks from
+// the default pot into it, in the same database transaction (rule R13). It
+// returns the new ID and the amount moved (0 if the reserve held enough).
+func (s *Store) CreateTransactionWithTopUp(ctx context.Context, in NewTransaction, now time.Time) (string, int64, error) {
+	return s.createTransaction(ctx, in, true, now)
+}
+
+func (s *Store) createTransaction(ctx context.Context, in NewTransaction, topUp bool, now time.Time) (string, int64, error) {
+	if err := in.Validate(); err != nil {
+		return "", 0, err
 	}
-	if err := ensurePotActive(ctx, s.db, in.LedgerID, potID); err != nil {
-		return "", err
+	var id string
+	var toppedUp int64
+	err := s.inTx(ctx, func(tx *sql.Tx) error {
+		var err error
+		if in.PotID, err = resolvePot(ctx, tx, in.LedgerID, in.PotID); err != nil {
+			return err
+		}
+		if err := checkNewTransaction(ctx, tx, in); err != nil {
+			return err
+		}
+		if topUp {
+			if toppedUp, err = topUpReserve(ctx, tx, in, in.PotID, now); err != nil {
+				return err
+			}
+		}
+		guard, err := guardReserves(ctx, tx, in.PotID)
+		if err != nil {
+			return err
+		}
+		if id, err = insertTransaction(ctx, tx, in, now); err != nil {
+			return err
+		}
+		return guard.check(ctx, tx)
+	})
+	if err != nil {
+		return "", 0, err
+	}
+	return id, toppedUp, nil
+}
+
+// checkNewTransaction checks the rules of a new transaction that need the
+// database: active pots (T5), a fitting category (K3, K8) and an open
+// occurrence of a recurring payment (R6). in.PotID must be resolved.
+func checkNewTransaction(ctx context.Context, q queryer, in NewTransaction) error {
+	if err := ensurePotActive(ctx, q, in.LedgerID, in.PotID); err != nil {
+		return err
 	}
 	if in.CounterpartPotID != "" {
-		if err := ensurePotActive(ctx, s.db, in.LedgerID, in.CounterpartPotID); err != nil {
-			return "", err
+		if err := ensurePotActive(ctx, q, in.LedgerID, in.CounterpartPotID); err != nil {
+			return err
 		}
 	}
 	if in.Type != TypeTransfer {
-		if err := ensureCategoryFits(ctx, s.db, in.LedgerID, in.CategoryID, in.Type, true); err != nil {
-			return "", err
+		if err := ensureCategoryFits(ctx, q, in.LedgerID, in.CategoryID, in.Type, true); err != nil {
+			return err
 		}
 	}
 	if in.RecurringPaymentID != "" {
-		if err := ensureOccurrenceOpen(ctx, s.db, in.LedgerID, in.RecurringPaymentID, in.RecurringDueOn); err != nil {
-			return "", err
-		}
+		return ensureOccurrenceOpen(ctx, q, in.LedgerID, in.RecurringPaymentID, in.RecurringDueOn)
 	}
+	return nil
+}
 
+// insertTransaction stores a checked transaction whose pot is resolved and
+// returns its new ID.
+func insertTransaction(ctx context.Context, tx *sql.Tx, in NewTransaction, now time.Time) (string, error) {
 	id := newID()
 	ts := timestamp(now)
-	_, err = s.db.ExecContext(ctx, `
+	_, err := tx.ExecContext(ctx, `
 		INSERT INTO transactions
 			(id, ledger_id, user_id, type, category_id, pot_id, counterpart_pot_id,
 			 amount_cents, booked_on, note, is_spontaneous,
 			 recurring_payment_id, recurring_due_on, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, in.LedgerID, in.UserID, in.Type,
-		nullIfEmpty(in.CategoryID), potID, nullIfEmpty(in.CounterpartPotID),
+		nullIfEmpty(in.CategoryID), in.PotID, nullIfEmpty(in.CounterpartPotID),
 		in.storedAmount(), in.BookedOn, nullIfEmpty(in.Note), in.IsSpontaneous,
 		nullIfEmpty(in.RecurringPaymentID), nullIfEmpty(in.RecurringDueOn), ts, ts,
 	)
