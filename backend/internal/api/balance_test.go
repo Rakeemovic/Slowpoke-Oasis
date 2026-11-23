@@ -13,7 +13,7 @@ func TestLedgerBalanceCountsOnlyUpToTheGivenDay(t *testing.T) {
 	ledgerID := *me.PersonalLedgerID
 
 	rec := doToken(t, h, http.MethodPost, "/ledgers/"+ledgerID+"/categories", token,
-		map[string]any{"name": "Salary", "is_income": true})
+		map[string]any{"name": "Bonus", "is_income": true})
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("category: status %d, body %s", rec.Code, rec.Body)
 	}

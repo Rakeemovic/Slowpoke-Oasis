@@ -56,7 +56,7 @@ func TestOnboardingFlowWithLogin(t *testing.T) {
 	ledgerID := decodeID(t, rec.Body.Bytes())
 
 	rec = doToken(t, h, http.MethodPost, "/ledgers/"+ledgerID+"/categories", bobToken,
-		map[string]any{"name": "Groceries"})
+		map[string]any{"name": "Snacks"})
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create category: status %d, body %s", rec.Code, rec.Body)
 	}
@@ -179,15 +179,12 @@ func TestListCategoriesSortedByNameWithFlags(t *testing.T) {
 	}
 	ledgerID := decodeID(t, rec.Body.Bytes())
 
-	for _, c := range []map[string]any{
-		{"name": "rent"},
-		{"name": "Salary", "is_income": true},
-		{"name": "Groceries"},
-	} {
-		rec := doToken(t, h, http.MethodPost, "/ledgers/"+ledgerID+"/categories", bobToken, c)
-		if rec.Code != http.StatusCreated {
-			t.Fatalf("create category %v: status %d, body %s", c["name"], rec.Code, rec.Body)
-		}
+	// A new ledger already has the default categories (rule K4). The extra
+	// lower-case name checks that sorting ignores case.
+	rec = doToken(t, h, http.MethodPost, "/ledgers/"+ledgerID+"/categories", bobToken,
+		map[string]any{"name": "bonus", "is_income": true})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create category: status %d, body %s", rec.Code, rec.Body)
 	}
 
 	rec = doToken(t, h, http.MethodGet, "/ledgers/"+ledgerID+"/categories", bobToken, nil)
@@ -198,17 +195,22 @@ func TestListCategoriesSortedByNameWithFlags(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode %s: %v", rec.Body, err)
 	}
-	// Sorting ignores case, so "rent" comes after "Groceries".
-	wantNames := []string{"Groceries", "rent", "Salary"}
-	if len(got) != len(wantNames) {
-		t.Fatalf("got %d categories, want %d: %+v", len(got), len(wantNames), got)
+	if len(got) != 15 {
+		t.Fatalf("got %d categories, want 14 defaults plus one: %+v", len(got), got)
 	}
-	for i, name := range wantNames {
-		if got[i].Name != name || got[i].ID == "" || got[i].Archived {
-			t.Errorf("category %d = %+v, want name %q, an ID and not archived", i, got[i], name)
+	for i := 1; i < len(got); i++ {
+		if strings.ToLower(got[i-1].Name) > strings.ToLower(got[i].Name) {
+			t.Errorf("not sorted ignoring case: %q before %q", got[i-1].Name, got[i].Name)
 		}
 	}
-	if !got[2].IsIncome || got[0].IsIncome {
+	income := map[string]bool{}
+	for _, c := range got {
+		if c.ID == "" || c.Archived {
+			t.Errorf("category %+v: want an ID and not archived", c)
+		}
+		income[c.Name] = c.IsIncome
+	}
+	if !income["bonus"] || !income["Salary"] || income["Groceries"] {
 		t.Errorf("is_income flags wrong: %+v", got)
 	}
 }

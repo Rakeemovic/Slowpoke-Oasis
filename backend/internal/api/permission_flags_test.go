@@ -41,7 +41,7 @@ func TestTransactionListFlagsWhatTheViewerMayChange(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("add alice: status %d, body %s", rec.Code, rec.Body)
 	}
-	rec = doToken(t, h, http.MethodPost, "/ledgers/"+ledgerID+"/categories", bobToken, map[string]any{"name": "Groceries"})
+	rec = doToken(t, h, http.MethodPost, "/ledgers/"+ledgerID+"/categories", bobToken, map[string]any{"name": "Snacks"})
 	categoryID := decodeID(t, rec.Body.Bytes())
 	for _, token := range []string{bobToken, aliceToken} {
 		rec = doToken(t, h, http.MethodPost, "/ledgers/"+ledgerID+"/transactions", token, map[string]any{

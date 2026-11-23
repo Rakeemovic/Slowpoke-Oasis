@@ -10,11 +10,11 @@ test.beforeEach(async ({ page }) => {
 test("income and expenses change the balance", async ({ page }) => {
   await expect(page.getByText("No transactions yet.", { exact: false })).toBeVisible();
 
-  await book(page, { kind: "Income", amount: "1000", category: "Salary", newCategory: true });
+  await book(page, { kind: "Income", amount: "1000", category: "Salary" });
   await expect(transactionRow(page, "Salary")).toContainText(euros("+1.000,00"));
   await expect(balance(page, "1.000,00")).toBeVisible();
 
-  await book(page, { kind: "Expense", amount: "12,50", category: "Groceries", newCategory: true, note: "Market" });
+  await book(page, { kind: "Expense", amount: "12,50", category: "Groceries", note: "Market" });
   const groceries = transactionRow(page, "Groceries");
   await expect(groceries).toContainText(euros("-12,50"));
   await expect(groceries).toContainText("Market");
@@ -22,8 +22,8 @@ test("income and expenses change the balance", async ({ page }) => {
 });
 
 test("a booking can be edited and deleted", async ({ page }) => {
-  await book(page, { kind: "Income", amount: "100", category: "Salary", newCategory: true });
-  await book(page, { kind: "Expense", amount: "30", category: "Groceries", newCategory: true });
+  await book(page, { kind: "Income", amount: "100", category: "Salary" });
+  await book(page, { kind: "Expense", amount: "30", category: "Groceries" });
   await expect(balance(page, "70,00")).toBeVisible();
 
   // Edit: the form opens prefilled; change the amount and pick an existing category.
@@ -46,7 +46,7 @@ test("a booking can be edited and deleted", async ({ page }) => {
 });
 
 test("a deleted booking can be restored", async ({ page }) => {
-  await book(page, { kind: "Income", amount: "100", category: "Salary", newCategory: true });
+  await book(page, { kind: "Income", amount: "100", category: "Salary" });
   await transactionRow(page, "Salary").click();
   await page.getByRole("button", { name: "Delete" }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Delete" }).click();
