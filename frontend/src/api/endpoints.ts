@@ -14,6 +14,8 @@ import type {
   NewTransaction,
   Pot,
   PotChange,
+  PlanScope,
+  PotSummary,
   Transaction,
   TransactionChange,
 } from "@/api/types";
@@ -124,7 +126,35 @@ export const pots = {
 
   update: (ledgerId: string, potId: string, change: PotChange) =>
     request<void>("PATCH", `/ledgers/${enc(ledgerId)}/pots/${enc(potId)}`, change),
+
+  /**
+   * Plan versus actual. Monthly pots report one month, by default the current
+   * one; one-time pots report all dates. date is the app's local today and
+   * decides which month is current.
+   */
+  summary: (ledgerId: string, potId: string, date: string, month?: string) =>
+    request<PotSummary>(
+      "GET",
+      `/ledgers/${enc(ledgerId)}/pots/${enc(potId)}/summary?date=${enc(date)}${month ? `&month=${enc(month)}` : ""}`,
+    ),
+
+  /** Monthly pots need a scope (rule P5); one-time pots take none. */
+  setPlanned: (ledgerId: string, potId: string, categoryId: string, amountCents: number, date: string, scope?: PlanScope) =>
+    request<void>("PUT", `${planLinePath(ledgerId, potId, categoryId)}?date=${enc(date)}`, {
+      amount_cents: amountCents,
+      scope,
+    }),
+
+  removePlanned: (ledgerId: string, potId: string, categoryId: string, date: string, scope?: PlanScope) =>
+    request<void>(
+      "DELETE",
+      `${planLinePath(ledgerId, potId, categoryId)}?date=${enc(date)}${scope ? `&scope=${enc(scope)}` : ""}`,
+    ),
 };
+
+function planLinePath(ledgerId: string, potId: string, categoryId: string): string {
+  return `/ledgers/${enc(ledgerId)}/pots/${enc(potId)}/lines/${enc(categoryId)}`;
+}
 
 export const transfers = {
   create: (transfer: NewLedgerTransfer) =>
