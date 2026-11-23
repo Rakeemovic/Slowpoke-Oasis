@@ -69,7 +69,7 @@ test("a signed-in user can change the password", async ({ page }) => {
   const username = uniqueUsername("acc");
   await register(page, username);
 
-  await page.getByRole("link", { name: "Account" }).click();
+  await page.getByRole("link", { name: "Account", exact: true }).click();
   await page.getByLabel("Current password").fill(PASSWORD);
   await page.getByLabel("New password").fill("brand new password");
   await page.getByRole("button", { name: "Change password" }).click();

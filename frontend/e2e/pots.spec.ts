@@ -15,10 +15,10 @@ test.beforeEach(async ({ page }) => {
   await openLedger(page, "Personal");
 });
 
-/** An amount that is exactly the text of a visible element; earlier screens stay hidden in the DOM. */
-function shown(page: Page, amount: string): Locator {
+/** The money in the default pot on the ledger screen; earlier screens stay hidden in the DOM. */
+function inMain(page: Page, amount: string): Locator {
   return page
-    .getByText(new RegExp(`^${amount}\\s€$`))
+    .getByText(new RegExp(`^${amount}\\s€ in Main$`))
     .filter({ visible: true })
     .first();
 }
@@ -62,11 +62,11 @@ test("a booking goes into a chosen pot and money moves between pots", async ({
   });
   await page.getByRole("button", { name: "Holiday", exact: true }).click();
   await page.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByText("Available today")).toBeVisible();
+  await expect(page.getByText("Estimated account balance", { exact: true })).toBeVisible();
 
   // The money sits in the savings pot, so nothing is available yet.
   await expect(balance(page, "100,00")).toBeVisible();
-  await expect(shown(page, "0,00")).toBeVisible();
+  await expect(inMain(page, "0,00")).toBeVisible();
   // With more than one pot the list names the pot of each booking.
   await expect(transactionRow(page, "Salary")).toContainText("Holiday");
 
@@ -78,7 +78,7 @@ test("a booking goes into a chosen pot and money moves between pots", async ({
     .first()
     .click();
   await page
-    .getByRole("button", { name: "Monthly", exact: true })
+    .getByRole("button", { name: "Main", exact: true })
     .last()
     .click();
   await page.getByLabel("Amount (€)").fill("30");
@@ -88,15 +88,15 @@ test("a booking goes into a chosen pot and money moves between pots", async ({
     euros("70,00"),
   );
   await page.goBack();
-  await expect(shown(page, "30,00")).toBeVisible();
+  await expect(inMain(page, "30,00")).toBeVisible();
   await expect(balance(page, "100,00")).toBeVisible();
-  await expect(transactionRow(page, "Transfer between pots")).toContainText("Holiday → Monthly");
+  await expect(transactionRow(page, "Transfer between pots")).toContainText("Holiday → Main");
 
   // The move can be edited: change the amount.
   await transactionRow(page, "Transfer between pots").click();
   await page.getByLabel("Amount (€)").fill("40");
   await page.getByRole("button", { name: "Save" }).click();
-  await expect(shown(page, "40,00")).toBeVisible();
+  await expect(inMain(page, "40,00")).toBeVisible();
 });
 
 test("a pot can be renamed, archived and restored", async ({ page }) => {
@@ -123,7 +123,7 @@ test("a pot can be renamed, archived and restored", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Spare", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Trip", exact: true })).toHaveCount(0);
   await page.goBack();
-  await expect(page.getByText("Available today")).toBeVisible();
+  await expect(page.getByText("Estimated account balance", { exact: true })).toBeVisible();
 
   await openPots(page);
   await page.getByRole("link", { name: /Trip/ }).click();

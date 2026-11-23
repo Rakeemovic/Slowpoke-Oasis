@@ -46,7 +46,7 @@ test("a long list is shown in pages", async ({ page }) => {
   await rows.first().click();
   await expect(page.getByLabel("Amount (€)")).toBeVisible();
   await page.goBack();
-  await expect(page.getByText("Available today")).toBeVisible();
+  await expect(page.getByText("Estimated account balance", { exact: true })).toBeVisible();
   await expect(rows).toHaveCount(105);
 });
 

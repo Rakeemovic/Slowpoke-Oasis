@@ -82,3 +82,48 @@ func TestLedgerBalanceRejectsInvalidDate(t *testing.T) {
 		t.Errorf("err = %v, want ErrInvalidDate", err)
 	}
 }
+
+func TestEstimatedBalanceSubtractsDueUnbookedPayments(t *testing.T) {
+	_, s := setup(t)
+	ctx := context.Background()
+	rentID := mustCreateRecurring(t, s, rent()) // 800 EUR on the 20th
+
+	estimate := func(asOf string) Balance {
+		t.Helper()
+		b, err := s.LedgerBalance(ctx, "l1", asOf, time.Now())
+		if err != nil {
+			t.Fatalf("balance %s: %v", asOf, err)
+		}
+		return b
+	}
+	assert := func(asOf string, count int, unbooked, estimated int64) {
+		t.Helper()
+		b := estimate(asOf)
+		if b.UnbookedCount != count || b.UnbookedCents != unbooked || b.EstimatedCents != estimated {
+			t.Errorf("%s: unbooked %d (%d), estimated %d; want %d (%d), %d",
+				asOf, b.UnbookedCount, b.UnbookedCents, b.EstimatedCents, count, unbooked, estimated)
+		}
+	}
+
+	assert("2026-11-19", 0, 0, 0)            // upcoming: the bank has not paid yet
+	assert("2026-11-20", 1, 80000, -80000)   // due today
+	assert("2026-12-20", 2, 160000, -160000) // overdue plus due
+	if err := s.SkipOccurrence(ctx, "l1", rentID, "2026-11-20"); err != nil {
+		t.Fatal(err)
+	}
+	assert("2026-12-20", 1, 80000, -80000) // skipped no longer counts
+
+	// A booked occurrence counts as a transaction instead.
+	in := baseExpense()
+	in.RecurringPaymentID = rentID
+	in.RecurringDueOn = "2026-12-20"
+	in.AmountCents = 80000
+	in.BookedOn = "2026-12-20"
+	if _, err := s.CreateTransaction(ctx, in, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	b := estimate("2026-12-20")
+	if b.UnbookedCount != 0 || b.TotalCents != -80000 || b.EstimatedCents != -80000 {
+		t.Errorf("after booking: %+v, want no unbooked and total = estimated = -80000", b)
+	}
+}
