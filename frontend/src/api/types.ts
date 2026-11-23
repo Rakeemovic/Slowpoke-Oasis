@@ -74,6 +74,9 @@ export interface Transaction {
   note?: string;
   /** An unplanned expense, marked by its author (rule X20). */
   is_spontaneous: boolean;
+  /** The occurrence of a recurring payment this expense pays (rule R6). */
+  recurring_payment_id?: string;
+  recurring_due_on?: string;
   /** Only for transfers between ledgers (rule X17). */
   counterpart?: Counterpart;
   /** What the signed-in user may do with it (rule X19). The server checks again. */
@@ -109,6 +112,9 @@ export interface NewTransaction {
   note?: string;
   /** Only for expenses (rule X20). */
   is_spontaneous?: boolean;
+  /** Books one occurrence of a recurring payment; both or neither (rule R6). */
+  recurring_payment_id?: string;
+  recurring_due_on?: string;
 }
 
 /**
@@ -229,4 +235,55 @@ export interface NewPotTransfer {
   amount_cents: number;
   booked_on: string;
   note?: string;
+}
+
+/** How often a recurring payment is due, in months (rule R3). */
+export type IntervalMonths = 1 | 3 | 6 | 12;
+
+/** A reminder of a fixed expense; it is never booked automatically. */
+export interface RecurringPayment {
+  id: string;
+  name: string;
+  /** Always positive. */
+  amount_cents: number;
+  category_id: string;
+  pot_id: string;
+  interval_months: IntervalMonths;
+  /** 1–31; a month without that day uses its last day. */
+  due_day: number;
+  /** YYYY-MM */
+  first_month: string;
+  /** YYYY-MM, or null for no end. */
+  last_month: string | null;
+  archived: boolean;
+  /** The next due date from today on, booked or not; null when it has ended. */
+  next_due_on: string | null;
+}
+
+/** The fields of a recurring payment that the form edits. */
+export interface RecurringPaymentInput {
+  name: string;
+  amount_cents: number;
+  category_id: string;
+  pot_id?: string;
+  interval_months: IntervalMonths;
+  due_day: number;
+  first_month: string;
+  /** Empty removes the end when editing. */
+  last_month: string;
+}
+
+/** What the owner may change: the form fields and the archive flag. */
+export type RecurringPaymentChange = Partial<RecurringPaymentInput> & { archived?: boolean };
+
+/** One open due date of a recurring payment: neither booked nor skipped. */
+export interface Occurrence {
+  recurring_payment_id: string;
+  name: string;
+  amount_cents: number;
+  category_id: string;
+  pot_id: string;
+  /** YYYY-MM-DD */
+  due_on: string;
+  status: "overdue" | "due" | "upcoming";
 }

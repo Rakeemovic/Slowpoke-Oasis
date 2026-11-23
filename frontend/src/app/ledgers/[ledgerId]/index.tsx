@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, View } from "react-native";
 
 import { ledgers, pots as potsApi } from "@/api/endpoints";
 import type { Category, Pot, Transaction } from "@/api/types";
+import { DuePayments } from "@/components/due-payments";
 import { ErrorMessage } from "@/components/error-message";
 import { HeaderActions } from "@/components/header-actions";
 import { Screen } from "@/components/screen";
@@ -69,11 +70,18 @@ export default function TransactionsScreen() {
           </Button>
         </Link>
       </View>
-      <Link href={{ pathname: "/ledgers/[ledgerId]/deleted", params: { ledgerId, kind } }} asChild>
-        <Button variant="outline">
-          <Text>Deleted transactions</Text>
-        </Button>
-      </Link>
+      <View className="flex-row gap-2">
+        <Link href={{ pathname: "/ledgers/[ledgerId]/recurring", params: { ledgerId } }} asChild>
+          <Button className="flex-1" variant="outline">
+            <Text>Recurring</Text>
+          </Button>
+        </Link>
+        <Link href={{ pathname: "/ledgers/[ledgerId]/deleted", params: { ledgerId, kind } }} asChild>
+          <Button className="flex-1" variant="outline">
+            <Text>Deleted transactions</Text>
+          </Button>
+        </Link>
+      </View>
       {householdId && (
         <Link href={{ pathname: "/households/[householdId]/members", params: { householdId } }} asChild>
           <Button variant="outline">
@@ -81,6 +89,7 @@ export default function TransactionsScreen() {
           </Button>
         </Link>
       )}
+      <DuePayments ledgerId={ledgerId} />
       {loading && !transactions && <ActivityIndicator />}
       <ErrorMessage message={error ?? categoryList.error ?? potList.error} onRetry={reload} />
       {transactions?.length === 0 && <Text variant="muted">No transactions yet. Tap “Add transaction” to book the first one.</Text>}
