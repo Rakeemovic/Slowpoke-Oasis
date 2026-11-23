@@ -26,7 +26,7 @@ A container for categories, pots and transactions. It belongs to exactly one use
 ### Categories
 Categories belong to a ledger. The personal ledger has its own categories, and the household ledger has its own.
 
-- `category`: id, ledger_id, name, is_income, archived. Names are unique per ledger. The category list also contains archived categories, because older transactions still refer to them. New ledgers start with a set of default categories (rule K4).
+- `category`: id, ledger_id, name, is_income, archived, purpose (`need`, `want`, `saving` or NULL; expense categories only), is_fallback. Names are unique per ledger. The category list also contains archived categories, because older transactions still refer to them, and gives the number of transactions per category. New ledgers start with a set of default categories (rule K4). Deleting a category moves its transactions to the fallback category of the same kind (rules K2, K6).
 
 ### Pots
 A pot groups planned amounts and collects transactions.
@@ -40,7 +40,7 @@ A pot groups planned amounts and collects transactions.
 - `pot_line`: pot_id, ledger_id, category_id, amount_cents. Planned amount for a category within a pot. Primary key: pot_id and category_id. (`ledger_id` is included so the database can check that the pot and the category belong to the same ledger.)
 
 ### Transactions
-- `transactions`: id, ledger_id, user_id (who booked it), type, category_id, pot_id, counterpart_pot_id, amount_cents, booked_on, note, created_at, updated_at, deleted_at, deleted_by (who deleted it), linked_transaction_id (the other leg of a transfer between ledgers)
+- `transactions`: id, ledger_id, user_id (who booked it), type, category_id, pot_id, counterpart_pot_id, amount_cents, booked_on, note, created_at, updated_at, deleted_at, deleted_by (who deleted it), linked_transaction_id (the other leg of a transfer between ledgers), is_spontaneous (expenses only, set by the author, rule X20)
 
 **Types:**
 - `expense`: negative amount, category required
