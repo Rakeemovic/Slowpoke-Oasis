@@ -16,6 +16,7 @@ type transactionRequest struct {
 	AmountCents      int64  `json:"amount_cents"`
 	BookedOn         string `json:"booked_on"`
 	Note             string `json:"note"`
+	IsSpontaneous    bool   `json:"is_spontaneous"`
 }
 
 // transactionPatchRequest is the JSON body for changing a transaction.
@@ -28,6 +29,7 @@ type transactionPatchRequest struct {
 	AmountCents      *int64         `json:"amount_cents"`
 	BookedOn         *string        `json:"booked_on"`
 	Note             *string        `json:"note"`
+	IsSpontaneous    *bool          `json:"is_spontaneous"`
 }
 
 // transactionResponse is the JSON representation of a stored transaction.
@@ -44,6 +46,7 @@ type transactionResponse struct {
 	AmountCents      int64   `json:"amount_cents"`
 	BookedOn         string  `json:"booked_on"`
 	Note             string  `json:"note,omitempty"`
+	IsSpontaneous    bool    `json:"is_spontaneous"`
 	// Counterpart is set for transfers between ledgers (rule X17).
 	Counterpart *counterpartResponse `json:"counterpart,omitempty"`
 }
@@ -70,6 +73,7 @@ func newTransactionResponse(t ledger.Transaction, counterparts map[string]ledger
 		AmountCents:      t.AmountCents,
 		BookedOn:         t.BookedOn,
 		Note:             t.Note,
+		IsSpontaneous:    t.IsSpontaneous,
 		Username:         usernameOrNull(t.Username),
 	}
 	if c, ok := counterparts[t.ID]; ok {
@@ -136,6 +140,7 @@ func (s *Server) createTransaction(w http.ResponseWriter, r *http.Request) {
 		AmountCents:      req.AmountCents,
 		BookedOn:         req.BookedOn,
 		Note:             req.Note,
+		IsSpontaneous:    req.IsSpontaneous,
 	}, s.now())
 	if err != nil {
 		fail(w, err)
@@ -233,6 +238,10 @@ func (s *Server) updateTransaction(w http.ResponseWriter, r *http.Request) {
 	ledgerID, id := r.PathValue("ledger"), r.PathValue("id")
 
 	err := s.store.AuthorizeTransactionChange(r.Context(), userID, ledgerID, id, ledger.ActionEdit)
+	if err == nil && req.IsSpontaneous != nil {
+		// Only the author decides whether a purchase was spontaneous (rule X20).
+		err = s.store.AuthorizeTransactionChange(r.Context(), userID, ledgerID, id, ledger.ActionMarkSpontaneous)
+	}
 	if err == nil {
 		err = s.store.UpdateTransaction(r.Context(), ledgerID, id, ledger.TransactionPatch(req), s.now())
 	}

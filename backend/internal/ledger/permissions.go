@@ -18,6 +18,8 @@ const (
 	ActionEdit TransactionAction = iota
 	// ActionDelete soft-deletes a transaction. Restoring one uses the same rule.
 	ActionDelete
+	// ActionMarkSpontaneous sets or removes the spontaneous mark (rule X20).
+	ActionMarkSpontaneous
 )
 
 // AuthorizeTransactionChange checks whether a user may perform an action on a
@@ -29,6 +31,8 @@ const (
 //   - Delete and restore: only the author may delete a transaction. The owner
 //     may also delete bookings whose author has left, because nobody else
 //     could otherwise remove them.
+//   - Mark as spontaneous: only the author, not even the owner, because the
+//     mark describes the author's own decision (rule X20).
 //
 // It returns ErrTransactionNotFound if the transaction is not in the ledger,
 // and ErrNotAllowed if the user may see the transaction but not change it.
@@ -69,6 +73,8 @@ func mayChange(action TransactionAction, userID, author string, isOwner bool) bo
 		return isAuthor || isOwner
 	case ActionDelete:
 		return isAuthor || (isOwner && author == FormerMemberID)
+	case ActionMarkSpontaneous:
+		return isAuthor
 	}
 	return false
 }

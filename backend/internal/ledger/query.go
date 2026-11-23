@@ -30,6 +30,8 @@ type Transaction struct {
 	// Username of the author (rule X18). Empty for the former-member
 	// placeholder, which has no username.
 	Username string
+	// IsSpontaneous marks an unplanned expense (rule X20).
+	IsSpontaneous bool
 }
 
 // transactionColumns lists the columns of a Transaction for a query that
@@ -37,14 +39,16 @@ type Transaction struct {
 const transactionColumns = `
 	t.id, t.ledger_id, t.user_id, t.type,
 	COALESCE(t.category_id, ''), t.pot_id, COALESCE(t.counterpart_pot_id, ''),
-	t.amount_cents, t.booked_on, COALESCE(t.note, ''), COALESCE(author.username, '')`
+	t.amount_cents, t.booked_on, COALESCE(t.note, ''), COALESCE(author.username, ''),
+	t.is_spontaneous`
 
 // transactionTables names the transactions table t and joins its author.
 const transactionTables = `transactions t LEFT JOIN user author ON author.id = t.user_id`
 
 func (t *Transaction) scanTargets() []any {
 	return []any{&t.ID, &t.LedgerID, &t.UserID, &t.Type, &t.CategoryID,
-		&t.PotID, &t.CounterpartPotID, &t.AmountCents, &t.BookedOn, &t.Note, &t.Username}
+		&t.PotID, &t.CounterpartPotID, &t.AmountCents, &t.BookedOn, &t.Note, &t.Username,
+		&t.IsSpontaneous}
 }
 
 // ListFilter selects transactions of one ledger. Empty optional fields mean

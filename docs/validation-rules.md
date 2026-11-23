@@ -19,9 +19,14 @@ Each rule is enforced either by the database (CHECK, UNIQUE, NOT NULL, foreign k
 | ID | Rule | Enforced by |
 |---|---|---|
 | K1 | Name is not empty after trimming and has at most 50 characters. Names are unique per ledger, case-insensitive. | DB |
-| K2 | A category that has transactions is archived, never deleted. | App |
+| K2 | Deleting a category moves all its transactions, soft-deleted ones included, to a target category, and adds its planned amounts to the target's planned amounts in the same pots. The owner may choose the target (`move_to`): another active category of the same kind, otherwise the answer is 400. Without a choice, the target is the fallback category of the same kind (K6): expenses to "Other", income to "Other income". The answer names the target (`moved_to`) and the number of moved transactions. | App |
 | K3 | Expense categories have `is_income = false`, income categories `is_income = true`. The transaction type must match. | App |
-| K4 | Every new ledger (personal or household) starts with 14 default categories (Salary, Other income, Groceries, Rent, Utilities, Transport, Insurance, Health, Eating out, Leisure, Clothing, Subscriptions, Household, Other). Users rename or archive them like any other category. Migration 0012 added them to existing ledgers that had no category at all. | App |
+| K4 | Every new ledger (personal or household) starts with 14 default categories (Salary, Other income, Groceries, Rent, Utilities, Transport, Insurance, Health, Eating out, Leisure, Clothing, Subscriptions, Household, Other). Expense categories come with a purpose (K5): need for Groceries, Rent, Utilities, Transport, Insurance, Health and Household; want for Eating out, Leisure, Clothing and Subscriptions; none for Other. Users rename, archive or delete them like any other category. Migration 0012 added the names, without purposes, to existing ledgers that had no category at all. | App |
+| K5 | An expense category may have a `purpose`: `need`, `want` or `saving` (UI: Needs, Wants, Savings). It is optional. Income categories never have one. | DB + App |
+| K6 | Each ledger has at most one fallback category per kind (`is_fallback`): "Other" for expenses, "Other income" for income. They are recognised by the flag, not by their name, so they may be renamed, but never archived or deleted. A ledger without a fallback gets one when it first deletes a category of that kind: an existing category with the fallback name becomes the fallback (and is restored if it was archived); otherwise a new one is created, even beyond the limit of K7. If the name is used by a category of the other kind, the deletion is refused until that category is renamed. Migration 0013 marked the existing active categories named like the fallbacks. | DB (partial unique index, CHECK) + App |
+| K7 | A ledger has at most 50 categories, archived ones included. | App |
+| K8 | An archived category accepts no new transactions, and no transaction can move into it. Existing transactions keep it and can still be corrected. | App |
+| K9 | Every member may create categories; only the owner of the ledger may rename, archive or delete them or change their purpose (see Permissions). Others get 403. | App |
 
 ## Pots
 
@@ -63,6 +68,7 @@ Each rule is enforced either by the database (CHECK, UNIQUE, NOT NULL, foreign k
 | X17 | Transaction lists name the other side of a transfer between ledgers as `counterpart`: `kind` (`personal` or `household`) always, `ledger_id` and `name` only if the viewer may access that ledger. A member therefore never learns the ID or name of another member's personal ledger. Legs that lost their link (X16) have no counterpart. | App |
 | X18 | Transaction lists name the author of each booking by `username`, the same name the member list shows (never the display name). It is `null` for the `former-member` placeholder, so departed members stay anonymous. The list of deleted transactions names the deleting user the same way as `deleted_by_username`. | App |
 | X19 | Transaction lists tell the viewer, per booking, whether they may change it: `can_edit` and `can_delete` follow the rules for editing and deleting below. A transfer between ledgers (X14) is never editable, and deleting one of its legs needs the right on both legs. The flags only let the app hide actions; the server still checks every change. | App |
+| X20 | Only expenses can be marked as spontaneous (`is_spontaneous`, UI "⚡ Spontaneous"). Changing an expense into income or a transfer removes the mark. | DB + App |
 
 ## Permissions
 
@@ -72,6 +78,9 @@ Every member of a household may read its ledger and book in it. Changing an exis
 |---|---|
 | Edit a transaction | The author and the owner of the ledger. |
 | Delete or restore a transaction | The author. The owner may also delete or restore bookings of a departed member (X12), because nobody else could. For a leg of a transfer between ledgers (X14), the user must be allowed to change both legs, so a household owner cannot change a leg in someone else's personal ledger. |
+| Mark a transaction as spontaneous or remove the mark (X20) | Only the author, not even the owner, because the mark describes the author's own decision. |
+| Create a category | Every member of the ledger. |
+| Rename, archive, delete a category or change its purpose | The owner of the ledger (in a household the household owner). |
 | See the members of a household | Every member. Only the user ID, username and role are shown; the display name and other personal data stay hidden. |
 | Add a household member | The household owner. |
 | Remove a household member | The household owner. Every member may leave by removing themselves. |

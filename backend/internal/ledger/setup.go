@@ -64,38 +64,42 @@ func insertLedger(ctx context.Context, tx *sql.Tx, owner ledgerOwner, name strin
 }
 
 // defaultCategory is a category every new ledger starts with (rule K4).
+// Expense categories may come with a purpose (rule K5); the catch-all
+// categories for deleted ones are marked as fallback (rule K6).
 type defaultCategory struct {
-	name     string
-	isIncome bool
+	name       string
+	isIncome   bool
+	purpose    Purpose
+	isFallback bool
 }
 
 // defaultCategories lets a new ledger book right away instead of starting
-// with an empty category list. Users rename or archive what they do not need.
-// Migration 0012 holds a copy of this list for ledgers that existed before;
-// a change here does not reach those ledgers.
+// with an empty category list. Users rename, archive or delete what they do
+// not need. Migration 0012 holds a copy of the names for ledgers that existed
+// before; a change here does not reach those ledgers.
 var defaultCategories = []defaultCategory{
-	{"Salary", true},
-	{"Other income", true},
-	{"Groceries", false},
-	{"Rent", false},
-	{"Utilities", false},
-	{"Transport", false},
-	{"Insurance", false},
-	{"Health", false},
-	{"Eating out", false},
-	{"Leisure", false},
-	{"Clothing", false},
-	{"Subscriptions", false},
-	{"Household", false},
-	{"Other", false},
+	{"Salary", true, "", false},
+	{fallbackIncomeName, true, "", true},
+	{"Groceries", false, PurposeNeed, false},
+	{"Rent", false, PurposeNeed, false},
+	{"Utilities", false, PurposeNeed, false},
+	{"Transport", false, PurposeNeed, false},
+	{"Insurance", false, PurposeNeed, false},
+	{"Health", false, PurposeNeed, false},
+	{"Eating out", false, PurposeWant, false},
+	{"Leisure", false, PurposeWant, false},
+	{"Clothing", false, PurposeWant, false},
+	{"Subscriptions", false, PurposeWant, false},
+	{"Household", false, PurposeNeed, false},
+	{fallbackExpenseName, false, "", true},
 }
 
 // insertDefaultCategories adds the default categories to a new ledger in tx.
 func insertDefaultCategories(ctx context.Context, tx *sql.Tx, ledgerID string) error {
 	for _, c := range defaultCategories {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO category (id, ledger_id, name, is_income) VALUES (?, ?, ?, ?)`,
-			newID(), ledgerID, c.name, c.isIncome,
+			`INSERT INTO category (id, ledger_id, name, is_income, purpose, is_fallback) VALUES (?, ?, ?, ?, ?, ?)`,
+			newID(), ledgerID, c.name, c.isIncome, nullIfEmpty(string(c.purpose)), c.isFallback,
 		); err != nil {
 			return err
 		}
@@ -151,55 +155,4 @@ func (s *Store) PersonalLedgerID(ctx context.Context, userID string) (string, er
 		return "", nil
 	}
 	return id, err
-}
-
-// Category is a category of a ledger. Archived categories are still listed,
-// because older transactions refer to them and need their names (rule K2).
-type Category struct {
-	ID       string
-	Name     string
-	IsIncome bool
-	Archived bool
-}
-
-// ListCategories returns the categories of a ledger, sorted by name.
-func (s *Store) ListCategories(ctx context.Context, ledgerID string) ([]Category, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, is_income, archived
-		FROM category
-		WHERE ledger_id = ?
-		ORDER BY lower(name)`,
-		ledgerID,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var out []Category
-	for rows.Next() {
-		var c Category
-		if err := rows.Scan(&c.ID, &c.Name, &c.IsIncome, &c.Archived); err != nil {
-			return nil, err
-		}
-		out = append(out, c)
-	}
-	return out, rows.Err()
-}
-
-// CreateCategory adds a category to a ledger and returns its ID.
-// Names are unique per ledger, ignoring case (rule K1).
-func (s *Store) CreateCategory(ctx context.Context, ledgerID, name string, isIncome bool) (string, error) {
-	n, err := cleanName(name)
-	if err != nil {
-		return "", err
-	}
-	id := newID()
-	if _, err := s.db.ExecContext(ctx,
-		`INSERT INTO category (id, ledger_id, name, is_income) VALUES (?, ?, ?, ?)`,
-		id, ledgerID, n, isIncome,
-	); err != nil {
-		return "", nameError(err)
-	}
-	return id, nil
 }

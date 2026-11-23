@@ -2,7 +2,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 
-import { ledgers } from "@/api/endpoints";
+import { auth, ledgers } from "@/api/endpoints";
 import type { Category, NewPotTransfer, Transaction, TransactionChange } from "@/api/types";
 import { BookingForm } from "@/components/booking-form";
 import { ConfirmPanel } from "@/components/confirm-panel";
@@ -24,7 +24,7 @@ export default function TransactionScreen() {
     kind?: string;
   }>();
   const load = useCallback(
-    () => Promise.all([ledgers.transaction(ledgerId, transactionId), ledgers.categories(ledgerId)]),
+    () => Promise.all([ledgers.transaction(ledgerId, transactionId), ledgers.categories(ledgerId), auth.me()]),
     [ledgerId, transactionId],
   );
   const { data, error, loading, reload } = useLoader(load);
@@ -37,7 +37,7 @@ export default function TransactionScreen() {
       </Screen>
     );
   }
-  const [tx, categories] = data;
+  const [tx, categories, me] = data;
   // Only incomes and expenses have a form; transfers are shown as they are.
   const editable = tx.can_edit && (tx.type === "expense" || tx.type === "income");
 
@@ -52,7 +52,12 @@ export default function TransactionScreen() {
   return (
     <Screen>
       {editable ? (
-        <BookingForm ledgerId={ledgerId} initial={toChange(tx)} onSubmit={save} />
+        <BookingForm
+          ledgerId={ledgerId}
+          initial={toChange(tx)}
+          canMarkSpontaneous={tx.user_id === me.user_id}
+          onSubmit={save}
+        />
       ) : movable ? (
         <MoveForm ledgerId={ledgerId} initial={toMove(tx)} onSubmit={save} />
       ) : (
@@ -83,6 +88,7 @@ function toChange(tx: Transaction): TransactionChange {
     amount_cents: Math.abs(tx.amount_cents),
     booked_on: tx.booked_on,
     note: tx.note ?? "",
+    is_spontaneous: tx.is_spontaneous,
   };
 }
 
@@ -99,6 +105,7 @@ function Details({ tx, categories, showAuthor }: { tx: Transaction; categories: 
         <Text variant="muted">{tx.booked_on}</Text>
         {showAuthor && <Text variant="muted">Booked by {tx.username ?? "a former member"}</Text>}
         {tx.note && <Text>{tx.note}</Text>}
+        {tx.is_spontaneous && <Text variant="muted">⚡ Spontaneous</Text>}
         {isLinkedTransfer(tx) && (
           <Text variant="muted">Transfers between ledgers cannot be edited. Delete it and book it again instead.</Text>
         )}
