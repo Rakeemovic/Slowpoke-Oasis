@@ -34,6 +34,7 @@ var (
 	ErrCounterpartForbidden = errors.New("only transfers can have a counterpart pot")
 	ErrSamePot              = errors.New("transfer source and target pot must differ")
 	ErrNoteTooLong          = errors.New("note must have at most 500 characters")
+	ErrSpontaneousExpense   = errors.New("only expenses can be marked as spontaneous")
 )
 
 // NewTransaction is the input for CreateTransaction. AmountCents is always
@@ -48,10 +49,16 @@ type NewTransaction struct {
 	AmountCents      int64
 	BookedOn         string // YYYY-MM-DD
 	Note             string
+	// IsSpontaneous marks an unplanned expense (rule X20).
+	IsSpontaneous bool
 }
 
-// Validate checks the rules that do not need the database (X1–X4, X8, X9).
+// Validate checks the rules that do not need the database (X1–X4, X8, X9,
+// X20).
 func (in NewTransaction) Validate() error {
+	if in.IsSpontaneous && in.Type != TypeExpense {
+		return ErrSpontaneousExpense
+	}
 	switch in.Type {
 	case TypeExpense, TypeIncome:
 		if in.CategoryID == "" {
@@ -123,7 +130,7 @@ func (s *Store) CreateTransaction(ctx context.Context, in NewTransaction, now ti
 		}
 	}
 	if in.Type != TypeTransfer {
-		if err := ensureCategoryKind(ctx, s.db, in.LedgerID, in.CategoryID, in.Type); err != nil {
+		if err := ensureCategoryFits(ctx, s.db, in.LedgerID, in.CategoryID, in.Type, true); err != nil {
 			return "", err
 		}
 	}
@@ -133,11 +140,11 @@ func (s *Store) CreateTransaction(ctx context.Context, in NewTransaction, now ti
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO transactions
 			(id, ledger_id, user_id, type, category_id, pot_id, counterpart_pot_id,
-			 amount_cents, booked_on, note, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 amount_cents, booked_on, note, is_spontaneous, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, in.LedgerID, in.UserID, in.Type,
 		nullIfEmpty(in.CategoryID), potID, nullIfEmpty(in.CounterpartPotID),
-		in.storedAmount(), in.BookedOn, nullIfEmpty(in.Note), ts, ts,
+		in.storedAmount(), in.BookedOn, nullIfEmpty(in.Note), in.IsSpontaneous, ts, ts,
 	)
 	if err != nil {
 		return "", err
