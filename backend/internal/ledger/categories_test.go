@@ -148,7 +148,7 @@ func TestCategoryLimitCountsArchived(t *testing.T) {
 		t.Errorf("err = %v, want ErrCategoryLimit", err)
 	}
 	// Deleting still works at the limit, although it creates the fallback.
-	if _, err := s.DeleteCategory(ctx, "l1", last); err != nil {
+	if _, err := s.DeleteCategory(ctx, "l1", last, ""); err != nil {
 		t.Errorf("delete at the limit: %v", err)
 	}
 }
@@ -174,7 +174,7 @@ func TestDeleteCategoryMovesTransactionsAndPlans(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res, err := s.DeleteCategory(ctx, "l1", "c-food")
+	res, err := s.DeleteCategory(ctx, "l1", "c-food", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,8 +182,8 @@ func TestDeleteCategoryMovesTransactionsAndPlans(t *testing.T) {
 		t.Errorf("moved = %d, want 2 (soft-deleted ones included)", res.MovedTransactions)
 	}
 	other := categoryByName(t, s, "l1", "Other")
-	if !other.IsFallback || other.ID != res.FallbackID {
-		t.Fatalf("fallback = %+v, want the new Other category %s", other, res.FallbackID)
+	if !other.IsFallback || other.ID != res.TargetID {
+		t.Fatalf("fallback = %+v, want the new Other category %s", other, res.TargetID)
 	}
 	for _, id := range []string{active, deleted} {
 		var cat string
@@ -203,7 +203,7 @@ func TestDeleteCategoryMovesTransactionsAndPlans(t *testing.T) {
 	if err := s.SetPlannedAmount(ctx, "l1", "p-default", garden, 5000); err != nil {
 		t.Fatal(err)
 	}
-	if res, err = s.DeleteCategory(ctx, "l1", garden); err != nil || res.FallbackID != other.ID {
+	if res, err = s.DeleteCategory(ctx, "l1", garden, ""); err != nil || res.TargetID != other.ID {
 		t.Fatalf("second delete: %+v, %v", res, err)
 	}
 	var planned int64
@@ -219,11 +219,11 @@ func TestDeleteIncomeCategoryUsesIncomeFallback(t *testing.T) {
 	_, s := setup(t)
 	ctx := context.Background()
 
-	res, err := s.DeleteCategory(ctx, "l1", "c-salary")
+	res, err := s.DeleteCategory(ctx, "l1", "c-salary", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c := categoryByName(t, s, "l1", "Other income"); c.ID != res.FallbackID || !c.IsIncome {
+	if c := categoryByName(t, s, "l1", "Other income"); c.ID != res.TargetID || !c.IsIncome {
 		t.Errorf("fallback = %+v, want income category Other income", c)
 	}
 }
@@ -237,7 +237,7 @@ func TestFallbackCategoryIsProtected(t *testing.T) {
 	}
 	other := categoryByName(t, s, lid, "Other")
 
-	if _, err := s.DeleteCategory(ctx, lid, other.ID); !errors.Is(err, ErrFallbackProtected) {
+	if _, err := s.DeleteCategory(ctx, lid, other.ID, ""); !errors.Is(err, ErrFallbackProtected) {
 		t.Errorf("delete: err = %v, want ErrFallbackProtected", err)
 	}
 	if err := s.UpdateCategory(ctx, lid, other.ID, CategoryUpdate{Archived: ptr(true)}); !errors.Is(err, ErrFallbackProtected) {
@@ -251,7 +251,7 @@ func TestFallbackCategoryIsProtected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res, err := s.DeleteCategory(ctx, lid, garden); err != nil || res.FallbackID != other.ID {
+	if res, err := s.DeleteCategory(ctx, lid, garden, ""); err != nil || res.TargetID != other.ID {
 		t.Errorf("delete after rename: %+v, %v; want fallback %s", res, err, other.ID)
 	}
 }
@@ -264,19 +264,19 @@ func TestExistingCategoryWithFallbackNameBecomesFallback(t *testing.T) {
 
 	// Deleting "other" itself marks it first and is then refused, without
 	// leaving any change behind.
-	if _, err := s.DeleteCategory(ctx, "l1", "c-other"); !errors.Is(err, ErrFallbackProtected) {
+	if _, err := s.DeleteCategory(ctx, "l1", "c-other", ""); !errors.Is(err, ErrFallbackProtected) {
 		t.Errorf("delete other: err = %v, want ErrFallbackProtected", err)
 	}
 	if c := categoryByName(t, s, "l1", "other"); c.IsFallback || !c.Archived {
 		t.Errorf("after refused delete: %+v, want unchanged", c)
 	}
 
-	res, err := s.DeleteCategory(ctx, "l1", "c-food")
+	res, err := s.DeleteCategory(ctx, "l1", "c-food", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	c := categoryByName(t, s, "l1", "other")
-	if res.FallbackID != "c-other" || !c.IsFallback || c.Archived {
+	if res.TargetID != "c-other" || !c.IsFallback || c.Archived {
 		t.Errorf("fallback = %+v (res %+v), want c-other marked and restored", c, res)
 	}
 }
@@ -286,7 +286,7 @@ func TestFallbackNameUsedByOtherKind(t *testing.T) {
 	ctx := context.Background()
 	mustExec(t, db, `INSERT INTO category (id, ledger_id, name, is_income) VALUES ('c-other', 'l1', 'Other', 1)`)
 
-	if _, err := s.DeleteCategory(ctx, "l1", "c-food"); !errors.Is(err, ErrFallbackNameTaken) {
+	if _, err := s.DeleteCategory(ctx, "l1", "c-food", ""); !errors.Is(err, ErrFallbackNameTaken) {
 		t.Errorf("err = %v, want ErrFallbackNameTaken", err)
 	}
 }
@@ -352,5 +352,68 @@ func TestSpontaneousOnlyForExpenses(t *testing.T) {
 	}
 	if spontaneous {
 		t.Error("income still marked as spontaneous")
+	}
+}
+
+func TestDeleteCategoryMovesToChosenTarget(t *testing.T) {
+	db, s := setup(t)
+	ctx := context.Background()
+
+	garden, err := s.CreateCategory(ctx, NewCategory{LedgerID: "l1", Name: "Garden"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateTransaction(ctx, baseExpense(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetPlannedAmount(ctx, "l1", "p-default", "c-food", 1000); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := s.DeleteCategory(ctx, "l1", "c-food", garden)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.TargetID != garden || res.MovedTransactions != 1 {
+		t.Errorf("res = %+v, want 1 transaction moved to Garden", res)
+	}
+	if c := categoryByName(t, s, "l1", "Garden"); c.TransactionCount != 1 {
+		t.Errorf("Garden has %d transactions, want 1", c.TransactionCount)
+	}
+	var planned int64
+	if err := db.QueryRow(`SELECT amount_cents FROM pot_line WHERE category_id = ?`, garden).Scan(&planned); err != nil || planned != 1000 {
+		t.Errorf("planned = %d, %v; want 1000", planned, err)
+	}
+	// With a chosen target, no fallback category is created.
+	var fallbacks int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM category WHERE ledger_id = 'l1' AND is_fallback = 1`).Scan(&fallbacks); err != nil || fallbacks != 0 {
+		t.Errorf("fallbacks = %d, %v; want 0", fallbacks, err)
+	}
+}
+
+func TestDeleteCategoryRejectsInvalidTargets(t *testing.T) {
+	_, s := setup(t)
+	ctx := context.Background()
+
+	archived, err := s.CreateCategory(ctx, NewCategory{LedgerID: "l1", Name: "Old"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateCategory(ctx, "l1", archived, CategoryUpdate{Archived: ptr(true)}); err != nil {
+		t.Fatal(err)
+	}
+
+	for name, target := range map[string]string{
+		"itself":     "c-food",
+		"other kind": "c-salary",
+		"archived":   archived,
+		"unknown":    "missing",
+	} {
+		if _, err := s.DeleteCategory(ctx, "l1", "c-food", target); !errors.Is(err, ErrInvalidMoveTarget) {
+			t.Errorf("%s: err = %v, want ErrInvalidMoveTarget", name, err)
+		}
+	}
+	if c := categoryByName(t, s, "l1", "Groceries"); c.ID != "c-food" {
+		t.Error("category was deleted despite the invalid target")
 	}
 }

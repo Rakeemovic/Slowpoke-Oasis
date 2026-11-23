@@ -118,19 +118,21 @@ func (s *Server) updateCategory(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// DELETE /ledgers/{ledger}/categories/{category}
-// Answers with the fallback category that took over the transactions.
+// DELETE /ledgers/{ledger}/categories/{category}?move_to=
+// The transactions move to move_to, or without it to the fallback category.
+// Answers with the category that took over the transactions.
 func (s *Server) deleteCategory(w http.ResponseWriter, r *http.Request) {
 	if !s.requireCategoryOwner(w, r) {
 		return
 	}
-	res, err := s.store.DeleteCategory(r.Context(), r.PathValue("ledger"), r.PathValue("category"))
+	res, err := s.store.DeleteCategory(r.Context(), r.PathValue("ledger"), r.PathValue("category"),
+		r.URL.Query().Get("move_to"))
 	if err != nil {
 		fail(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"moved_to":           res.FallbackID,
+		"moved_to":           res.TargetID,
 		"moved_transactions": res.MovedTransactions,
 	})
 }

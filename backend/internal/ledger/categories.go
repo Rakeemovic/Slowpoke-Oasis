@@ -14,6 +14,7 @@ var (
 	ErrCategoryArchived    = errors.New("this category is archived and accepts no new transactions")
 	ErrFallbackProtected   = errors.New("the catch-all categories cannot be archived or deleted")
 	ErrFallbackNameTaken   = errors.New("another category already uses the name of the catch-all category; rename it first")
+	ErrInvalidMoveTarget   = errors.New("bookings can only move to another active category of the same kind")
 	ErrInvalidPurpose      = errors.New("purpose must be need, want, saving or empty")
 	ErrPurposeNeedsExpense = errors.New("only expense categories can have a purpose")
 )
@@ -226,15 +227,16 @@ func (s *Store) UpdateCategory(ctx context.Context, ledgerID, categoryID string,
 
 // DeletedCategory reports where the transactions of a deleted category went.
 type DeletedCategory struct {
-	FallbackID        string
+	TargetID          string
 	MovedTransactions int64
 }
 
 // DeleteCategory removes a category (rule K2). Its transactions, including
-// soft-deleted ones, move to the fallback category of the same kind, and its
-// planned amounts are added to the fallback's (rule K6). Everything happens
-// in one database transaction.
-func (s *Store) DeleteCategory(ctx context.Context, ledgerID, categoryID string) (DeletedCategory, error) {
+// soft-deleted ones, move to targetID, and its planned amounts are added to
+// the target's. The target must be another active category of the same kind
+// (rule K8). An empty targetID means the fallback category of that kind (rule
+// K6). Everything happens in one database transaction.
+func (s *Store) DeleteCategory(ctx context.Context, ledgerID, categoryID, targetID string) (DeletedCategory, error) {
 	var out DeletedCategory
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
 		c, err := loadCategory(ctx, tx, ledgerID, categoryID)
@@ -244,20 +246,15 @@ func (s *Store) DeleteCategory(ctx context.Context, ledgerID, categoryID string)
 		if c.isFallback {
 			return ErrFallbackProtected
 		}
-		if out.FallbackID, err = ensureFallback(ctx, tx, ledgerID, c.isIncome); err != nil {
+		if out.TargetID, err = resolveMoveTarget(ctx, tx, ledgerID, categoryID, targetID, c.isIncome); err != nil {
 			return err
 		}
-		if out.FallbackID == categoryID {
-			// The category to delete was just marked as the fallback because
-			// it carries the fallback name.
-			return ErrFallbackProtected
-		}
-		if err := movePlannedAmounts(ctx, tx, ledgerID, categoryID, out.FallbackID); err != nil {
+		if err := movePlannedAmounts(ctx, tx, ledgerID, categoryID, out.TargetID); err != nil {
 			return err
 		}
 		res, err := tx.ExecContext(ctx,
 			`UPDATE transactions SET category_id = ? WHERE ledger_id = ? AND category_id = ?`,
-			out.FallbackID, ledgerID, categoryID,
+			out.TargetID, ledgerID, categoryID,
 		)
 		if err != nil {
 			return err
@@ -270,6 +267,35 @@ func (s *Store) DeleteCategory(ctx context.Context, ledgerID, categoryID string)
 		return err
 	})
 	return out, err
+}
+
+// resolveMoveTarget returns the category that takes over the transactions of
+// categoryID: targetID if it is allowed, or the fallback of the kind if
+// targetID is empty.
+func resolveMoveTarget(ctx context.Context, tx *sql.Tx, ledgerID, categoryID, targetID string, isIncome bool) (string, error) {
+	if targetID == "" {
+		fallbackID, err := ensureFallback(ctx, tx, ledgerID, isIncome)
+		if err == nil && fallbackID == categoryID {
+			// The category to delete was just marked as the fallback because
+			// it carries the fallback name.
+			return "", ErrFallbackProtected
+		}
+		return fallbackID, err
+	}
+	if targetID == categoryID {
+		return "", ErrInvalidMoveTarget
+	}
+	target, err := loadCategory(ctx, tx, ledgerID, targetID)
+	if errors.Is(err, ErrCategoryNotFound) {
+		return "", ErrInvalidMoveTarget
+	}
+	if err != nil {
+		return "", err
+	}
+	if target.isIncome != isIncome || target.archived {
+		return "", ErrInvalidMoveTarget
+	}
+	return targetID, nil
 }
 
 // ensureFallback returns the fallback category of the kind and creates it if

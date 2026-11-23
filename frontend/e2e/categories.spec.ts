@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { createHousehold, fillBooking, openLedger, register, transactionRow, uniqueUsername } from "./helpers";
+import { book, createHousehold, fillBooking, openLedger, register, transactionRow, uniqueUsername } from "./helpers";
 
 /** Opens the categories screen from the ledger screen. */
 async function openCategories(page: Page): Promise<void> {
@@ -23,6 +23,7 @@ test("the owner renames, archives and deletes categories; bookings can be sponta
   await page.getByRole("button", { name: "⚡ Spontaneous" }).click();
   await page.getByRole("button", { name: "Save" }).click();
   await expect(transactionRow(page, "Leisure ⚡")).toBeVisible();
+  await book(page, { kind: "Expense", amount: "5", category: "Groceries" });
 
   // Default categories come with a purpose and count their bookings.
   await openCategories(page);
@@ -49,6 +50,15 @@ test("the owner renames, archives and deletes categories; bookings can be sponta
   await expect(categoryRow(page, "Fun")).toHaveCount(0);
   await expect(categoryRow(page, "Other")).toContainText("1 booking");
 
+  // The owner may choose another category to take over the bookings.
+  await categoryRow(page, "Groceries").click();
+  await page.getByRole("button", { name: "Delete category" }).click();
+  await page.getByRole("button", { name: "Household", exact: true }).click();
+  await expect(page.getByRole("alertdialog")).toContainText("Its 1 booking and planned amounts move to “Household”.");
+  await page.getByRole("alertdialog").getByRole("button", { name: "Delete" }).click();
+  await expect(categoryRow(page, "Groceries")).toHaveCount(0);
+  await expect(categoryRow(page, "Household")).toContainText("1 booking");
+
   // The catch-all category cannot be deleted.
   await categoryRow(page, "Other").click();
   await expect(page.getByText("This is the catch-all category", { exact: false })).toBeVisible();
@@ -58,7 +68,7 @@ test("the owner renames, archives and deletes categories; bookings can be sponta
 
   await expect(transactionRow(page, "Other ⚡")).toBeVisible();
   await page.getByRole("link", { name: "Add transaction" }).click();
-  await expect(page.getByRole("button", { name: "Groceries", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Household", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Rent", exact: true })).toHaveCount(0);
 });
 

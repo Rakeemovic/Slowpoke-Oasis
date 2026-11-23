@@ -138,3 +138,35 @@ func TestArchivedCategoryAnswersConflict(t *testing.T) {
 		t.Errorf("book on archived category: status %d, want 409", rec.Code)
 	}
 }
+
+func TestDeleteCategoryWithMoveTarget(t *testing.T) {
+	h := newTestHandler(t)
+	_, token := register(t, h, "bob")
+	rec := doToken(t, h, http.MethodGet, "/me", token, nil)
+	ledgerID := decodeField(t, rec.Body.Bytes(), "personal_ledger_id")
+	cats := listCategoriesOf(t, h, token, ledgerID)
+	path := "/ledgers/" + ledgerID + "/categories/" + cats["Leisure"].ID
+
+	if rec = doToken(t, h, http.MethodDelete, path+"?move_to="+cats["Salary"].ID, token, nil); rec.Code != http.StatusBadRequest {
+		t.Errorf("income target for an expense category: status %d, want 400", rec.Code)
+	}
+	rec = doToken(t, h, http.MethodDelete, path+"?move_to="+cats["Eating out"].ID, token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("delete: status %d, body %s", rec.Code, rec.Body)
+	}
+	if moved := decodeMovedTo(t, rec.Body.Bytes()); moved != cats["Eating out"].ID {
+		t.Errorf("moved_to = %q, want Eating out", moved)
+	}
+}
+
+// decodeMovedTo reads the target from the answer of a category deletion.
+func decodeMovedTo(t *testing.T, body []byte) string {
+	t.Helper()
+	var out struct {
+		MovedTo string `json:"moved_to"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatal(err)
+	}
+	return out.MovedTo
+}

@@ -19,9 +19,19 @@ export function purposeFromChoice(id: string): Purpose | "" {
 }
 
 /**
- * The name of the category that takes over the bookings of a deleted one
- * (rule K6). A ledger without one gets it on the first deletion, under the
- * default name.
+ * The categories that can take over the bookings of a deleted one: the other
+ * active categories of the same kind (rule K2). The fallback category comes
+ * first, because it is the default (rule K6).
+ */
+export function moveTargets(categories: Category[], deleted: Category): Category[] {
+  return categories
+    .filter((c) => c.id !== deleted.id && !c.archived && c.is_income === deleted.is_income)
+    .sort((a, b) => Number(b.is_fallback) - Number(a.is_fallback));
+}
+
+/**
+ * The name the fallback category of a kind has, or gets: a ledger without one
+ * receives it on its first deletion, under the default name (rule K6).
  */
 export function fallbackName(categories: Category[], isIncome: boolean): string {
   const fallback = categories.find((c) => c.is_fallback && c.is_income === isIncome);

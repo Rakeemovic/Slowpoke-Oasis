@@ -72,11 +72,14 @@ export const ledgers = {
   updateCategory: (ledgerId: string, categoryId: string, change: CategoryChange) =>
     request<void>("PATCH", `/ledgers/${enc(ledgerId)}/categories/${enc(categoryId)}`, change),
 
-  /** Owner only. The bookings move to the fallback category of the same kind (rules K2, K6). */
-  deleteCategory: (ledgerId: string, categoryId: string) =>
+  /**
+   * Owner only. The bookings move to moveTo, another active category of the
+   * same kind, or without it to the fallback category (rules K2, K6).
+   */
+  deleteCategory: (ledgerId: string, categoryId: string, moveTo?: string) =>
     request<{ moved_to: string; moved_transactions: number }>(
       "DELETE",
-      `/ledgers/${enc(ledgerId)}/categories/${enc(categoryId)}`,
+      `/ledgers/${enc(ledgerId)}/categories/${enc(categoryId)}${moveTo ? `?move_to=${enc(moveTo)}` : ""}`,
     ),
 
   /** Newest first. The server returns at most 100 by default and 500 at most; page with limit and offset. */
