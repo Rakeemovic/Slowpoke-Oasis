@@ -42,6 +42,8 @@ var statusByError = []struct {
 		ledger.ErrInvalidPurpose,
 		ledger.ErrInvalidMoveTarget,
 		ledger.ErrPurposeNeedsExpense,
+		ledger.ErrInvalidPlanScope,
+		ledger.ErrMonthlyPotNeedsMonth,
 		auth.ErrInvalidUsername,
 		auth.ErrInvalidPassword,
 	}},
@@ -78,6 +80,7 @@ var statusByError = []struct {
 		ledger.ErrCategoryArchived,
 		ledger.ErrFallbackProtected,
 		ledger.ErrFallbackNameTaken,
+		ledger.ErrCategoryPlannedElsewhere,
 		auth.ErrUsernameTaken,
 	}},
 	{http.StatusTooManyRequests, []error{

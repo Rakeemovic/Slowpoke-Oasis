@@ -37,7 +37,16 @@ A pot groups planned amounts and collects transactions.
 - The optional target date lets the frontend calculate the required monthly rate and show progress.
 - Other pots could be sinking funds or a monthly savings rate.
 
-- `pot_line`: pot_id, ledger_id, category_id, amount_cents. Planned amount for a category within a pot. Primary key: pot_id and category_id. (`ledger_id` is included so the database can check that the pot and the category belong to the same ledger.)
+- `pot_line`: pot_id, ledger_id, category_id, amount_cents. Planned amount for a category within a pot. Primary key: pot_id and category_id. (`ledger_id` is included so the database can check that the pot and the category belong to the same ledger.) For a one-time pot this is the plan of the pot. For a monthly pot it is the **template** that each new month's plan is copied from.
+- `period_plan`: pot_id, ledger_id, category_id, month, amount_cents. The plan of a monthly pot for one month. `month` (`YYYY-MM`) is the month in which the payday period starts. Primary key: pot_id, category_id and month. Only monthly pots have rows here (rules P3, P4).
+- `period_plan_month`: ledger_id, month. Marks the months of a ledger whose plans were created from the templates, so that a month whose lines were removed is not filled again.
+
+**Monthly plan:**
+- The plan of the current month is copied from the templates of all active monthly pots of the ledger on first access (rule P4). Later changes to the template do not change it.
+- The current month is the payday period that contains the app's local date (`?date=`), because the server may run in another time zone.
+- Future months are not stored: they show the template as a preview.
+- Past months are never filled in afterwards. A past month that was never opened has no plan.
+- Only the current month can be changed (rule P5): "this month only" (`scope=this_month`) or "this month and the months to come" (`scope=from_now_on`, also changes the template).
 
 ### Transactions
 - `transactions`: id, ledger_id, user_id (who booked it), type, category_id, pot_id, counterpart_pot_id, amount_cents, booked_on, note, created_at, updated_at, deleted_at, deleted_by (who deleted it), linked_transaction_id (the other leg of a transfer between ledgers), is_spontaneous (expenses only, set by the author, rule X20)
@@ -62,6 +71,7 @@ A pot groups planned amounts and collects transactions.
 ## Calculations
 
 - **Period of a monthly pot:** starts on `payday_day` of a month and ends the day before `payday_day` of the next month. If the day does not exist in a month (for example the 30th in February), the last day of the month is used.
+- **Plan versus actual of a pot** (`GET /ledgers/{ledger}/pots/{pot}/summary`): planned and booked amounts per category, plus transfers in and out. A monthly pot is always reported for one month (`?month=`, default the current month); `plan_source` says whether the planned amounts are the stored plan of the month (`month`), a preview of the template (`preview`) or missing (`none`). A one-time pot uses its own plan (`pot`) and any date range.
 - **Balance of a pot:** incoming transfers and income, minus expenses and outgoing transfers. Transfers between ledgers count like transfers between pots. Deleted transactions are excluded.
 - **Balance of a ledger** (`GET /ledgers/{ledger}/balance`, rule L7): *available* is the balance of the default pot, *total* the sum of all pots. Only transactions booked on or before the given day count, so planned transactions do not lower it early.
 - **Progress toward a savings goal:** the pot balance relative to `target_cents`. Balances are calculated on demand and not stored.

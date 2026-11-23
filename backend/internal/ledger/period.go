@@ -7,6 +7,9 @@ import (
 	"time"
 )
 
+// monthLayout is the format of a month, as used by monthly plans and reports.
+const monthLayout = "2006-01"
+
 // Errors for choosing a period.
 var (
 	ErrInvalidMonth  = errors.New("month must have the format YYYY-MM")
@@ -22,7 +25,7 @@ func PeriodFor(month string, payday int) (string, string, error) {
 	if !validPayday(payday) {
 		return "", "", ErrInvalidPayday
 	}
-	first, err := time.Parse("2006-01", month)
+	first, err := time.Parse(monthLayout, month)
 	if err != nil {
 		return "", "", ErrInvalidMonth
 	}
@@ -37,6 +40,48 @@ func paydayIn(firstOfMonth time.Time, payday int) time.Time {
 	return time.Date(firstOfMonth.Year(), firstOfMonth.Month(), min(payday, lastDay), 0, 0, 0, 0, time.UTC)
 }
 
+// MonthOf returns the month (YYYY-MM) of the payday period that contains the
+// given date (YYYY-MM-DD). Before the payday, a date still belongs to the
+// period that started in the previous month.
+func MonthOf(date string, payday int) (string, error) {
+	if !validPayday(payday) {
+		return "", ErrInvalidPayday
+	}
+	d, err := time.Parse(dateLayout, date)
+	if err != nil {
+		return "", ErrInvalidDate
+	}
+	first := time.Date(d.Year(), d.Month(), 1, 0, 0, 0, 0, time.UTC)
+	if d.Before(paydayIn(first, payday)) {
+		first = first.AddDate(0, -1, 0)
+	}
+	return first.Format(monthLayout), nil
+}
+
+// Today returns date if it is set and valid, else the date of now. The app
+// sends its local date, because the server may run in another time zone.
+func Today(date string, now time.Time) (string, error) {
+	if date == "" {
+		return now.Format(dateLayout), nil
+	}
+	if !validDate(date) {
+		return "", ErrInvalidDate
+	}
+	return date, nil
+}
+
+// ledgerPayday returns the payday of a ledger.
+func ledgerPayday(ctx context.Context, q queryer, ledgerID string) (int, error) {
+	var payday int
+	err := q.QueryRowContext(ctx,
+		`SELECT payday_day FROM ledger WHERE id = ?`, ledgerID,
+	).Scan(&payday)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrLedgerNotFound
+	}
+	return payday, err
+}
+
 // ResolvePeriod turns the query parameters of a report into a date range.
 //
 // With month, the range is the payday period of that month in the ledger's
@@ -47,13 +92,7 @@ func (s *Store) ResolvePeriod(ctx context.Context, ledgerID, month, from, to str
 		if from != "" || to != "" {
 			return "", "", ErrInvalidPeriod
 		}
-		var payday int
-		err := s.db.QueryRowContext(ctx,
-			`SELECT payday_day FROM ledger WHERE id = ?`, ledgerID,
-		).Scan(&payday)
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", "", ErrLedgerNotFound
-		}
+		payday, err := ledgerPayday(ctx, s.db, ledgerID)
 		if err != nil {
 			return "", "", err
 		}
