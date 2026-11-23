@@ -54,7 +54,7 @@ export default function PlanScreen() {
 
   return (
     <Screen>
-      <Stack.Screen options={{ title: data?.pot ? `Plan · ${data.pot.name}` : "Plan", headerRight: () => <HeaderActions /> }} />
+      <Stack.Screen options={{ title: data?.pot ? `Budget · ${data.pot.name}` : "Budget", headerRight: () => <HeaderActions /> }} />
       {monthly && shownMonth && (
         <MonthSwitcher
           month={shownMonth}
@@ -118,9 +118,9 @@ function MonthSwitcher({
 function sourceNote(summary: PotSummary, editable: boolean): string | undefined {
   switch (summary.plan_source) {
     case "preview":
-      return "Preview from the plan for the coming months. It becomes this month's plan when the month begins.";
+      return "Preview from the budget for the coming months. It becomes this month's budget when the month begins.";
     case "none":
-      return "No plan was made for this month.";
+      return "No budget was made for this month.";
     case "month":
       return editable ? undefined : "Past months cannot be changed.";
     default:
@@ -229,14 +229,14 @@ function PlanContent({
             editor(editing, categories.find((c) => c.id === editing)?.name ?? "", 0)
           ) : adding ? (
             <>
-              <Text>Which category do you want to plan?</Text>
+              <Text>Which category do you want to budget?</Text>
               <ChoicePicker
                 choices={unplanned.map((c) => ({ id: c.id, label: c.name }))}
                 onSelect={(id) => {
                   setAdding(false);
                   setEditing(id);
                 }}
-                emptyText="Every category is planned already."
+                emptyText="Every category has a budget already."
               />
               <Button variant="ghost" onPress={() => setAdding(false)}>
                 <Text>Cancel</Text>
@@ -244,7 +244,7 @@ function PlanContent({
             </>
           ) : (
             <Button variant="outline" onPress={() => setAdding(true)}>
-              <Text>Plan a category</Text>
+              <Text>Budget a category</Text>
             </Button>
           )}
         </View>

@@ -127,6 +127,10 @@ type balanceResponse struct {
 	AsOf           string `json:"as_of"`
 	AvailableCents int64  `json:"available_cents"`
 	TotalCents     int64  `json:"total_cents"`
+	DefaultPotName string `json:"default_pot_name"`
+	EstimatedCents int64  `json:"estimated_cents"`
+	UnbookedCount  int    `json:"unbooked_count"`
+	UnbookedCents  int64  `json:"unbooked_cents"`
 }
 
 // GET /ledgers/{ledger}/balance?date=YYYY-MM-DD
@@ -141,5 +145,13 @@ func (s *Server) ledgerBalance(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, balanceResponse{AsOf: b.AsOf, AvailableCents: b.AvailableCents, TotalCents: b.TotalCents})
+	writeJSON(w, http.StatusOK, balanceResponse{
+		AsOf:           b.AsOf,
+		AvailableCents: b.AvailableCents,
+		TotalCents:     b.TotalCents,
+		DefaultPotName: b.DefaultPotName,
+		EstimatedCents: b.EstimatedCents,
+		UnbookedCount:  b.UnbookedCount,
+		UnbookedCents:  b.UnbookedCents,
+	})
 }

@@ -42,7 +42,7 @@ export default function PotScreen() {
       />
       <Link href={{ pathname: "/ledgers/[ledgerId]/pots/[potId]/plan", params: { ledgerId, potId } }} asChild>
         <Button variant="outline">
-          <Text>Plan</Text>
+          <Text>Budget</Text>
         </Button>
       </Link>
       {/* Rule T2: the default pot is never archived. */}

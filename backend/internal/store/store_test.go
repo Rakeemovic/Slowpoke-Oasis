@@ -221,3 +221,49 @@ func TestOrphanedLegMigrationKeepsExistingLinks(t *testing.T) {
 		t.Errorf("the remaining leg should have lost its link")
 	}
 }
+
+// Migration 0017 renames only default pots still called "Monthly", and only
+// where no active pot is called "Main" yet (rule T1).
+func TestMainPotMigrationRenamesOnlyUntouchedDefaultPots(t *testing.T) {
+	old, path := openSchemaBefore(t, "0017_main_pot.sql")
+	seed := []string{
+		`INSERT INTO user (id, name, created_at) VALUES ('u1', 'Alice', '2026-01-01T00:00:00Z')`,
+		`INSERT INTO ledger (id, name, user_id, created_at) VALUES ('l1', 'Personal', 'u1', '2026-01-01T00:00:00Z')`,
+		`INSERT INTO ledger (id, name, user_id, created_at) VALUES ('l2', 'Home', 'u1', '2026-01-01T00:00:00Z')`,
+		`INSERT INTO ledger (id, name, user_id, created_at) VALUES ('l3', 'Savings', 'u1', '2026-01-01T00:00:00Z')`,
+		`INSERT INTO pot (id, ledger_id, name, kind, is_default) VALUES ('standard', 'l1', 'Monthly', 'monthly', 1)`,
+		`INSERT INTO pot (id, ledger_id, name, kind) VALUES ('other', 'l1', 'Monthly bills', 'one_time')`,
+		`INSERT INTO pot (id, ledger_id, name, kind, is_default) VALUES ('taken', 'l2', 'Monthly', 'monthly', 1)`,
+		`INSERT INTO pot (id, ledger_id, name, kind) VALUES ('main', 'l2', 'MAIN', 'one_time')`,
+		`INSERT INTO pot (id, ledger_id, name, kind, is_default) VALUES ('chosen', 'l3', 'Daily', 'monthly', 1)`,
+	}
+	for _, q := range seed {
+		if _, err := old.Exec(q); err != nil {
+			t.Fatalf("seed %q: %v", q, err)
+		}
+	}
+	old.Close()
+
+	db, err := Open(path)
+	if err != nil {
+		t.Fatalf("upgrade: %v", err)
+	}
+	defer db.Close()
+
+	want := map[string]string{
+		"standard": "Main",
+		"other":    "Monthly bills",
+		"taken":    "Monthly", // "MAIN" is already taken in this ledger
+		"main":     "MAIN",
+		"chosen":   "Daily",
+	}
+	for id, name := range want {
+		var got string
+		if err := db.QueryRow(`SELECT name FROM pot WHERE id = ?`, id).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != name {
+			t.Errorf("pot %s: name %q, want %q", id, got, name)
+		}
+	}
+}

@@ -18,9 +18,14 @@ export function euros(amount: string): RegExp {
   return new RegExp(`${escape(amount)}\\s€`);
 }
 
-/** The balance line that every ledger card and the ledger screen show. */
+/**
+ * The estimated account balance that every ledger card and the ledger screen
+ * show. Earlier screens stay hidden in the DOM, hence only visible ones.
+ */
 export function balance(scope: Page | Locator, amount: string): Locator {
-  return scope.getByText(new RegExp(`^${escape(amount)}\\s€ in all pots$`));
+  return scope
+    .getByLabel(new RegExp(`^Estimated account balance: ${escape(amount)}\\s€$`))
+    .filter({ visible: true });
 }
 
 /** Creates an account, confirms the recovery code and returns that code. */
@@ -60,7 +65,7 @@ export function ledgerCard(page: Page, name: string): Locator {
 
 export async function openLedger(page: Page, name: string): Promise<void> {
   await ledgerCard(page, name).click();
-  await expect(page.getByText("Available today")).toBeVisible();
+  await expect(page.getByText("Estimated account balance", { exact: true })).toBeVisible();
 }
 
 export async function createHousehold(page: Page, name: string): Promise<void> {
@@ -102,7 +107,7 @@ export async function book(page: Page, booking: Booking): Promise<void> {
   await page.getByRole("link", { name: "Add transaction" }).click();
   await fillBooking(page, booking);
   await page.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByText("Available today")).toBeVisible();
+  await expect(page.getByText("Estimated account balance", { exact: true })).toBeVisible();
 }
 
 /**
