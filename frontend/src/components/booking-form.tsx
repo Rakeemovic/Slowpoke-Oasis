@@ -28,16 +28,21 @@ type Kind = TransactionChange["type"];
  * Only the author may mark an expense as spontaneous (rule X20). For a booking
  * of someone else, canMarkSpontaneous is false: the switch is hidden and the
  * field is not sent, so the owner can still correct the booking.
+ *
+ * expenseOnly hides the switch between expense and income, e.g. when booking
+ * a recurring payment, which is always an expense (rule R6).
  */
 export function BookingForm({
   ledgerId,
   initial,
   canMarkSpontaneous = true,
+  expenseOnly = false,
   onSubmit,
 }: {
   ledgerId: string;
   initial?: TransactionChange;
   canMarkSpontaneous?: boolean;
+  expenseOnly?: boolean;
   onSubmit: (values: TransactionChange) => Promise<void>;
 }) {
   const categories = useLoader(useCallback(() => ledgers.categories(ledgerId), [ledgerId]));
@@ -96,10 +101,12 @@ export function BookingForm({
 
   return (
     <>
-      <View className="flex-row gap-2">
-        <KindButton label="Expense" active={kind === "expense"} onPress={() => changeKind("expense")} />
-        <KindButton label="Income" active={kind === "income"} onPress={() => changeKind("income")} />
-      </View>
+      {!expenseOnly && (
+        <View className="flex-row gap-2">
+          <KindButton label="Expense" active={kind === "expense"} onPress={() => changeKind("expense")} />
+          <KindButton label="Income" active={kind === "income"} onPress={() => changeKind("income")} />
+        </View>
+      )}
 
       <FormField label="Amount (€)" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" />
       <FormField label="Date (YYYY-MM-DD)" value={bookedOn} onChangeText={setBookedOn} autoCapitalize="none" />

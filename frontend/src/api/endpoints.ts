@@ -12,6 +12,10 @@ import type {
   NewPot,
   NewPotTransfer,
   NewTransaction,
+  Occurrence,
+  RecurringPayment,
+  RecurringPaymentChange,
+  RecurringPaymentInput,
   Pot,
   PotChange,
   PlanScope,
@@ -154,6 +158,36 @@ export const pots = {
 
 function planLinePath(ledgerId: string, potId: string, categoryId: string): string {
   return `/ledgers/${enc(ledgerId)}/pots/${enc(potId)}/lines/${enc(categoryId)}`;
+}
+
+// date is the app's local today: the server may run in another time zone.
+export const recurring = {
+  /** Archived payments are included. */
+  list: (ledgerId: string, date: string) =>
+    request<RecurringPayment[]>("GET", `${recurringPath(ledgerId)}?date=${enc(date)}`),
+
+  /** Every member may create one (rule R8). Earlier due dates never become open (rule R5). */
+  create: (ledgerId: string, payment: RecurringPaymentInput, date: string) =>
+    request<{ id: string }>("POST", `${recurringPath(ledgerId)}?date=${enc(date)}`, payment),
+
+  /** Owner only (rule R8). */
+  update: (ledgerId: string, paymentId: string, change: RecurringPaymentChange, date: string) =>
+    request<void>("PATCH", `${recurringPath(ledgerId)}/${enc(paymentId)}?date=${enc(date)}`, change),
+
+  /** Open occurrences up to the end of the current payday period, oldest first. */
+  due: (ledgerId: string, date: string) =>
+    request<Occurrence[]>("GET", `${recurringPath(ledgerId)}/due?date=${enc(date)}`),
+
+  /** Every member may skip an occurrence and undo it (rule R7). */
+  skip: (ledgerId: string, paymentId: string, dueOn: string) =>
+    request<void>("PUT", `${recurringPath(ledgerId)}/${enc(paymentId)}/skips/${enc(dueOn)}`),
+
+  undoSkip: (ledgerId: string, paymentId: string, dueOn: string) =>
+    request<void>("DELETE", `${recurringPath(ledgerId)}/${enc(paymentId)}/skips/${enc(dueOn)}`),
+};
+
+function recurringPath(ledgerId: string): string {
+  return `/ledgers/${enc(ledgerId)}/recurring-payments`;
 }
 
 export const transfers = {
