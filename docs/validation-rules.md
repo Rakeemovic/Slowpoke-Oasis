@@ -12,7 +12,7 @@ Each rule is enforced either by the database (CHECK, UNIQUE, NOT NULL, foreign k
 | L4 | Each ledger has exactly one default pot, created together with the ledger. | DB (partial unique index) + App |
 | L5 | A household has exactly one ledger, created together with the household. | DB (unique index) + App |
 | L6 | Every account gets a personal ledger named "Personal" at registration, in the same transaction. It is the user's primary ledger (`is_primary`); `GET /me` returns it as `personal_ledger_id`. Further personal ledgers are allowed but never primary. | DB (partial unique index) + App |
-| L7 | A ledger's balance is given as of one day (`date`, default: today on the server; the app sends its local today). `available_cents` is the default pot, `total_cents` all pots including archived ones. Transactions after that day and deleted ones do not count. | App |
+| L7 | A ledger's balance is given as of one day (`date`, default: today on the server; the app sends its local today). `available_cents` is the default pot (named in `default_pot_name`), `total_cents` all pots including archived ones. Transactions after that day and deleted ones do not count. `estimated_cents` (estimated account balance) is `total_cents` minus the recurring payments that are due or overdue on that day and neither booked nor skipped (`unbooked_count`, `unbooked_cents`); upcoming ones do not count. | App |
 
 ## Categories
 

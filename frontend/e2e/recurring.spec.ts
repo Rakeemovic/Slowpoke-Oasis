@@ -21,7 +21,7 @@ async function createDueToday(page: Page, name: string, amount: string, category
   await page.getByRole("button", { name: "Save" }).click();
   await expect(paymentRow(page, name)).toContainText(`Monthly on day ${new Date().getDate()}`);
   await page.goBack();
-  await expect(page.getByText("Available today")).toBeVisible();
+  await expect(page.getByText("Estimated account balance", { exact: true })).toBeVisible();
 }
 
 /** A row on the recurring payments screen; earlier screens stay hidden in the DOM. */
@@ -41,6 +41,9 @@ test("a due payment is booked with one tap from prefilled values", async ({ page
   await createDueToday(page, "Flat", "800", "Rent");
   await expect(dueRow(page, "Flat")).toContainText("Due today");
   await expect(dueRow(page, "Flat")).toContainText(euros("800,00"));
+  // The bank has most likely paid already, so the estimate counts it.
+  await expect(balance(page, "-800,00")).toBeVisible();
+  await expect(page.getByText(/^incl\. 1 unbooked payment \(-800,00\s€\)$/)).toBeVisible();
 
   await page.getByRole("link", { name: "Book Flat" }).click();
   // The form starts with the payment's values; the amount can still change.
@@ -57,12 +60,15 @@ test("a due payment is booked with one tap from prefilled values", async ({ page
 test("a due payment can be skipped, the skip undone, and the payment archived", async ({ page }) => {
   await createDueToday(page, "Gym", "30", "Leisure");
 
+  await expect(balance(page, "-30,00")).toBeVisible();
   await page.getByRole("button", { name: "Skip Gym" }).click();
   await expect(dueRow(page, "Gym")).toContainText("Skipped");
+  await expect(balance(page, "0,00")).toBeVisible();
   await expect(page.getByRole("link", { name: "Book Gym" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Undo skip of Gym" }).click();
   await expect(dueRow(page, "Gym")).toContainText("Due today");
+  await expect(balance(page, "-30,00")).toBeVisible();
 
   // An archived payment shows no due dates.
   await page.getByRole("link", { name: "Recurring", exact: true }).click();
@@ -70,7 +76,7 @@ test("a due payment can be skipped, the skip undone, and the payment archived", 
   await page.getByRole("button", { name: "Archive payment" }).click();
   await expect(page.getByText("Archived", { exact: true })).toBeVisible();
   await page.goBack();
-  await expect(page.getByText("Available today")).toBeVisible();
+  await expect(page.getByText("Estimated account balance", { exact: true })).toBeVisible();
   await expect(page.getByText("Due payments")).toBeHidden();
 });
 

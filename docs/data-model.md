@@ -32,7 +32,7 @@ Categories belong to a ledger. The personal ledger has its own categories, and t
 A pot groups planned amounts and collects transactions.
 
 - `pot`: id, ledger_id, name, kind (`monthly` or `one_time`), is_default, target_cents (optional savings goal), target_date (optional), archived, reserve_for (the recurring payment this one-time pot is the reserve of, rule R10)
-- Each ledger has **exactly one default pot** (`is_default = true`). It is a monthly pot and can be renamed but never deleted.
+- Each ledger has **exactly one default pot** (`is_default = true`), called "Main" ("Monthly" before migration 0017). It holds the money of the account, is a monthly pot and can be renamed but never deleted.
 - **One-time pots have no period.** They stay open until archived. Transactions are assigned to them explicitly through `pot_id`, regardless of the booking date. Example: a holiday pot can contain a flight booked in November 2027 and a balance payment from June 2028.
 - The optional target date lets the frontend calculate the required monthly rate and show progress.
 - A **reserve** is a one-time pot that saves for a recurring payment due every 3, 6 or 12 months (rules R10–R14). The payment books from it; the app suggests a rate each payday period and offers to top it up, because a reserve never goes below zero.

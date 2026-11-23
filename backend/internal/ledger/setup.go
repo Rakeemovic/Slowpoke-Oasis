@@ -16,7 +16,7 @@ var (
 )
 
 // defaultPotName is the name of the monthly pot every ledger starts with.
-const defaultPotName = "Monthly"
+const defaultPotName = "Main"
 
 // cleanName trims a name and checks its length.
 func cleanName(name string) (string, error) {
