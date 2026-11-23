@@ -5,13 +5,15 @@ import { ActivityIndicator, View } from "react-native";
 import { ledgers } from "@/api/endpoints";
 import type { Category } from "@/api/types";
 import { CategoryForm, type CategoryFormValues } from "@/components/category-form";
+import { ChoicePicker } from "@/components/choice-picker";
 import { ConfirmPanel } from "@/components/confirm-panel";
 import { ErrorMessage } from "@/components/error-message";
 import { Screen } from "@/components/screen";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Text } from "@/components/ui/text";
 import { useLoader } from "@/hooks/use-loader";
-import { bookingCount, fallbackName } from "@/lib/categories";
+import { bookingCount, fallbackName, moveTargets } from "@/lib/categories";
 import { errorMessage } from "@/lib/errors";
 
 /** Owner only (rule K9): rename a category, change its purpose, archive or delete it. */
@@ -49,7 +51,7 @@ export default function CategoryScreen() {
       ) : (
         <>
           <ArchiveSection ledgerId={ledgerId} category={category} />
-          <DeleteSection ledgerId={ledgerId} category={category} target={fallbackName(data, category.is_income)} />
+          <DeleteSection ledgerId={ledgerId} category={category} categories={data} />
         </>
       )}
     </Screen>
@@ -98,9 +100,21 @@ function ArchiveSection({ ledgerId, category }: { ledgerId: string; category: Ca
   );
 }
 
-function DeleteSection({ ledgerId, category, target }: { ledgerId: string; category: Category; target: string }) {
+/** Stands for the fallback category in the picker while the ledger has none yet; the server creates it. */
+const NEW_FALLBACK = "new-fallback";
+
+function DeleteSection({ ledgerId, category, categories }: { ledgerId: string; category: Category; categories: Category[] }) {
   const [confirming, setConfirming] = useState(false);
   const { busy, error, run } = useLeavingAction();
+
+  // The owner may pick where the bookings go; the fallback is the default (rules K2, K6).
+  const targets = moveTargets(categories, category).map((c) => ({ id: c.id, label: c.name }));
+  const fallback = categories.find((c) => c.is_fallback && c.is_income === category.is_income);
+  if (!fallback) {
+    targets.unshift({ id: NEW_FALLBACK, label: fallbackName(categories, category.is_income) });
+  }
+  const [targetId, setTargetId] = useState(fallback?.id ?? NEW_FALLBACK);
+  const target = targets.find((t) => t.id === targetId)?.label ?? "";
 
   // Name every consequence before an action that cannot be undone (rule K2).
   const moved =
@@ -108,17 +122,22 @@ function DeleteSection({ ledgerId, category, target }: { ledgerId: string; categ
       ? ` Its ${bookingCount(category.transaction_count)} and planned amounts move to “${target}”.`
       : ` Planned amounts move to “${target}”.`;
   const message = `Delete “${category.name}”?${moved} This cannot be undone. To keep the history apart, archive it instead.`;
+  const remove = () => run(() => ledgers.deleteCategory(ledgerId, category.id, targetId === NEW_FALLBACK ? undefined : targetId));
 
   return (
     <View className="gap-2">
       {confirming ? (
-        <ConfirmPanel
-          message={message}
-          confirmLabel="Delete"
-          busy={busy}
-          onConfirm={() => run(() => ledgers.deleteCategory(ledgerId, category.id))}
-          onCancel={() => setConfirming(false)}
-        />
+        <>
+          <Label>Move bookings to</Label>
+          <ChoicePicker choices={targets} selected={targetId} onSelect={setTargetId} emptyText="" />
+          <ConfirmPanel
+            message={message}
+            confirmLabel="Delete"
+            busy={busy}
+            onConfirm={remove}
+            onCancel={() => setConfirming(false)}
+          />
+        </>
       ) : (
         <Button variant="outline" onPress={() => setConfirming(true)}>
           <Text className="text-destructive">Delete category</Text>

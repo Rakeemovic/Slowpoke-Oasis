@@ -40,6 +40,7 @@ var statusByError = []struct {
 		ledger.ErrSameLedger,
 		ledger.ErrSpontaneousExpense,
 		ledger.ErrInvalidPurpose,
+		ledger.ErrInvalidMoveTarget,
 		ledger.ErrPurposeNeedsExpense,
 		auth.ErrInvalidUsername,
 		auth.ErrInvalidPassword,
