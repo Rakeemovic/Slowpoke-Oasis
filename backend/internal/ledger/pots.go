@@ -46,14 +46,17 @@ type PotLine struct {
 
 // Pot is a pot with its current balance (calculated, never stored) and its plan.
 type Pot struct {
-	ID           string
-	LedgerID     string
-	Name         string
-	Kind         string
-	IsDefault    bool
-	Archived     bool
-	TargetCents  int64
-	TargetDate   string
+	ID          string
+	LedgerID    string
+	Name        string
+	Kind        string
+	IsDefault   bool
+	Archived    bool
+	TargetCents int64
+	TargetDate  string
+	// ReserveFor is the recurring payment this pot is the reserve of, or ""
+	// (rule R10).
+	ReserveFor   string
 	BalanceCents int64
 	Planned      []PotLine
 }
@@ -110,13 +113,7 @@ func (s *Store) ListPots(ctx context.Context, ledgerID string) ([]Pot, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT p.id, p.name, p.kind, p.is_default, p.archived,
 		       COALESCE(p.target_cents, 0), COALESCE(p.target_date, ''),
-		       (SELECT COALESCE(SUM(t.amount_cents), 0) FROM transactions t
-		         WHERE t.pot_id = p.id AND t.deleted_at IS NULL
-		           AND t.type IN ('expense', 'income', 'transfer_out', 'transfer_in'))
-		     - (SELECT COALESCE(SUM(t.amount_cents), 0) FROM transactions t
-		         WHERE t.pot_id = p.id AND t.type = 'transfer' AND t.deleted_at IS NULL)
-		     + (SELECT COALESCE(SUM(t.amount_cents), 0) FROM transactions t
-		         WHERE t.counterpart_pot_id = p.id AND t.type = 'transfer' AND t.deleted_at IS NULL)
+		       COALESCE(p.reserve_for, ''), `+potBalanceSQL+`
 		FROM pot p
 		WHERE p.ledger_id = ?
 		ORDER BY p.is_default DESC, p.name`, ledgerID)
@@ -129,7 +126,7 @@ func (s *Store) ListPots(ctx context.Context, ledgerID string) ([]Pot, error) {
 	for rows.Next() {
 		p := Pot{LedgerID: ledgerID}
 		if err := rows.Scan(&p.ID, &p.Name, &p.Kind, &p.IsDefault, &p.Archived,
-			&p.TargetCents, &p.TargetDate, &p.BalanceCents); err != nil {
+			&p.TargetCents, &p.TargetDate, &p.ReserveFor, &p.BalanceCents); err != nil {
 			return nil, err
 		}
 		p.Planned = planned[p.ID]
@@ -207,6 +204,11 @@ func (s *Store) UpdatePot(ctx context.Context, ledgerID, potID string, u PotUpda
 		}
 		if isDefault && archived {
 			return ErrDefaultPotProtected
+		}
+		if u.Archived != nil && *u.Archived {
+			if err := ensureNotActiveReserve(ctx, tx, potID); err != nil {
+				return err
+			}
 		}
 
 		_, err = tx.ExecContext(ctx, `
