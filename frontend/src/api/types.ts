@@ -115,6 +115,11 @@ export interface NewTransaction {
   /** Books one occurrence of a recurring payment; both or neither (rule R6). */
   recurring_payment_id?: string;
   recurring_due_on?: string;
+  /**
+   * For an expense from a reserve: moves what the reserve lacks from the
+   * default pot first, in the same step (rule R13).
+   */
+  top_up?: boolean;
 }
 
 /**
@@ -176,6 +181,8 @@ export interface Pot {
   target_date?: string;
   /** Calculated by the server from all bookings, never stored. */
   balance_cents: number;
+  /** The recurring payment this pot is the reserve of (rule R10), or null. */
+  reserve_for: string | null;
 }
 
 /**
@@ -266,6 +273,11 @@ export interface RecurringPayment {
   archived: boolean;
   /** The next due date from today on, booked or not; null when it has ended. */
   next_due_on: string | null;
+  /**
+   * The reserve pot of a payment due every few months (rule R10). It stays
+   * linked when the payment is archived or becomes monthly; null if none.
+   */
+  reserve_pot_id: string | null;
 }
 
 /** The fields of a recurring payment that the form edits. */
@@ -294,4 +306,24 @@ export interface Occurrence {
   /** YYYY-MM-DD */
   due_on: string;
   status: "overdue" | "due" | "upcoming";
+}
+
+/** What a reserve should receive in the current payday period (rule R14). */
+export interface ReserveRate {
+  recurring_payment_id: string;
+  name: string;
+  /** The amount of the payment. */
+  amount_cents: number;
+  /** The reserve pot. */
+  pot_id: string;
+  /** The due date the reserve saves for, YYYY-MM-DD. */
+  due_on: string;
+  /** Payday periods until due_on, the current one included. */
+  periods: number;
+  balance_cents: number;
+  rate_cents: number;
+  /** Moved into the reserve in this period, as far as it is still there. */
+  saved_cents: number;
+  /** The part of the rate not saved yet; never below zero. */
+  open_cents: number;
 }

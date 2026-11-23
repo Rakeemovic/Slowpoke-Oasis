@@ -12,12 +12,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Text } from "@/components/ui/text";
 import { useLoader } from "@/hooks/use-loader";
 import { formatCents } from "@/lib/money";
+import { isReserve } from "@/lib/reserves";
 import { cn } from "@/lib/utils";
 
 export default function PotsScreen() {
   const { ledgerId } = useLocalSearchParams<{ ledgerId: string }>();
   const { data, error, loading, reload } = useLoader(useCallback(() => pots.list(ledgerId), [ledgerId]));
   const active = data?.filter((p) => !p.archived) ?? [];
+  // Reserves save for recurring payments due every few months (rule R10).
+  const own = active.filter((p) => !isReserve(p));
+  const reserves = active.filter(isReserve);
   const archived = data?.filter((p) => p.archived) ?? [];
 
   return (
@@ -37,7 +41,13 @@ export default function PotsScreen() {
       </View>
       {loading && !data && <ActivityIndicator />}
       <ErrorMessage message={error} onRetry={reload} />
-      {active.length > 0 && <PotList ledgerId={ledgerId} pots={active} />}
+      {own.length > 0 && <PotList ledgerId={ledgerId} pots={own} />}
+      {reserves.length > 0 && (
+        <>
+          <Text variant="muted">Reserves</Text>
+          <PotList ledgerId={ledgerId} pots={reserves} />
+        </>
+      )}
       {archived.length > 0 && (
         <>
           <Text variant="muted">Archived</Text>

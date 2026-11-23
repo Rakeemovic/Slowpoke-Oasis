@@ -16,6 +16,7 @@ import type {
   RecurringPayment,
   RecurringPaymentChange,
   RecurringPaymentInput,
+  ReserveRate,
   Pot,
   PotChange,
   PlanScope,
@@ -93,7 +94,7 @@ export const ledgers = {
     request<Transaction[]>("GET", `/ledgers/${enc(ledgerId)}/transactions?limit=${page.limit}&offset=${page.offset}`),
 
   createTransaction: (ledgerId: string, tx: NewTransaction | NewPotTransfer) =>
-    request<{ id: string }>("POST", `/ledgers/${enc(ledgerId)}/transactions`, tx),
+    request<{ id: string; topped_up_cents?: number }>("POST", `/ledgers/${enc(ledgerId)}/transactions`, tx),
 
   transaction: (ledgerId: string, id: string) =>
     request<Transaction>("GET", `/ledgers/${enc(ledgerId)}/transactions/${enc(id)}`),
@@ -128,7 +129,8 @@ export const pots = {
 
   create: (ledgerId: string, pot: NewPot) => request<{ id: string }>("POST", `/ledgers/${enc(ledgerId)}/pots`, pot),
 
-  update: (ledgerId: string, potId: string, change: PotChange) =>
+  /** Only the fields sent are changed. */
+  update: (ledgerId: string, potId: string, change: Partial<PotChange>) =>
     request<void>("PATCH", `/ledgers/${enc(ledgerId)}/pots/${enc(potId)}`, change),
 
   /**
@@ -177,6 +179,10 @@ export const recurring = {
   /** Open occurrences up to the end of the current payday period, oldest first. */
   due: (ledgerId: string, date: string) =>
     request<Occurrence[]>("GET", `${recurringPath(ledgerId)}/due?date=${enc(date)}`),
+
+  /** The rates of the current payday period for the active reserves, by due date. */
+  reserveRates: (ledgerId: string, date: string) =>
+    request<ReserveRate[]>("GET", `${recurringPath(ledgerId)}/reserves?date=${enc(date)}`),
 
   /** Every member may skip an occurrence and undo it (rule R7). */
   skip: (ledgerId: string, paymentId: string, dueOn: string) =>
