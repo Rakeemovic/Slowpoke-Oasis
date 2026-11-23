@@ -31,11 +31,11 @@ Categories belong to a ledger. The personal ledger has its own categories, and t
 ### Pots
 A pot groups planned amounts and collects transactions.
 
-- `pot`: id, ledger_id, name, kind (`monthly` or `one_time`), is_default, target_cents (optional savings goal), target_date (optional), archived
+- `pot`: id, ledger_id, name, kind (`monthly` or `one_time`), is_default, target_cents (optional savings goal), target_date (optional), archived, reserve_for (the recurring payment this one-time pot is the reserve of, rule R10)
 - Each ledger has **exactly one default pot** (`is_default = true`). It is a monthly pot and can be renamed but never deleted.
 - **One-time pots have no period.** They stay open until archived. Transactions are assigned to them explicitly through `pot_id`, regardless of the booking date. Example: a holiday pot can contain a flight booked in November 2027 and a balance payment from June 2028.
 - The optional target date lets the frontend calculate the required monthly rate and show progress.
-- Other pots could be sinking funds or a monthly savings rate.
+- A **reserve** is a one-time pot that saves for a recurring payment due every 3, 6 or 12 months (rules R10–R14). The payment books from it; the app suggests a rate each payday period and offers to top it up, because a reserve never goes below zero.
 
 - `pot_line`: pot_id, ledger_id, category_id, amount_cents. Planned amount for a category within a pot. Primary key: pot_id and category_id. (`ledger_id` is included so the database can check that the pot and the category belong to the same ledger.) For a one-time pot this is the plan of the pot. For a monthly pot it is the **template** that each new month's plan is copied from.
 - `period_plan`: pot_id, ledger_id, category_id, month, amount_cents. The plan of a monthly pot for one month. `month` (`YYYY-MM`) is the month in which the payday period starts. Primary key: pot_id, category_id and month. Only monthly pots have rows here (rules P3, P4).
@@ -49,7 +49,7 @@ A pot groups planned amounts and collects transactions.
 - Only the current month can be changed (rule P5): "this month only" (`scope=this_month`) or "this month and the months to come" (`scope=from_now_on`, also changes the template).
 
 ### Recurring payments
-- `recurring_payment`: id, ledger_id, name, amount_cents, category_id, pot_id, interval_months (1, 3, 6, 12), due_day (1–31), first_month, last_month (optional, `YYYY-MM`), tracked_from (date from which occurrences can be open), archived, created_at. Only expenses (rules R1–R5, R8).
+- `recurring_payment`: id, ledger_id, name, amount_cents, category_id, pot_id, interval_months (1, 3, 6, 12), due_day (1–31), first_month, last_month (optional, `YYYY-MM`), tracked_from (date from which occurrences can be open), archived, created_at. Only expenses (rules R1–R5, R8). A payment due every few months books from its reserve (`pot_id` = the pot whose `reserve_for` is the payment, rule R10).
 - `recurring_skip`: recurring_payment_id, due_on. Occurrences a member chose not to book (rule R7).
 
 **Occurrences** are not stored. They are calculated from the schedule: one due date per `interval_months` months from `first_month` on. An occurrence is *open* if it is due on or after `tracked_from`, is neither booked nor skipped, and the payment is not archived. The app lists open occurrences up to the end of the current payday period and books one with a tap as a normal expense that remembers the occurrence (rule R6). Nothing is booked automatically.
@@ -82,9 +82,9 @@ A pot groups planned amounts and collects transactions.
 - **Balance of a ledger** (`GET /ledgers/{ledger}/balance`, rule L7): *available* is the balance of the default pot, *total* the sum of all pots. Only transactions booked on or before the given day count, so planned transactions do not lower it early.
 - **Progress toward a savings goal:** the pot balance relative to `target_cents`. Balances are calculated on demand and not stored.
 - **Required monthly rate:** the remaining amount up to `target_cents`, divided by the number of months until `target_date`. Only available when a target date is set.
+- **Rate of a reserve** (rule R14): what is missing up to the payment's amount without this period's savings, divided by the payday periods until the next open occurrence, rounded up to the cent. It corrects itself: too little or too much this period changes the next rates.
 
 ## Deferred
 
 - Tracking savings rates for stocks or ETFs. Price histories will not be tracked, and the approach is still open.
-- Sinking funds with recurring contributions (probably transfers on a schedule).
 - Gamification and rewards.

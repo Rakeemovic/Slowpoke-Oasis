@@ -21,6 +21,9 @@ type transactionRequest struct {
 	// recurring payment (rule R6). They cannot be changed afterwards.
 	RecurringPaymentID string `json:"recurring_payment_id"`
 	RecurringDueOn     string `json:"recurring_due_on"`
+	// TopUp first moves what the reserve lacks from the default pot into it
+	// (rule R13). Only for expenses from the reserve of a recurring payment.
+	TopUp bool `json:"top_up"`
 }
 
 // transactionPatchRequest is the JSON body for changing a transaction.
@@ -159,7 +162,7 @@ func (s *Server) createTransaction(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	id, err := s.store.CreateTransaction(r.Context(), ledger.NewTransaction{
+	in := ledger.NewTransaction{
 		LedgerID:         r.PathValue("ledger"),
 		UserID:           userID,
 		Type:             ledger.TxType(req.Type),
@@ -173,12 +176,22 @@ func (s *Server) createTransaction(w http.ResponseWriter, r *http.Request) {
 
 		RecurringPaymentID: req.RecurringPaymentID,
 		RecurringDueOn:     req.RecurringDueOn,
-	}, s.now())
+	}
+	if !req.TopUp {
+		id, err := s.store.CreateTransaction(r.Context(), in, s.now())
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]string{"id": id})
+		return
+	}
+	id, toppedUp, err := s.store.CreateTransactionWithTopUp(r.Context(), in, s.now())
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
+	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "topped_up_cents": toppedUp})
 }
 
 // GET /ledgers/{ledger}/transactions?pot_id=&from=&to=&limit=&offset=

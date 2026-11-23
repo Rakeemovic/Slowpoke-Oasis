@@ -8,13 +8,15 @@ import (
 
 // potResponse is the JSON representation of a pot.
 type potResponse struct {
-	ID           string            `json:"id"`
-	Name         string            `json:"name"`
-	Kind         string            `json:"kind"`
-	IsDefault    bool              `json:"is_default"`
-	Archived     bool              `json:"archived"`
-	TargetCents  int64             `json:"target_cents,omitempty"`
-	TargetDate   string            `json:"target_date,omitempty"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Kind        string `json:"kind"`
+	IsDefault   bool   `json:"is_default"`
+	Archived    bool   `json:"archived"`
+	TargetCents int64  `json:"target_cents,omitempty"`
+	TargetDate  string `json:"target_date,omitempty"`
+	// ReserveFor is the recurring payment this pot is the reserve of (R10).
+	ReserveFor   *string           `json:"reserve_for"`
 	BalanceCents int64             `json:"balance_cents"`
 	Planned      []plannedResponse `json:"planned"`
 }
@@ -75,6 +77,7 @@ func (s *Server) listPots(w http.ResponseWriter, r *http.Request) {
 			Archived:     p.Archived,
 			TargetCents:  p.TargetCents,
 			TargetDate:   p.TargetDate,
+			ReserveFor:   nullIfEmpty(p.ReserveFor),
 			BalanceCents: p.BalanceCents,
 			Planned:      planned,
 		})

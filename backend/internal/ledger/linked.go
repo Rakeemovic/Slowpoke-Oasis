@@ -55,6 +55,10 @@ func (s *Store) CreateLinkedTransfer(ctx context.Context, in LinkedTransfer, now
 			if err := ensurePotActive(ctx, tx, ledgerID, potID); err != nil {
 				return err
 			}
+			guard, err := guardReserves(ctx, tx, potID) // rule R12
+			if err != nil {
+				return err
+			}
 			_, err = tx.ExecContext(ctx, `
 				INSERT INTO transactions (id, ledger_id, user_id, type, pot_id, amount_cents,
 				                          booked_on, note, created_at, updated_at, linked_transaction_id)
@@ -62,7 +66,10 @@ func (s *Store) CreateLinkedTransfer(ctx context.Context, in LinkedTransfer, now
 				id, ledgerID, in.UserID, typ, potID, amount,
 				in.BookedOn, nullIfEmpty(in.Note), ts, ts, linkedID,
 			)
-			return err
+			if err != nil {
+				return err
+			}
+			return guard.check(ctx, tx)
 		}
 
 		if err := insertLeg(outID, inID, in.FromLedgerID, in.FromPotID, TypeTransferOut, -in.AmountCents); err != nil {
