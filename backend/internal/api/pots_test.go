@@ -119,3 +119,36 @@ func TestMonthlyPlanOverHTTP(t *testing.T) {
 		t.Errorf("remove again: status %d, want 404", rec.Code)
 	}
 }
+
+func TestSeparateAccountOverHTTP(t *testing.T) {
+	h := newTestHandler(t)
+	rec := do(t, h, http.MethodPost, "/ledgers/l1/pots", "u1", map[string]any{"name": "Savings", "is_separate_account": true})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create pot: status %d, body %s", rec.Code, rec.Body)
+	}
+	id := decodeID(t, rec.Body.Bytes())
+
+	rec = do(t, h, http.MethodPost, "/ledgers/l1/transactions", "u1", map[string]any{
+		"type": "transfer", "pot_id": "p-default", "counterpart_pot_id": id, "amount_cents": 4000, "booked_on": "2026-11-10",
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("transfer: status %d, body %s", rec.Code, rec.Body)
+	}
+
+	rec = do(t, h, http.MethodGet, "/ledgers/l1/balance?date=2026-11-16", "u1", nil)
+	var b balanceResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &b); err != nil {
+		t.Fatal(err)
+	}
+	if b.SeparateCents != 4000 || b.EstimatedCents != -4000 || len(b.SeparateAccounts) != 1 || b.SeparateAccounts[0].PotID != id {
+		t.Errorf("balance = %+v, want 4000 in the separate account and an estimate of -4000", b)
+	}
+
+	// The flag can be switched off again, but never set on the main pot.
+	if rec := do(t, h, http.MethodPatch, "/ledgers/l1/pots/"+id, "u1", map[string]any{"is_separate_account": false}); rec.Code != http.StatusNoContent {
+		t.Errorf("switch off: status %d, want 204 (body %s)", rec.Code, rec.Body)
+	}
+	if rec := do(t, h, http.MethodPatch, "/ledgers/l1/pots/p-default", "u1", map[string]any{"is_separate_account": true}); rec.Code != http.StatusConflict {
+		t.Errorf("main pot: status %d, want 409 (body %s)", rec.Code, rec.Body)
+	}
+}
