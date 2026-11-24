@@ -186,6 +186,8 @@ export interface Pot {
   target_cents?: number;
   /** Goal date as YYYY-MM-DD; only present together with target_cents. */
   target_date?: string;
+  /** Fixed amount the pot saves per payday period (rule T6); never together with target_date. */
+  monthly_rate_cents?: number;
   /** Calculated by the server from all bookings, never stored. */
   balance_cents: number;
   /** The recurring payment this pot is the reserve of (rule R10), or null. */
@@ -233,6 +235,8 @@ export interface SafeToSpend {
   recurring_count: number;
   /** What the reserves still need to receive this period. */
   reserve_rates_cents: number;
+  /** What the savings goals still need to receive this period. */
+  savings_cents: number;
   /** Rest of the budget of planned expense categories. */
   budget_left_cents: number;
   /** Negative when the period is over-planned. */
@@ -272,6 +276,17 @@ export interface BudgetCategory extends PlanLine {
   reserves: BudgetReserveLine[];
 }
 
+/** The rate of a savings goal in a month of the budget (rule P11). */
+export interface BudgetSavingsLine {
+  pot_id: string;
+  name: string;
+  /** null in past months, whose rates were never stored. */
+  planned_cents: number | null;
+  /** Net transfers into the pot in this month. */
+  actual_cents: number;
+  preview: boolean;
+}
+
 /** An occurrence paid from its reserve, so it does not weigh on the month. */
 export interface ReserveDue {
   payment_id: string;
@@ -295,6 +310,7 @@ export interface Budget {
   to: string;
   categories: BudgetCategory[];
   reserve_dues: ReserveDue[];
+  savings: BudgetSavingsLine[];
 }
 
 /** What a new pot needs. A target of 0 or a missing one means no goal. */
@@ -302,14 +318,39 @@ export interface NewPot {
   name: string;
   target_cents?: number;
   target_date?: string;
+  monthly_rate_cents?: number;
 }
 
-/** Every field is sent. Sending target_cents: 0 removes the goal and its date. */
+/**
+ * Only the fields sent are changed. Sending target_cents: 0 removes the goal
+ * and its date, monthly_rate_cents: 0 the fixed rate.
+ */
 export interface PotChange {
   name: string;
   target_cents: number;
   target_date: string;
+  monthly_rate_cents: number;
   archived: boolean;
+}
+
+/** What a pot with a savings goal should receive in the current period (rule T8). */
+export interface SavingsGoal {
+  pot_id: string;
+  name: string;
+  target_cents: number;
+  target_date?: string;
+  monthly_rate_cents: number;
+  balance_cents: number;
+  /** Payday periods until the target date, the current one included; 0 for a fixed rate. */
+  periods: number;
+  /** Moved into the pot in this period. */
+  saved_cents: number;
+  rate_cents: number;
+  /** The part of the rate not saved yet. */
+  open_cents: number;
+  reached: boolean;
+  /** The target date lies in the past: the rest is due now. */
+  date_passed: boolean;
 }
 
 /** Money moved from one pot to another pot of the same ledger. */

@@ -12,6 +12,7 @@ export default function NewPotScreen() {
       name: values.name,
       target_cents: values.target_cents || undefined,
       target_date: values.target_date || undefined,
+      monthly_rate_cents: values.monthly_rate_cents || undefined,
     });
     router.back();
   }

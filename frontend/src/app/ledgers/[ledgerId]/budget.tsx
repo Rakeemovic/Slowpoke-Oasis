@@ -4,7 +4,7 @@ import { ActivityIndicator, View } from "react-native";
 
 import { ledgers, pots } from "@/api/endpoints";
 import type { Budget, Category, PlanScope } from "@/api/types";
-import { BudgetCategoryRows } from "@/components/budget-category-rows";
+import { BudgetCategoryRows, SavingsRow } from "@/components/budget-category-rows";
 import { ChoicePicker } from "@/components/choice-picker";
 import { ErrorMessage } from "@/components/error-message";
 import { HeaderActions } from "@/components/header-actions";
@@ -181,7 +181,7 @@ function BudgetContent({
       )}
       {note && <Text variant="muted">{note}</Text>}
       <Totals budget={budget} />
-      {groups.length === 0 && <Text variant="muted">Nothing planned or booked yet.</Text>}
+      {groups.length === 0 && budget.savings.length === 0 && <Text variant="muted">Nothing planned or booked yet.</Text>}
       {[
         { title: "Expenses", groups: expenses },
         { title: "Income", groups: income },
@@ -212,6 +212,20 @@ function BudgetContent({
               </Card>
             </View>
           ),
+      )}
+      {budget.savings.length > 0 && (
+        <View className="gap-2">
+          <Text variant="muted">Savings</Text>
+          <Card className="py-2">
+            <CardContent className="gap-0 px-0">
+              {budget.savings.map((line, index) => (
+                <View key={line.pot_id} className={cn(index > 0 && "border-t border-border")}>
+                  <SavingsRow line={line} />
+                </View>
+              ))}
+            </CardContent>
+          </Card>
+        </View>
       )}
       {editable && (
         <View className="gap-2">
