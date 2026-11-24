@@ -17,6 +17,8 @@ type potResponse struct {
 	TargetDate  string `json:"target_date,omitempty"`
 	// MonthlyRateCents is the fixed rate per payday period (rule T6).
 	MonthlyRateCents int64 `json:"monthly_rate_cents,omitempty"`
+	// IsSeparateAccount: a real sub-account at the bank (rule T9).
+	IsSeparateAccount bool `json:"is_separate_account"`
 	// ReserveFor is the recurring payment this pot is the reserve of (R10).
 	ReserveFor   *string           `json:"reserve_for"`
 	BalanceCents int64             `json:"balance_cents"`
@@ -38,6 +40,7 @@ func (s *Server) createPot(w http.ResponseWriter, r *http.Request) {
 		TargetCents      int64  `json:"target_cents"`
 		TargetDate       string `json:"target_date"`
 		MonthlyRateCents int64  `json:"monthly_rate_cents"`
+		SeparateAccount  bool   `json:"is_separate_account"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -48,6 +51,7 @@ func (s *Server) createPot(w http.ResponseWriter, r *http.Request) {
 		TargetCents:      req.TargetCents,
 		TargetDate:       req.TargetDate,
 		MonthlyRateCents: req.MonthlyRateCents,
+		SeparateAccount:  req.SeparateAccount,
 	})
 	if err != nil {
 		fail(w, err)
@@ -74,17 +78,18 @@ func (s *Server) listPots(w http.ResponseWriter, r *http.Request) {
 			planned = append(planned, plannedResponse{CategoryID: l.CategoryID, AmountCents: l.AmountCents})
 		}
 		out = append(out, potResponse{
-			ID:               p.ID,
-			Name:             p.Name,
-			Kind:             p.Kind,
-			IsDefault:        p.IsDefault,
-			Archived:         p.Archived,
-			TargetCents:      p.TargetCents,
-			TargetDate:       p.TargetDate,
-			MonthlyRateCents: p.MonthlyRateCents,
-			ReserveFor:       nullIfEmpty(p.ReserveFor),
-			BalanceCents:     p.BalanceCents,
-			Planned:          planned,
+			ID:                p.ID,
+			Name:              p.Name,
+			Kind:              p.Kind,
+			IsDefault:         p.IsDefault,
+			Archived:          p.Archived,
+			TargetCents:       p.TargetCents,
+			TargetDate:        p.TargetDate,
+			MonthlyRateCents:  p.MonthlyRateCents,
+			IsSeparateAccount: p.IsSeparateAccount,
+			ReserveFor:        nullIfEmpty(p.ReserveFor),
+			BalanceCents:      p.BalanceCents,
+			Planned:           planned,
 		})
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -102,6 +107,7 @@ func (s *Server) updatePot(w http.ResponseWriter, r *http.Request) {
 		TargetCents      *int64  `json:"target_cents"`
 		TargetDate       *string `json:"target_date"`
 		MonthlyRateCents *int64  `json:"monthly_rate_cents"`
+		SeparateAccount  *bool   `json:"is_separate_account"`
 		Archived         *bool   `json:"archived"`
 	}
 	if !decodeJSON(w, r, &req) {
@@ -112,6 +118,7 @@ func (s *Server) updatePot(w http.ResponseWriter, r *http.Request) {
 		TargetCents:      req.TargetCents,
 		TargetDate:       req.TargetDate,
 		MonthlyRateCents: req.MonthlyRateCents,
+		SeparateAccount:  req.SeparateAccount,
 		Archived:         req.Archived,
 	})
 	if err != nil {
