@@ -19,9 +19,22 @@ type Balance struct {
 	// or overdue on AsOf but neither booked nor skipped.
 	UnbookedCount int
 	UnbookedCents int64
+	// SeparateAccounts are the pots that are real sub-accounts at the bank
+	// (rule T9) with their balance, archived ones included. SeparateCents is
+	// their sum.
+	SeparateAccounts []SeparateAccount
+	SeparateCents    int64
 	// EstimatedCents is the estimated account balance: TotalCents minus the
+	// separate accounts, whose money is not on the main account, and minus the
 	// unbooked payments, because the bank has most likely paid them already.
 	EstimatedCents int64
+}
+
+// SeparateAccount is a pot that is a real sub-account at the bank.
+type SeparateAccount struct {
+	PotID        string
+	Name         string
+	BalanceCents int64
 }
 
 // LedgerBalance returns the balance of a ledger, counting only transactions
@@ -58,10 +71,49 @@ func (s *Store) LedgerBalance(ctx context.Context, ledgerID, asOf string, now ti
 	if err != nil {
 		return Balance{}, err
 	}
+	if b.SeparateAccounts, err = s.separateAccounts(ctx, ledgerID, asOf); err != nil {
+		return Balance{}, err
+	}
+	for _, a := range b.SeparateAccounts {
+		b.SeparateCents += a.BalanceCents
+	}
 	if err := s.addUnbookedPayments(ctx, ledgerID, &b); err != nil {
 		return Balance{}, err
 	}
 	return b, nil
+}
+
+// separateAccounts returns the sub-account pots of a ledger with their
+// balance on asOf, ordered by name. The balance counts like the default
+// pot's in LedgerBalance.
+func (s *Store) separateAccounts(ctx context.Context, ledgerID, asOf string) ([]SeparateAccount, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT p.id, p.name,
+		  COALESCE(SUM(CASE
+		    WHEN t.type <> 'transfer' AND t.pot_id = p.id THEN t.amount_cents
+		    WHEN t.type = 'transfer' AND t.pot_id = p.id THEN -t.amount_cents
+		    WHEN t.type = 'transfer' AND t.counterpart_pot_id = p.id THEN t.amount_cents
+		    ELSE 0 END), 0)
+		FROM pot p
+		LEFT JOIN transactions t
+		  ON t.ledger_id = p.ledger_id AND t.deleted_at IS NULL AND t.booked_on <= ?
+		WHERE p.ledger_id = ? AND p.is_separate_account = 1
+		GROUP BY p.id
+		ORDER BY p.name`, asOf, ledgerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []SeparateAccount{}
+	for rows.Next() {
+		var a SeparateAccount
+		if err := rows.Scan(&a.PotID, &a.Name, &a.BalanceCents); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
 }
 
 // addUnbookedPayments fills in the unbooked recurring payments and the
@@ -78,6 +130,6 @@ func (s *Store) addUnbookedPayments(ctx context.Context, ledgerID string, b *Bal
 			b.UnbookedCents += o.Payment.AmountCents
 		}
 	}
-	b.EstimatedCents = b.TotalCents - b.UnbookedCents
+	b.EstimatedCents = b.TotalCents - b.SeparateCents - b.UnbookedCents
 	return nil
 }

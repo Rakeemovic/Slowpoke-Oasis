@@ -131,6 +131,16 @@ type balanceResponse struct {
 	EstimatedCents int64  `json:"estimated_cents"`
 	UnbookedCount  int    `json:"unbooked_count"`
 	UnbookedCents  int64  `json:"unbooked_cents"`
+	// SeparateAccounts are the pots that are real sub-accounts at the bank;
+	// the estimated balance leaves them out (rule L7).
+	SeparateAccounts []separateAccountResponse `json:"separate_accounts"`
+	SeparateCents    int64                     `json:"separate_cents"`
+}
+
+type separateAccountResponse struct {
+	PotID        string `json:"pot_id"`
+	Name         string `json:"name"`
+	BalanceCents int64  `json:"balance_cents"`
 }
 
 // GET /ledgers/{ledger}/balance?date=YYYY-MM-DD
@@ -145,13 +155,19 @@ func (s *Server) ledgerBalance(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	separate := make([]separateAccountResponse, 0, len(b.SeparateAccounts))
+	for _, a := range b.SeparateAccounts {
+		separate = append(separate, separateAccountResponse(a))
+	}
 	writeJSON(w, http.StatusOK, balanceResponse{
-		AsOf:           b.AsOf,
-		AvailableCents: b.AvailableCents,
-		TotalCents:     b.TotalCents,
-		DefaultPotName: b.DefaultPotName,
-		EstimatedCents: b.EstimatedCents,
-		UnbookedCount:  b.UnbookedCount,
-		UnbookedCents:  b.UnbookedCents,
+		AsOf:             b.AsOf,
+		AvailableCents:   b.AvailableCents,
+		TotalCents:       b.TotalCents,
+		DefaultPotName:   b.DefaultPotName,
+		EstimatedCents:   b.EstimatedCents,
+		UnbookedCount:    b.UnbookedCount,
+		UnbookedCents:    b.UnbookedCents,
+		SeparateAccounts: separate,
+		SeparateCents:    b.SeparateCents,
 	})
 }

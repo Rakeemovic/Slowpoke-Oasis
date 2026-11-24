@@ -16,6 +16,7 @@ var (
 	ErrInvalidRate           = errors.New("monthly_rate_cents must not be negative (0 means no fixed rate)")
 	ErrRateWithTargetDate    = errors.New("a fixed monthly rate and a target date exclude each other")
 	ErrGoalRateNotAllowed    = errors.New("the main pot and reserves cannot save a fixed monthly rate")
+	ErrSeparateNotAllowed    = errors.New("the main pot and reserves cannot be separate accounts")
 	ErrInvalidAmount         = errors.New("amount_cents must not be negative")
 	ErrPotArchived           = errors.New("this pot is archived and accepts no new transactions")
 	ErrDefaultPotProtected   = errors.New("the default pot cannot be archived")
@@ -32,6 +33,8 @@ type NewPot struct {
 	TargetCents      int64
 	TargetDate       string // YYYY-MM-DD
 	MonthlyRateCents int64
+	// SeparateAccount marks a real sub-account at the bank (rule T9).
+	SeparateAccount bool
 }
 
 // PotUpdate changes an existing pot. Nil fields stay unchanged.
@@ -42,6 +45,7 @@ type PotUpdate struct {
 	TargetCents      *int64
 	TargetDate       *string
 	MonthlyRateCents *int64
+	SeparateAccount  *bool
 	Archived         *bool
 }
 
@@ -64,6 +68,8 @@ type Pot struct {
 	// MonthlyRateCents is the fixed rate the pot saves per payday period, or
 	// 0 (rule T6).
 	MonthlyRateCents int64
+	// IsSeparateAccount: the pot is a real sub-account at the bank (rule T9).
+	IsSeparateAccount bool
 	// ReserveFor is the recurring payment this pot is the reserve of, or ""
 	// (rule R10).
 	ReserveFor   string
@@ -114,9 +120,9 @@ func (s *Store) CreatePot(ctx context.Context, in NewPot) (string, error) {
 	}
 	id := newID()
 	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO pot (id, ledger_id, name, kind, is_default, target_cents, target_date, monthly_rate_cents, archived)
-		VALUES (?, ?, ?, 'one_time', 0, ?, ?, ?, 0)`,
-		id, in.LedgerID, name, nullIfZero(in.TargetCents), nullIfEmpty(in.TargetDate), nullIfZero(in.MonthlyRateCents),
+		INSERT INTO pot (id, ledger_id, name, kind, is_default, target_cents, target_date, monthly_rate_cents, is_separate_account, archived)
+		VALUES (?, ?, ?, 'one_time', 0, ?, ?, ?, ?, 0)`,
+		id, in.LedgerID, name, nullIfZero(in.TargetCents), nullIfEmpty(in.TargetDate), nullIfZero(in.MonthlyRateCents), in.SeparateAccount,
 	)
 	if err != nil {
 		return "", nameError(err)
@@ -138,7 +144,7 @@ func (s *Store) ListPots(ctx context.Context, ledgerID string) ([]Pot, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT p.id, p.name, p.kind, p.is_default, p.archived,
 		       COALESCE(p.target_cents, 0), COALESCE(p.target_date, ''), COALESCE(p.monthly_rate_cents, 0),
-		       COALESCE(p.reserve_for, ''), `+potBalanceSQL+`
+		       p.is_separate_account, COALESCE(p.reserve_for, ''), `+potBalanceSQL+`
 		FROM pot p
 		WHERE p.ledger_id = ?
 		ORDER BY p.is_default DESC, p.name`, ledgerID)
@@ -151,7 +157,7 @@ func (s *Store) ListPots(ctx context.Context, ledgerID string) ([]Pot, error) {
 	for rows.Next() {
 		p := Pot{LedgerID: ledgerID}
 		if err := rows.Scan(&p.ID, &p.Name, &p.Kind, &p.IsDefault, &p.Archived,
-			&p.TargetCents, &p.TargetDate, &p.MonthlyRateCents, &p.ReserveFor, &p.BalanceCents); err != nil {
+			&p.TargetCents, &p.TargetDate, &p.MonthlyRateCents, &p.IsSeparateAccount, &p.ReserveFor, &p.BalanceCents); err != nil {
 			return nil, err
 		}
 		p.Planned = planned[p.ID]
@@ -191,13 +197,13 @@ func (s *Store) plannedAmounts(ctx context.Context, ledgerID string) (map[string
 func (s *Store) UpdatePot(ctx context.Context, ledgerID, potID string, u PotUpdate) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
 		var name string
-		var isDefault, archived bool
+		var isDefault, archived, separate bool
 		var target, rate sql.NullInt64
 		var date, reserveFor sql.NullString
 		err := tx.QueryRowContext(ctx, `
-			SELECT name, is_default, archived, target_cents, target_date, monthly_rate_cents, reserve_for
+			SELECT name, is_default, archived, target_cents, target_date, monthly_rate_cents, is_separate_account, reserve_for
 			FROM pot WHERE id = ? AND ledger_id = ?`, potID, ledgerID,
-		).Scan(&name, &isDefault, &archived, &target, &date, &rate, &reserveFor)
+		).Scan(&name, &isDefault, &archived, &target, &date, &rate, &separate, &reserveFor)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrPotNotFound
 		}
@@ -225,6 +231,9 @@ func (s *Store) UpdatePot(ctx context.Context, ledgerID, potID string, u PotUpda
 		if u.MonthlyRateCents != nil {
 			newRate = *u.MonthlyRateCents
 		}
+		if u.SeparateAccount != nil {
+			separate = *u.SeparateAccount
+		}
 		if u.Archived != nil {
 			archived = *u.Archived
 		}
@@ -234,6 +243,9 @@ func (s *Store) UpdatePot(ctx context.Context, ledgerID, potID string, u PotUpda
 		}
 		if newRate > 0 && (isDefault || reserveFor.Valid) {
 			return ErrGoalRateNotAllowed
+		}
+		if separate && (isDefault || reserveFor.Valid) {
+			return ErrSeparateNotAllowed
 		}
 		if isDefault && archived {
 			return ErrDefaultPotProtected
@@ -245,9 +257,9 @@ func (s *Store) UpdatePot(ctx context.Context, ledgerID, potID string, u PotUpda
 		}
 
 		_, err = tx.ExecContext(ctx, `
-			UPDATE pot SET name = ?, target_cents = ?, target_date = ?, monthly_rate_cents = ?, archived = ?
+			UPDATE pot SET name = ?, target_cents = ?, target_date = ?, monthly_rate_cents = ?, is_separate_account = ?, archived = ?
 			WHERE id = ? AND ledger_id = ?`,
-			name, nullIfZero(newTarget), nullIfEmpty(newDate), nullIfZero(newRate), archived, potID, ledgerID,
+			name, nullIfZero(newTarget), nullIfEmpty(newDate), nullIfZero(newRate), separate, archived, potID, ledgerID,
 		)
 		return nameError(err)
 	})

@@ -91,6 +91,7 @@ var statusByError = []struct {
 		ledger.ErrPotArchived,
 		ledger.ErrDefaultPotProtected,
 		ledger.ErrGoalRateNotAllowed,
+		ledger.ErrSeparateNotAllowed,
 		ledger.ErrAlreadyMember,
 		ledger.ErrNameTaken,
 		ledger.ErrCategoryLimit,
