@@ -1,19 +1,25 @@
 import { Link, Stack } from "expo-router";
+import { CircleUser, LogOut, Users, Wallet } from "lucide-react-native";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, View } from "react-native";
+import { toast } from "sonner-native";
 
 import { households } from "@/api/endpoints";
 import { useAuth } from "@/auth/auth-context";
+import { EmptyState } from "@/components/empty-state";
 import { ErrorMessage } from "@/components/error-message";
-import { HeaderActions } from "@/components/header-actions";
 import { FormField } from "@/components/form-field";
+import { HeaderActions, HeaderIconButton } from "@/components/header-actions";
 import { LedgerBalance } from "@/components/ledger-balance";
+import { ListRow, ListSection } from "@/components/list";
 import { Screen } from "@/components/screen";
 import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { Icon } from "@/components/ui/icon";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Text } from "@/components/ui/text";
 import { useLoader } from "@/hooks/use-loader";
 import { errorMessage } from "@/lib/errors";
+import { hueFor, MAIN_HUE } from "@/lib/hues";
 import { loadMyLedgers, type LedgerSummary } from "@/lib/ledgers";
 
 export default function OverviewScreen() {
@@ -30,38 +36,45 @@ export default function OverviewScreen() {
           headerRight: () => (
             <HeaderActions>
               <Link href="/account" asChild>
-                <Button variant="ghost" size="sm">
-                  <Text>Account</Text>
+                <Button variant="ghost" size="icon" aria-label="Account">
+                  <Icon as={CircleUser} size={20} />
                 </Button>
               </Link>
-              <Button variant="ghost" size="sm" onPress={signOut}>
-                <Text>Sign out</Text>
-              </Button>
+              <HeaderIconButton icon={LogOut} label="Sign out" onPress={signOut} />
             </HeaderActions>
           ),
         }}
       />
-      {loading && !data && <ActivityIndicator />}
+      {loading && !data && <Skeleton className="h-24 w-full rounded-2xl" />}
       <ErrorMessage message={error} onRetry={reload} />
-      {personal.map((l) => (
-        <LedgerCard key={l.id} ledger={l} />
-      ))}
-      {data && (
-        <Text variant="h4" className="mt-4">
-          Households
-        </Text>
+      {personal.length > 0 && (
+        <ListSection title="Your money">
+          {personal.map((l) => (
+            <LedgerRow key={l.id} ledger={l} />
+          ))}
+        </ListSection>
       )}
-      {data && shared.length === 0 && <Text variant="muted">You are not in a household yet. Create one below.</Text>}
-      {shared.map((l) => (
-        <LedgerCard key={l.id} ledger={l} />
-      ))}
+      {data && (
+        <ListSection title="Households">
+          {shared.map((l) => (
+            <LedgerRow key={l.id} ledger={l} />
+          ))}
+        </ListSection>
+      )}
+      {data && shared.length === 0 && (
+        <EmptyState
+          icon={Users}
+          title="No household yet"
+          text="Share a ledger with the people you live with. Create one below."
+        />
+      )}
       <CreateHousehold onCreated={reload} />
     </Screen>
   );
 }
 
-/** A card that opens the transactions of a ledger and shows its balance. */
-function LedgerCard({ ledger }: { ledger: LedgerSummary }) {
+/** A row that opens the tabs of a ledger and shows its balance. */
+function LedgerRow({ ledger }: { ledger: LedgerSummary }) {
   const params = {
     ledgerId: ledger.id,
     name: ledger.name,
@@ -70,19 +83,15 @@ function LedgerCard({ ledger }: { ledger: LedgerSummary }) {
     ...(ledger.householdId && { householdId: ledger.householdId }),
   };
   return (
-    <Link href={{ pathname: "/ledgers/[ledgerId]", params }} asChild>
-      <Pressable accessibilityRole="link">
-        <Card>
-          <CardHeader className="flex-row items-center justify-between gap-4">
-            <View className="flex-1 gap-1.5">
-              <CardTitle>{ledger.name}</CardTitle>
-              <CardDescription>{ledger.description}</CardDescription>
-            </View>
-            <LedgerBalance ledgerId={ledger.id} />
-          </CardHeader>
-        </Card>
-      </Pressable>
-    </Link>
+    <ListRow
+      href={{ pathname: "/ledgers/[ledgerId]", params }}
+      icon={ledger.kind === "personal" ? Wallet : Users}
+      hue={ledger.kind === "personal" ? MAIN_HUE : hueFor(ledger.id)}
+      title={<Text className="font-heading text-base">{ledger.name}</Text>}
+      subtitle={ledger.description}
+      trailing={<LedgerBalance ledgerId={ledger.id} />}
+      className="min-h-20"
+    />
   );
 }
 
@@ -96,6 +105,7 @@ function CreateHousehold({ onCreated }: { onCreated: () => void }) {
     setError(undefined);
     try {
       await households.create(name.trim());
+      toast.success(`Household “${name.trim()}” created`);
       setName("");
       onCreated();
     } catch (e) {
@@ -106,12 +116,20 @@ function CreateHousehold({ onCreated }: { onCreated: () => void }) {
   }
 
   return (
-    <View className="mt-4 gap-3">
-      <FormField label="New household" value={name} onChangeText={setName} placeholder="e.g. Shared flat" onSubmitEditing={submit} />
-      <ErrorMessage message={error} />
-      <Button variant="secondary" onPress={submit} disabled={busy || !name.trim()}>
-        <Text>Create household</Text>
-      </Button>
-    </View>
+    <Card>
+      <CardContent className="gap-3">
+        <FormField
+          label="New household"
+          value={name}
+          onChangeText={setName}
+          placeholder="e.g. Shared flat"
+          onSubmitEditing={submit}
+        />
+        <ErrorMessage message={error} />
+        <Button variant="secondary" onPress={submit} disabled={busy || !name.trim()}>
+          <Text>Create household</Text>
+        </Button>
+      </CardContent>
+    </Card>
   );
 }

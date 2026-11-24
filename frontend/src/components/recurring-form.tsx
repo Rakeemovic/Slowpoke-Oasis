@@ -5,7 +5,7 @@ import { ledgers, pots } from "@/api/endpoints";
 import type { IntervalMonths, RecurringPaymentInput } from "@/api/types";
 import { ChoicePicker } from "@/components/choice-picker";
 import { ErrorMessage } from "@/components/error-message";
-import { FormField } from "@/components/form-field";
+import { AmountField, FormField } from "@/components/form-field";
 import { PotPicker } from "@/components/pot-picker";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -97,7 +97,7 @@ export function RecurringForm({
   return (
     <>
       <FormField label="Name" value={name} onChangeText={setName} placeholder="Rent" />
-      <FormField label="Amount (€)" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" />
+      <AmountField label="Amount (€)" value={amount} onChangeText={setAmount} />
 
       <View className="gap-2">
         <Label>Category</Label>
@@ -117,9 +117,7 @@ export function RecurringForm({
       </View>
 
       {savesInReserve ? (
-        <Text variant="muted">
-          It is paid from its own reserve pot. The ledger suggests what to put aside in each period.
-        </Text>
+        <Text variant="muted">It is paid from its own reserve pot. The ledger suggests what to put aside in each period.</Text>
       ) : (
         <PotPicker
           label="Pot"
@@ -134,12 +132,7 @@ export function RecurringForm({
       <FormField label="Due day (1–31)" value={dueDay} onChangeText={setDueDay} keyboardType="number-pad" />
       <Text variant="muted">In months without this day, the payment is due on the last day of the month.</Text>
       <FormField label="First month (YYYY-MM)" value={firstMonth} onChangeText={setFirstMonth} autoCapitalize="none" />
-      <FormField
-        label="Last month (optional, YYYY-MM)"
-        value={lastMonth}
-        onChangeText={setLastMonth}
-        autoCapitalize="none"
-      />
+      <FormField label="Last month (optional, YYYY-MM)" value={lastMonth} onChangeText={setLastMonth} autoCapitalize="none" />
 
       <ErrorMessage message={error} />
       <Button onPress={submit} disabled={busy}>

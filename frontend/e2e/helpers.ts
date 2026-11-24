@@ -23,9 +23,32 @@ export function euros(amount: string): RegExp {
  * show. Earlier screens stay hidden in the DOM, hence only visible ones.
  */
 export function balance(scope: Page | Locator, amount: string): Locator {
-  return scope
-    .getByLabel(new RegExp(`^Estimated account balance: ${escape(amount)}\\s€$`))
-    .filter({ visible: true });
+  return scope.getByLabel(new RegExp(`^Estimated account balance: ${escape(amount)}\\s€$`)).filter({ visible: true });
+}
+
+const TABS = ["Overview", "Budget", "Pots", "More"];
+
+/**
+ * Opens a part of the open ledger: one of its tabs, or a screen listed under
+ * "More" (Recurring, Categories, Members, …), which goes through that tab.
+ */
+export async function openSection(page: Page, name: string): Promise<void> {
+  if (TABS.includes(name)) {
+    await page.getByRole("tab", { name, exact: true }).click();
+    return;
+  }
+  await page.getByRole("tab", { name: "More", exact: true }).click();
+  await page.getByRole("link", { name: new RegExp(`^${escape(name)} `) }).click();
+}
+
+/**
+ * Returns from a screen opened through a tab of the ledger to its overview.
+ * The browser's back button would return to the tab instead.
+ */
+export async function backToOverview(page: Page): Promise<void> {
+  await page.goBack();
+  await openSection(page, "Overview");
+  await expect(page.getByText("Estimated account balance", { exact: true })).toBeVisible();
 }
 
 /** Creates an account, confirms the recovery code and returns that code. */
@@ -92,6 +115,7 @@ export async function fillBooking(page: Page, booking: Booking): Promise<void> {
   await page.getByLabel("Amount (€)").fill(booking.amount);
   const category = page.getByRole("button", { name: booking.category, exact: true });
   if (booking.newCategory) {
+    await page.getByRole("button", { name: "New category", exact: true }).click();
     await page.getByLabel(`New ${booking.kind.toLowerCase()} category`).fill(booking.category);
     await page.getByRole("button", { name: "Add", exact: true }).click();
     await expect(category).toBeVisible();
@@ -120,8 +144,14 @@ export function transactionRow(page: Page, title: string): Locator {
 }
 
 /** Creates a payment due today, so it falls into the current month whatever the date. */
-export async function createPaymentDueToday(page: Page, name: string, amount: string, category: string, yearly = false): Promise<void> {
-  await page.getByRole("link", { name: "Recurring", exact: true }).click();
+export async function createPaymentDueToday(
+  page: Page,
+  name: string,
+  amount: string,
+  category: string,
+  yearly = false,
+): Promise<void> {
+  await openSection(page, "Recurring");
   await page.getByRole("link", { name: "New recurring payment" }).click();
   await page.getByLabel("Name", { exact: true }).fill(name);
   await page.getByLabel("Amount (€)").fill(amount);
@@ -132,8 +162,7 @@ export async function createPaymentDueToday(page: Page, name: string, amount: st
   await page.getByLabel("Due day (1–31)").fill(String(new Date().getDate()));
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("link", { name: new RegExp(`^${name} `) })).toContainText(`on day ${new Date().getDate()}`);
-  await page.goBack();
-  await expect(page.getByText("Estimated account balance", { exact: true })).toBeVisible();
+  await backToOverview(page);
 }
 
 /**
@@ -152,11 +181,14 @@ export async function openPot(page: Page, name: string | RegExp): Promise<void> 
 /**
  * The fill of a progress row (see ProgressRow), named like the row. It is
  * decoration for screen readers, so it is found by its label, and a fill of
- * 0 % has no size. Call it where only one such row is on screen: earlier
- * screens stay in the DOM.
+ * 0 % has no size. Screens that are not shown stay in the DOM, hidden; only
+ * the bar on the shown screen counts.
  */
 export function bar(page: Page, name: string): Locator {
-  return page.locator(`[aria-label="${name} progress"]`);
+  // A fill of 0 % has no size and never counts as visible, so visibility is
+  // checked on the row that holds it.
+  const fill = `[aria-label="${name} progress"]`;
+  return page.locator(`:has(> ${fill})`).filter({ visible: true }).locator(fill);
 }
 
 function escape(text: string): string {

@@ -5,7 +5,7 @@ import { pots } from "@/api/endpoints";
 import type { NewPotTransfer } from "@/api/types";
 import { ChoicePicker } from "@/components/choice-picker";
 import { ErrorMessage } from "@/components/error-message";
-import { FormField } from "@/components/form-field";
+import { AmountField, FormField } from "@/components/form-field";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Text } from "@/components/ui/text";
@@ -77,7 +77,7 @@ export function MoveForm({
           <PotChoice label="To" pots={potList.data} chosen={toId} onSelect={setToId} />
         </>
       )}
-      <FormField label="Amount (€)" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" />
+      <AmountField label="Amount (€)" value={amount} onChangeText={setAmount} />
       <FormField label="Date (YYYY-MM-DD)" value={bookedOn} onChangeText={setBookedOn} autoCapitalize="none" />
       <FormField label="Note (optional)" value={note} onChangeText={setNote} />
       <ErrorMessage message={error} />

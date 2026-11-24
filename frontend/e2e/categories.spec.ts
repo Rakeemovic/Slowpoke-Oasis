@@ -1,10 +1,20 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { book, createHousehold, fillBooking, openLedger, register, transactionRow, uniqueUsername } from "./helpers";
+import {
+  book,
+  createHousehold,
+  fillBooking,
+  openLedger,
+  register,
+  transactionRow,
+  uniqueUsername,
+  openSection,
+  backToOverview,
+} from "./helpers";
 
 /** Opens the categories screen from the ledger screen. */
 async function openCategories(page: Page): Promise<void> {
-  await page.getByRole("link", { name: "Categories", exact: true }).click();
+  await openSection(page, "Categories");
   await expect(page.getByRole("link", { name: "New category" })).toBeVisible();
 }
 
@@ -20,9 +30,9 @@ test("the owner renames, archives and deletes categories; bookings can be sponta
   // A spontaneous expense shows the mark in the list.
   await page.getByRole("link", { name: "Add transaction" }).click();
   await fillBooking(page, { kind: "Expense", amount: "12,50", category: "Leisure" });
-  await page.getByRole("button", { name: "⚡ Spontaneous" }).click();
+  await page.getByRole("switch", { name: "Spontaneous" }).click();
   await page.getByRole("button", { name: "Save" }).click();
-  await expect(transactionRow(page, "Leisure ⚡")).toBeVisible();
+  await expect(transactionRow(page, "Leisure").getByLabel("Spontaneous")).toBeVisible();
   await book(page, { kind: "Expense", amount: "5", category: "Groceries" });
 
   // Default categories come with a purpose and count their bookings.
@@ -64,9 +74,9 @@ test("the owner renames, archives and deletes categories; bookings can be sponta
   await expect(page.getByText("This is the catch-all category", { exact: false })).toBeVisible();
   await expect(page.getByRole("button", { name: "Delete category" })).toHaveCount(0);
   await page.goBack();
-  await page.goBack();
+  await backToOverview(page);
 
-  await expect(transactionRow(page, "Other ⚡")).toBeVisible();
+  await expect(transactionRow(page, "Other").getByLabel("Spontaneous")).toBeVisible();
   await page.getByRole("link", { name: "Add transaction" }).click();
   await expect(page.getByRole("button", { name: "Household", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Rent", exact: true })).toHaveCount(0);
@@ -81,7 +91,7 @@ test("household members add categories, only the owner changes them", async ({ p
 
   await createHousehold(ownerPage, "Flat");
   await openLedger(ownerPage, "Flat");
-  await ownerPage.getByRole("link", { name: "Members" }).click();
+  await openSection(ownerPage, "Members");
   await ownerPage.getByLabel("Add member").fill(member);
   await ownerPage.getByRole("button", { name: "Add member" }).click();
   await expect(ownerPage.getByText(member)).toBeVisible();
@@ -102,20 +112,20 @@ test("household members add categories, only the owner changes them", async ({ p
   await expect(memberPage.getByText("Plants", { exact: true })).toBeVisible();
 
   // The member's spontaneous booking: the owner may edit it but not change the mark.
-  await memberPage.goBack();
+  await backToOverview(memberPage);
   await memberPage.getByRole("link", { name: "Add transaction" }).click();
   await fillBooking(memberPage, { kind: "Expense", amount: "8", category: "Plants" });
-  await memberPage.getByRole("button", { name: "⚡ Spontaneous" }).click();
+  await memberPage.getByRole("switch", { name: "Spontaneous" }).click();
   await memberPage.getByRole("button", { name: "Save" }).click();
   await expect(memberPage.getByText("Estimated account balance", { exact: true })).toBeVisible();
 
-  await ownerPage.goBack();
+  await backToOverview(ownerPage);
   await ownerPage.getByRole("button", { name: "Refresh" }).click();
-  await transactionRow(ownerPage, "Plants ⚡").click();
-  await expect(ownerPage.getByRole("button", { name: "⚡ Spontaneous" })).toHaveCount(0);
+  await transactionRow(ownerPage, "Plants").click();
+  await expect(ownerPage.getByRole("switch", { name: "Spontaneous" })).toHaveCount(0);
   await ownerPage.getByLabel("Amount (€)").fill("9");
   await ownerPage.getByRole("button", { name: "Save" }).click();
-  await expect(transactionRow(ownerPage, "Plants ⚡")).toBeVisible();
+  await expect(transactionRow(ownerPage, "Plants").getByLabel("Spontaneous")).toBeVisible();
 
   // The owner can open the member's category.
   await openCategories(ownerPage);

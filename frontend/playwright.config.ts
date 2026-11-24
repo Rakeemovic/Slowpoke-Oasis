@@ -18,6 +18,9 @@ export default defineConfig({
     baseURL: `http://localhost:${PORT}`,
     // A fixed locale makes amounts predictable, e.g. "12,50 €".
     locale: "de-DE",
+    // Counting numbers and fading rows would make texts change under the
+    // tests' eyes; the app skips them when the system asks for less motion.
+    reducedMotion: "reduce",
     trace: "retain-on-failure",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],

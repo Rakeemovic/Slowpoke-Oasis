@@ -7,7 +7,7 @@ test("a new account starts with an empty personal ledger", async ({ page }) => {
 
   // Rule L6: registration creates the personal ledger right away.
   await expect(ledgerCard(page, "Personal")).toBeVisible();
-  await expect(page.getByText("You are not in a household yet.", { exact: false })).toBeVisible();
+  await expect(page.getByText("No household yet", { exact: true })).toBeVisible();
 });
 
 test("the session survives a reload and ends on sign out", async ({ page }) => {

@@ -1,83 +1,72 @@
-// Colors for places that cannot use Tailwind classes, such as the navigation
-// header. Keep them in sync with the CSS variables in src/global.css.
-import { DarkTheme, DefaultTheme, type Theme } from 'expo-router/react-navigation';
+// Colours for places that cannot use Tailwind classes, such as the navigation
+// header, the tab bar and icons. Generated from src/global.css; keep in sync.
+import { DarkTheme, DefaultTheme, type Theme } from "expo-router/react-navigation";
 
 export const THEME = {
   light: {
-    background: 'hsl(0 0% 100%)',
-    foreground: 'hsl(0 0% 3.9%)',
-    card: 'hsl(0 0% 100%)',
-    cardForeground: 'hsl(0 0% 3.9%)',
-    popover: 'hsl(0 0% 100%)',
-    popoverForeground: 'hsl(0 0% 3.9%)',
-    primary: 'hsl(0 0% 9%)',
-    primaryForeground: 'hsl(0 0% 98%)',
-    secondary: 'hsl(0 0% 96.1%)',
-    secondaryForeground: 'hsl(0 0% 9%)',
-    muted: 'hsl(0 0% 96.1%)',
-    mutedForeground: 'hsl(0 0% 45.1%)',
-    accent: 'hsl(0 0% 96.1%)',
-    accentForeground: 'hsl(0 0% 9%)',
-    destructive: 'hsl(0 84.2% 60.2%)',
-    border: 'hsl(0 0% 89.8%)',
-    input: 'hsl(0 0% 89.8%)',
-    ring: 'hsl(0 0% 63%)',
-    radius: '0.625rem',
-    chart1: 'hsl(12 76% 61%)',
-    chart2: 'hsl(173 58% 39%)',
-    chart3: 'hsl(197 37% 24%)',
-    chart4: 'hsl(43 74% 66%)',
-    chart5: 'hsl(27 87% 67%)',
+    background: "hsl(42 45% 96%)",
+    foreground: "hsl(200 35% 12%)",
+    card: "hsl(0 0% 100%)",
+    cardForeground: "hsl(200 35% 12%)",
+    popover: "hsl(0 0% 100%)",
+    popoverForeground: "hsl(200 35% 12%)",
+    primary: "hsl(174 82% 29%)",
+    primaryForeground: "hsl(0 0% 100%)",
+    secondary: "hsl(40 55% 90%)",
+    secondaryForeground: "hsl(28 45% 22%)",
+    muted: "hsl(40 30% 92%)",
+    mutedForeground: "hsl(200 12% 38%)",
+    accent: "hsl(172 55% 91%)",
+    accentForeground: "hsl(174 82% 20%)",
+    destructive: "hsl(356 72% 50%)",
+    positive: "hsl(152 70% 30%)",
+    warning: "hsl(32 95% 42%)",
+    border: "hsl(38 25% 86%)",
+    input: "hsl(38 22% 80%)",
+    ring: "hsl(174 82% 35%)",
   },
   dark: {
-    background: 'hsl(0 0% 3.9%)',
-    foreground: 'hsl(0 0% 98%)',
-    card: 'hsl(0 0% 3.9%)',
-    cardForeground: 'hsl(0 0% 98%)',
-    popover: 'hsl(0 0% 3.9%)',
-    popoverForeground: 'hsl(0 0% 98%)',
-    primary: 'hsl(0 0% 98%)',
-    primaryForeground: 'hsl(0 0% 9%)',
-    secondary: 'hsl(0 0% 14.9%)',
-    secondaryForeground: 'hsl(0 0% 98%)',
-    muted: 'hsl(0 0% 14.9%)',
-    mutedForeground: 'hsl(0 0% 63.9%)',
-    accent: 'hsl(0 0% 14.9%)',
-    accentForeground: 'hsl(0 0% 98%)',
-    destructive: 'hsl(0 70.9% 59.4%)',
-    border: 'hsl(0 0% 14.9%)',
-    input: 'hsl(0 0% 14.9%)',
-    ring: 'hsl(300 0% 45%)',
-    radius: '0.625rem',
-    chart1: 'hsl(220 70% 50%)',
-    chart2: 'hsl(160 60% 45%)',
-    chart3: 'hsl(30 80% 55%)',
-    chart4: 'hsl(280 65% 60%)',
-    chart5: 'hsl(340 75% 55%)',
+    background: "hsl(200 32% 6%)",
+    foreground: "hsl(42 35% 94%)",
+    card: "hsl(199 28% 10%)",
+    cardForeground: "hsl(42 35% 94%)",
+    popover: "hsl(199 28% 10%)",
+    popoverForeground: "hsl(42 35% 94%)",
+    primary: "hsl(170 72% 48%)",
+    primaryForeground: "hsl(200 45% 7%)",
+    secondary: "hsl(199 22% 16%)",
+    secondaryForeground: "hsl(42 35% 94%)",
+    muted: "hsl(199 22% 14%)",
+    mutedForeground: "hsl(200 12% 66%)",
+    accent: "hsl(172 40% 16%)",
+    accentForeground: "hsl(170 70% 72%)",
+    destructive: "hsl(356 80% 64%)",
+    positive: "hsl(152 60% 55%)",
+    warning: "hsl(38 95% 60%)",
+    border: "hsl(199 22% 18%)",
+    input: "hsl(199 20% 24%)",
+    ring: "hsl(170 72% 48%)",
   },
 };
 
-export const NAV_THEME: Record<'light' | 'dark', Theme> = {
-  light: {
-    ...DefaultTheme,
-    colors: {
-      background: THEME.light.background,
-      border: THEME.light.border,
-      card: THEME.light.card,
-      notification: THEME.light.destructive,
-      primary: THEME.light.primary,
-      text: THEME.light.foreground,
-    },
-  },
-  dark: {
-    ...DarkTheme,
-    colors: {
-      background: THEME.dark.background,
-      border: THEME.dark.border,
-      card: THEME.dark.card,
-      notification: THEME.dark.destructive,
-      primary: THEME.dark.primary,
-      text: THEME.dark.foreground,
-    },
-  },
+export type Scheme = keyof typeof THEME;
+
+export const NAV_THEME: Record<Scheme, Theme> = {
+  light: navTheme(DefaultTheme, "light"),
+  dark: navTheme(DarkTheme, "dark"),
 };
+
+function navTheme(base: Theme, scheme: Scheme): Theme {
+  const t = THEME[scheme];
+  return {
+    ...base,
+    colors: {
+      background: t.background,
+      border: t.border,
+      card: t.background,
+      notification: t.destructive,
+      primary: t.primary,
+      text: t.foreground,
+    },
+  };
+}

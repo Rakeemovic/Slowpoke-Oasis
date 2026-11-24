@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { auth } from "@/api/endpoints";
 import { useAuth } from "@/auth/auth-context";
+import { AuthHeader } from "@/components/auth-header";
 import { ErrorMessage } from "@/components/error-message";
 import { FormField } from "@/components/form-field";
 import { RecoveryCodePanel } from "@/components/recovery-code-panel";
@@ -67,6 +68,7 @@ export default function RegisterScreen() {
 
   return (
     <Screen>
+      <AuthHeader title="Create your account" text="No email needed: you get a recovery code instead." />
       <FormField label="Username" value={username} onChangeText={setUsername} autoCapitalize="none" autoComplete="username-new" />
       <FormField label="Display name" value={displayName} onChangeText={setDisplayName} autoComplete="name" />
       <FormField

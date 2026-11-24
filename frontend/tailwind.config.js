@@ -25,6 +25,8 @@ module.exports = {
           DEFAULT: 'hsl(var(--destructive))',
           foreground: 'hsl(var(--destructive-foreground))',
         },
+        positive: 'hsl(var(--positive))',
+        warning: 'hsl(var(--warning))',
         muted: {
           DEFAULT: 'hsl(var(--muted))',
           foreground: 'hsl(var(--muted-foreground))',
@@ -42,7 +44,15 @@ module.exports = {
           foreground: 'hsl(var(--card-foreground))',
         },
       },
+      // Nunito is loaded in src/app/_layout.tsx. Each weight is its own family,
+      // because Android cannot pick a weight of a custom font by itself; so
+      // these classes replace font-bold etc. and must not be combined with them.
+      fontFamily: {
+        display: ['Nunito_800ExtraBold'],
+        heading: ['Nunito_700Bold'],
+      },
       borderRadius: {
+        xl: 'calc(var(--radius) + 4px)',
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',

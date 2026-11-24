@@ -1,11 +1,12 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, View } from "react-native";
+import { toast } from "sonner-native";
 
 import { transfers } from "@/api/endpoints";
 import { ChoicePicker } from "@/components/choice-picker";
 import { ErrorMessage } from "@/components/error-message";
-import { FormField } from "@/components/form-field";
+import { AmountField, FormField } from "@/components/form-field";
 import { Screen } from "@/components/screen";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -52,6 +53,7 @@ export default function TransferScreen() {
         booked_on: bookedOn,
         note: note.trim() || undefined,
       });
+      toast.success("Transfer booked");
       router.back();
     } catch (e) {
       setError(errorMessage(e));
@@ -75,7 +77,7 @@ export default function TransferScreen() {
         )}
       </View>
 
-      <FormField label="Amount (€)" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" />
+      <AmountField label="Amount (€)" value={amount} onChangeText={setAmount} />
       <FormField label="Date (YYYY-MM-DD)" value={bookedOn} onChangeText={setBookedOn} autoCapitalize="none" />
       <FormField label="Note (optional)" value={note} onChangeText={setNote} />
 

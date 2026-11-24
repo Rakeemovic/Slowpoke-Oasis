@@ -1,4 +1,5 @@
 import { router, useLocalSearchParams } from "expo-router";
+import { toast } from "sonner-native";
 
 import { recurring } from "@/api/endpoints";
 import type { RecurringPaymentInput } from "@/api/types";
@@ -11,6 +12,7 @@ export default function NewRecurringPaymentScreen() {
 
   async function create(values: RecurringPaymentInput) {
     await recurring.create(ledgerId, values, today());
+    toast.success("Recurring payment added");
     router.back();
   }
 

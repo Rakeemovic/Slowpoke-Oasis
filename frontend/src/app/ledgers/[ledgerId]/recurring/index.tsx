@@ -1,20 +1,24 @@
-import { Link, Stack, useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams } from "expo-router";
+import { Repeat } from "lucide-react-native";
 import { useCallback } from "react";
-import { ActivityIndicator, Pressable, View } from "react-native";
 
 import { ledgers, recurring } from "@/api/endpoints";
 import type { Category, RecurringPayment } from "@/api/types";
+import { Amount } from "@/components/amount";
+import { EmptyState } from "@/components/empty-state";
 import { ErrorMessage } from "@/components/error-message";
+import { FloatingAction } from "@/components/floating-action";
+import { ListRow, ListSection } from "@/components/list";
 import { HeaderActions } from "@/components/header-actions";
 import { Screen } from "@/components/screen";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Text } from "@/components/ui/text";
 import { useLoader } from "@/hooks/use-loader";
 import { formatDate, today } from "@/lib/dates";
 import { loadMyLedgers } from "@/lib/ledgers";
-import { formatCents } from "@/lib/money";
 import { describeSchedule } from "@/lib/recurring";
+import { hueFor } from "@/lib/hues";
+import { categoryIcon } from "@/lib/icons";
 import { cn } from "@/lib/utils";
 
 /**
@@ -38,80 +42,57 @@ export default function RecurringPaymentsScreen() {
   ];
 
   return (
-    <Screen>
+    <Screen
+      floating={
+        <FloatingAction
+          label="New recurring payment"
+          href={{ pathname: "/ledgers/[ledgerId]/recurring/new", params: { ledgerId } }}
+        />
+      }>
       <Stack.Screen options={{ title: "Recurring payments", headerRight: () => <HeaderActions /> }} />
-      <Link href={{ pathname: "/ledgers/[ledgerId]/recurring/new", params: { ledgerId } }} asChild>
-        <Button>
-          <Text>New recurring payment</Text>
-        </Button>
-      </Link>
       <Text variant="muted">
-        Recurring payments are reminders: they show up under “Due payments” in the ledger, and nothing is booked until
-        you tap “Book”.
+        Recurring payments are reminders: they show up under “Due payments” in the ledger, and nothing is booked until you tap
+        “Book”.
       </Text>
       {data && !isOwner && <Text variant="muted">Only the owner of the household can change or archive them.</Text>}
-      {loading && !data && <ActivityIndicator />}
+      {loading && !data && <Skeleton className="h-40 w-full rounded-2xl" />}
       <ErrorMessage message={error} onRetry={reload} />
-      {data && payments.length === 0 && <Text variant="muted">No recurring payments yet.</Text>}
+      {data && payments.length === 0 && (
+        <EmptyState
+          icon={Repeat}
+          title="No recurring payments yet"
+          text="Add rent, subscriptions or insurance once, and the app reminds you when they are due."
+        />
+      )}
       {groups.map(
         (g) =>
           g.items.length > 0 && (
-            <View key={g.title} className="gap-2">
-              <Text variant="muted">{g.title}</Text>
-              <PaymentList ledgerId={ledgerId} payments={g.items} categories={categories} linked={isOwner} />
-            </View>
+            <ListSection key={g.title} title={g.title}>
+              {g.items.map((p) => (
+                <ListRow
+                  key={p.id}
+                  icon={categoryIcon(categories.find((c) => c.id === p.category_id)?.name)}
+                  hue={hueFor(p.category_id)}
+                  title={p.name}
+                  subtitle={details(p, categories)}
+                  trailing={<Amount cents={p.amount_cents} />}
+                  className={cn(p.archived && "opacity-60")}
+                  href={
+                    isOwner
+                      ? { pathname: "/ledgers/[ledgerId]/recurring/[paymentId]", params: { ledgerId, paymentId: p.id } }
+                      : undefined
+                  }
+                />
+              ))}
+            </ListSection>
           ),
       )}
     </Screen>
   );
 }
 
-function PaymentList({
-  ledgerId,
-  payments,
-  categories,
-  linked,
-}: {
-  ledgerId: string;
-  payments: RecurringPayment[];
-  categories: Category[];
-  linked: boolean;
-}) {
-  return (
-    <Card className="py-2">
-      <CardContent className="gap-0 px-0">
-        {payments.map((p, index) => {
-          const row = <PaymentRow payment={p} categories={categories} first={index === 0} />;
-          if (!linked) {
-            return <View key={p.id}>{row}</View>;
-          }
-          return (
-            <Link
-              key={p.id}
-              href={{ pathname: "/ledgers/[ledgerId]/recurring/[paymentId]", params: { ledgerId, paymentId: p.id } }}
-              asChild>
-              <Pressable className="active:bg-accent web:hover:bg-accent/50" role="link">
-                {row}
-              </Pressable>
-            </Link>
-          );
-        })}
-      </CardContent>
-    </Card>
-  );
-}
-
-function PaymentRow({ payment: p, categories, first }: { payment: RecurringPayment; categories: Category[]; first: boolean }) {
+function details(p: RecurringPayment, categories: Category[]): string {
   const category = categories.find((c) => c.id === p.category_id)?.name;
   const next = !p.archived && (p.next_due_on ? `next ${formatDate(p.next_due_on)}` : "ended");
-  const details = [describeSchedule(p), category, next].filter(Boolean).join(" · ");
-  return (
-    <View className={cn("flex-row items-center gap-3 px-4 py-3", !first && "border-t border-border")}>
-      <View className="flex-1 gap-0.5">
-        <Text className="font-medium">{p.name}</Text>
-        <Text variant="muted">{details}</Text>
-      </View>
-      <Text className="font-semibold">{formatCents(p.amount_cents)}</Text>
-    </View>
-  );
+  return [describeSchedule(p), category, next].filter(Boolean).join(" · ");
 }

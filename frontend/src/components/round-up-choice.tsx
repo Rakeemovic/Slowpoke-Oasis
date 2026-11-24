@@ -1,6 +1,6 @@
 import { View } from "react-native";
 
-import { KindButton } from "@/components/kind-button";
+import { KindButton, Segmented } from "@/components/kind-button";
 import { Text } from "@/components/ui/text";
 import { multiplierLabel, roundUpMultipliers } from "@/lib/round-ups";
 
@@ -22,15 +22,14 @@ export function RoundUpChoice({
   return (
     <View className="gap-1.5">
       <Text className="text-sm font-medium">Round-ups</Text>
-      <View className="flex-row gap-2">
+      <Segmented>
         {roundUpMultipliers.map((m) => (
           <KindButton key={m} label={multiplierLabel(m)} active={value === m} onPress={() => onChange(m)} />
         ))}
-      </View>
+      </Segmented>
       <Text variant="muted" className="text-sm">
-        Every expense from Main is rounded up to the next whole euro, times the factor, and the difference moves into
-        this pot. Payments of recurring payments and whole euro amounts are not rounded up. It starts with today’s
-        expenses.
+        Every expense from Main is rounded up to the next whole euro, times the factor, and the difference moves into this pot.
+        Payments of recurring payments and whole euro amounts are not rounded up. It starts with today’s expenses.
       </Text>
       {value > 0 && replaces && (
         <Text variant="muted" className="text-sm">{`This replaces “${replaces}”, which collects the round-ups now.`}</Text>

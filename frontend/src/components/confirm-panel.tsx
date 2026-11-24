@@ -26,14 +26,17 @@ export function ConfirmPanel({
 }) {
   return (
     <View
-      className={cn("gap-3 rounded-md border p-3", tone === "destructive" ? "border-destructive/50" : "border-border")}
+      className={cn(
+        "gap-3 rounded-2xl border p-4",
+        tone === "destructive" ? "border-destructive/40 bg-destructive/5" : "border-border bg-card",
+      )}
       role="alertdialog">
       <Text>{message}</Text>
       <View className="flex-row gap-2">
         <Button variant={tone} size="sm" onPress={onConfirm} disabled={busy}>
           <Text>{confirmLabel}</Text>
         </Button>
-        <Button variant="outline" size="sm" onPress={onCancel} disabled={busy}>
+        <Button variant="ghost" size="sm" onPress={onCancel} disabled={busy}>
           <Text>Cancel</Text>
         </Button>
       </View>
