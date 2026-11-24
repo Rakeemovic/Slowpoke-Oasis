@@ -142,10 +142,10 @@ func TestPlannedAmountsCanBeSetReplacedAndRemoved(t *testing.T) {
 	_, s := setup(t)
 	ctx := context.Background()
 
-	if err := s.SetPlannedAmount(ctx, planChange("p-holiday", "c-food", 30000, "")); err != nil {
+	if err := s.SetPlannedAmount(ctx, planChange("p-default", "c-food", 30000, ScopeFromNowOn)); err != nil {
 		t.Fatalf("set: %v", err)
 	}
-	if err := s.SetPlannedAmount(ctx, planChange("p-holiday", "c-food", 40000, "")); err != nil {
+	if err := s.SetPlannedAmount(ctx, planChange("p-default", "c-food", 40000, ScopeFromNowOn)); err != nil {
 		t.Fatalf("replace: %v", err)
 	}
 
@@ -155,7 +155,7 @@ func TestPlannedAmountsCanBeSetReplacedAndRemoved(t *testing.T) {
 	}
 	var planned []PotLine
 	for _, p := range pots {
-		if p.ID == "p-holiday" {
+		if p.ID == "p-default" {
 			planned = p.Planned
 		}
 	}
@@ -163,13 +163,13 @@ func TestPlannedAmountsCanBeSetReplacedAndRemoved(t *testing.T) {
 		t.Fatalf("planned = %+v, want one line with 40000", planned)
 	}
 
-	if err := s.DeletePlannedAmount(ctx, planChange("p-holiday", "c-food", 0, "")); err != nil {
+	if err := s.DeletePlannedAmount(ctx, planChange("p-default", "c-food", 0, ScopeFromNowOn)); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
-	if err := s.DeletePlannedAmount(ctx, planChange("p-holiday", "c-food", 0, "")); !errors.Is(err, ErrPotLineNotFound) {
+	if err := s.DeletePlannedAmount(ctx, planChange("p-default", "c-food", 0, ScopeFromNowOn)); !errors.Is(err, ErrPotLineNotFound) {
 		t.Errorf("second delete: err = %v, want ErrPotLineNotFound", err)
 	}
-	if err := s.SetPlannedAmount(ctx, planChange("p-holiday", "c-food", -1, "")); !errors.Is(err, ErrInvalidAmount) {
+	if err := s.SetPlannedAmount(ctx, planChange("p-default", "c-food", -1, ScopeFromNowOn)); !errors.Is(err, ErrInvalidAmount) {
 		t.Errorf("negative amount: err = %v, want ErrInvalidAmount", err)
 	}
 }
