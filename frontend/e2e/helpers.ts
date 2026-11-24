@@ -137,6 +137,19 @@ export async function createPaymentDueToday(page: Page, name: string, amount: st
 }
 
 /**
+ * Opens a pot from the pot list and waits for its form. A click that lands
+ * while the list is still reloading can get lost under load (the traces of
+ * two failed runs show no request after it), so the click is repeated until
+ * the form is there.
+ */
+export async function openPot(page: Page, name: string | RegExp): Promise<void> {
+  await expect(async () => {
+    await page.getByRole("link", { name }).click({ timeout: 3000 });
+    await expect(page.getByLabel("Name", { exact: true })).toBeVisible({ timeout: 3000 });
+  }).toPass({ timeout: 20_000 });
+}
+
+/**
  * The fill of a progress row (see ProgressRow), named like the row. It is
  * decoration for screen readers, so it is found by its label, and a fill of
  * 0 % has no size. Call it where only one such row is on screen: earlier

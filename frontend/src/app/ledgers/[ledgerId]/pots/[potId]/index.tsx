@@ -16,6 +16,7 @@ import { useLoader } from "@/hooks/use-loader";
 import { today } from "@/lib/dates";
 import { errorMessage } from "@/lib/errors";
 import { describeGoal, describeRate, isGoal, potProgress } from "@/lib/goals";
+import { isReserve } from "@/lib/reserves";
 import { formatCents } from "@/lib/money";
 
 export default function PotScreen() {
@@ -52,7 +53,9 @@ export default function PotScreen() {
           target_cents: pot.target_cents ?? 0,
           target_date: pot.target_date ?? "",
           monthly_rate_cents: pot.monthly_rate_cents ?? 0,
+          is_separate_account: pot.is_separate_account,
         }}
+        hideAccount={pot.is_default || isReserve(pot)}
         hideGoal={pot.is_default}
         onSubmit={save}
       />
