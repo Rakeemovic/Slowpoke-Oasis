@@ -2,7 +2,9 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { balance, openLedger, register, uniqueUsername } from "./helpers";
 
-const API = "http://localhost:9090";
+// The test server delivers app and API under one origin; relative paths go to
+// Playwright's baseURL and carry the session cookie of the page.
+const API = "/api";
 // Requests authenticated by cookie must carry this header (rule A8).
 const HEADERS = { "X-Requested-With": "slowpoke-e2e" };
 
