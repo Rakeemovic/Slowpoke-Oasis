@@ -1,0 +1,6 @@
+# Used by compose.https.yaml. Caddy gets and renews the certificate for
+# DOMAIN by itself and forwards every request to the Slowpoke Oasis server.
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy slowpoke:8080
+}

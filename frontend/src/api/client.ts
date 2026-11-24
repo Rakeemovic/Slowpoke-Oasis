@@ -1,8 +1,10 @@
 import { getToken, usesCookieSession } from "@/api/token";
 
 // The API address comes from the build environment, so self-hosters can point
-// the app at their own server (EXPO_PUBLIC_API_URL in frontend/.env).
-const baseUrl = (process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8080").replace(/\/$/, "");
+// the app at their own server (EXPO_PUBLIC_API_URL in frontend/.env). The API
+// lives under /api. A web build that the server delivers itself uses just
+// "/api": the same origin, so the login cookie works without CORS.
+const baseUrl = (process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8080/api").replace(/\/$/, "");
 
 /** An error answer from the API, or status 0 when the server was not reached. */
 export class ApiError extends Error {

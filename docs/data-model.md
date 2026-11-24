@@ -1,6 +1,6 @@
 # Data Model
 
-This document records the decisions behind the data model. The schema lives in the migrations under `backend/migrations/`, and the validation rules are in [validation-rules.md](validation-rules.md).
+This document records the decisions behind the data model. The schema lives in the migrations under `backend/migrations/`, and the validation rules are in [validation-rules.md](validation-rules.md). API paths in these documents are relative to the API root `/api` (e.g. `GET /ledgers/{ledger}/balance` is `GET /api/ledgers/{ledger}/balance`).
 
 ## Principles
 

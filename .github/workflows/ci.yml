@@ -49,3 +49,12 @@ jobs:
         run: npm run typecheck
       - name: Lint
         run: npm run lint
+
+  docker:
+    # Builds the self-hosting image (without publishing it), so the Dockerfile
+    # keeps working as the code changes.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build image
+        run: docker build --tag slowpoke-oasis:ci .
