@@ -65,7 +65,11 @@ export default function TransactionsScreen() {
             <Text>Pots</Text>
           </Button>
         </Link>
-        <BudgetButton ledgerId={ledgerId} pots={potList.data} />
+        <Link href={{ pathname: "/ledgers/[ledgerId]/budget", params: { ledgerId } }} asChild>
+          <Button className="flex-1" variant="outline">
+            <Text>Budget</Text>
+          </Button>
+        </Link>
         <Link href={{ pathname: "/ledgers/[ledgerId]/categories", params: { ledgerId } }} asChild>
           <Button className="flex-1" variant="outline">
             <Text>Categories</Text>
@@ -170,28 +174,6 @@ function TransactionRow({
       <Pressable className="active:bg-accent web:hover:bg-accent/50" role="link">
         {row}
       </Pressable>
-    </Link>
-  );
-}
-
-/** Opens the budget of the default pot. */
-function BudgetButton({ ledgerId, pots }: { ledgerId: string; pots?: Pot[] }) {
-  const defaultPot = pots?.find((p) => p.is_default);
-  if (!defaultPot) {
-    return (
-      <Button className="flex-1" variant="outline" disabled>
-        <Text>Budget</Text>
-      </Button>
-    );
-  }
-  return (
-    <Link
-      href={{ pathname: "/ledgers/[ledgerId]/pots/[potId]/plan", params: { ledgerId, potId: defaultPot.id } }}
-      asChild
-    >
-      <Button className="flex-1" variant="outline">
-        <Text>Budget</Text>
-      </Button>
     </Link>
   );
 }

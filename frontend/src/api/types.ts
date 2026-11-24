@@ -218,17 +218,60 @@ export interface PlanLine {
   difference_cents: number;
 }
 
-export interface PotSummary {
+/** A monthly recurring payment of the main pot, below its category (rule P9). */
+export interface BudgetRecurringLine {
+  payment_id: string;
+  name: string;
+  due_on: string;
+  /** 0 when the occurrence is skipped or the booking belongs to another payment. */
+  planned_cents: number;
+  actual_cents: number;
+  difference_cents: number;
+  skipped: boolean;
+}
+
+/** The rate a reserve saves in this month (rule P10). */
+export interface BudgetReserveLine {
+  payment_id: string;
+  name: string;
   pot_id: string;
-  /** YYYY-MM for monthly pots, empty for one-time pots. */
+  /** The due date the rate saves for; missing in past months. */
+  due_on?: string;
+  /** null in past months, whose rates were never stored. */
+  planned_cents: number | null;
+  /** Net transfers into the reserve in this month. */
+  actual_cents: number;
+  preview: boolean;
+}
+
+export interface BudgetCategory extends PlanLine {
+  recurring: BudgetRecurringLine[];
+  reserves: BudgetReserveLine[];
+}
+
+/** An occurrence paid from its reserve, so it does not weigh on the month. */
+export interface ReserveDue {
+  payment_id: string;
+  name: string;
+  category_id: string;
+  pot_id: string;
+  due_on: string;
+  amount_cents: number;
+  /** What the reserve holds today; the full amount once booked. */
+  covered_cents: number;
+  booked: boolean;
+}
+
+/** The budget of the main pot for one month. */
+export interface Budget {
+  pot_id: string;
   month: string;
+  current_month: string;
   plan_source: PlanSource;
-  /** First and last day covered, YYYY-MM-DD; empty when not limited. */
   from: string;
   to: string;
-  lines: PlanLine[];
-  transfers_in_cents: number;
-  transfers_out_cents: number;
+  categories: BudgetCategory[];
+  reserve_dues: ReserveDue[];
 }
 
 /** What a new pot needs. A target of 0 or a missing one means no goal. */
