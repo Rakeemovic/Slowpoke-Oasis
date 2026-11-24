@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"testing"
 )
 
@@ -35,8 +36,11 @@ func TestLedgerBalanceCountsOnlyUpToTheGivenDay(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	want := balanceResponse{AsOf: "2026-11-19", AvailableCents: 1000, TotalCents: 1000, DefaultPotName: "Main", EstimatedCents: 1000}
-	if got != want {
+	want := balanceResponse{
+		AsOf: "2026-11-19", AvailableCents: 1000, TotalCents: 1000, DefaultPotName: "Main", EstimatedCents: 1000,
+		SeparateAccounts: []separateAccountResponse{},
+	}
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("balance = %+v, want %+v", got, want)
 	}
 
