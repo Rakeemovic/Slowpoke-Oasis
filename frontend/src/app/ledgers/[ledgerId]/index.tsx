@@ -10,6 +10,7 @@ import { HeaderActions } from "@/components/header-actions";
 import { Screen } from "@/components/screen";
 import { Button } from "@/components/ui/button";
 import { LedgerBalance } from "@/components/ledger-balance";
+import { SafeToSpend } from "@/components/safe-to-spend";
 import { Card, CardContent } from "@/components/ui/card";
 import { Text } from "@/components/ui/text";
 import { useLoader } from "@/hooks/use-loader";
@@ -36,15 +37,18 @@ export default function TransactionsScreen() {
   );
   const { items: transactions, loading, error, reload } = list;
   const categories = categoryList.data;
-  // Bumped when a due payment is skipped, so the estimated balance reloads.
+  // Bumped when a due payment is skipped, so the estimated balance and safe to spend reload.
   const [balanceVersion, setBalanceVersion] = useState(0);
 
   return (
     <Screen>
       <Stack.Screen options={{ title: name ?? "Transactions", headerRight: () => <HeaderActions /> }} />
       <Card>
-        <CardContent>
+        <CardContent className="gap-4">
           <LedgerBalance ledgerId={ledgerId} size="large" version={balanceVersion} />
+          <View className="border-t border-border pt-4">
+            <SafeToSpend ledgerId={ledgerId} version={balanceVersion} />
+          </View>
         </CardContent>
       </Card>
       <View className="flex-row gap-2">

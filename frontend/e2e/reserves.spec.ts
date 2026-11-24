@@ -73,6 +73,9 @@ test("archiving a payment offers to archive its reserve", async ({ page }) => {
   await linkRow(page, "Bike").click();
   await page.getByRole("button", { name: "Archive payment" }).click();
   await page.getByRole("button", { name: /Move 50,00\s€ and archive/ }).click();
+  // The app goes back to the list by itself once the move is saved; going
+  // back before that would race with it.
+  await expect(page).toHaveURL(/\/recurring$/);
 
   // The money is back in the default pot; the reserve is archived and empty.
   await page.goBack();
