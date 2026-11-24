@@ -2,7 +2,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 
-import { ledgers, pots } from "@/api/endpoints";
+import { auth, ledgers, pots } from "@/api/endpoints";
 import type { Pot, SavingsGoal } from "@/api/types";
 import { ConfirmPanel } from "@/components/confirm-panel";
 import { ErrorMessage } from "@/components/error-message";
@@ -17,14 +17,20 @@ import { today } from "@/lib/dates";
 import { errorMessage } from "@/lib/errors";
 import { describeGoal, describeRate, isGoal, potProgress } from "@/lib/goals";
 import { isReserve } from "@/lib/reserves";
+import { canCollectRoundUps, collectingPot } from "@/lib/round-ups";
 import { formatCents } from "@/lib/money";
 
 export default function PotScreen() {
   const { ledgerId, potId } = useLocalSearchParams<{ ledgerId: string; potId: string }>();
   const { data, error, loading, reload } = useLoader(
     useCallback(async () => {
-      const [list, goals] = await Promise.all([pots.list(ledgerId), ledgers.savingsGoals(ledgerId, today())]);
-      return { list, goals };
+      const [list, goals, me] = await Promise.all([
+        pots.list(ledgerId),
+        ledgers.savingsGoals(ledgerId, today()),
+        auth.me(),
+      ]);
+      // Round-ups exist only in the personal ledger (rule T10).
+      return { list, goals, isPersonal: me.personal_ledger_id === ledgerId };
     }, [ledgerId]),
   );
   const pot = data?.list.find((p) => p.id === potId);
@@ -40,9 +46,11 @@ export default function PotScreen() {
   }
 
   async function save(values: PotFormValues) {
-    await pots.update(ledgerId, potId, { ...values, archived: pot!.archived });
+    // round_up_multiplier is only part of values when the form offered it.
+    await pots.update(ledgerId, potId, { ...values, archived: pot!.archived }, today());
     router.back();
   }
+  const collecting = collectingPot(data!.list);
 
   return (
     <Screen>
@@ -54,9 +62,15 @@ export default function PotScreen() {
           target_date: pot.target_date ?? "",
           monthly_rate_cents: pot.monthly_rate_cents ?? 0,
           is_separate_account: pot.is_separate_account,
+          round_up_multiplier: pot.round_up_multiplier,
         }}
         hideAccount={pot.is_default || isReserve(pot)}
         hideGoal={pot.is_default}
+        roundUp={
+          canCollectRoundUps(pot, data!.isPersonal)
+            ? { replaces: collecting && collecting.id !== pot.id ? collecting.name : undefined }
+            : undefined
+        }
         onSubmit={save}
       />
       {/* Rule T2: the default pot is never archived. */}
@@ -95,7 +109,7 @@ function ArchiveSection({ ledgerId, pot }: { ledgerId: string; pot: Pot }) {
     setError(undefined);
     try {
       // Only the archive flag changes; the goal stays as it is.
-      await pots.update(ledgerId, pot.id, { archived });
+      await pots.update(ledgerId, pot.id, { archived }, today());
       router.back();
     } catch (e) {
       setError(errorMessage(e));

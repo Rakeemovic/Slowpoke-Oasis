@@ -30,7 +30,7 @@ func (s *Store) Permissions(ctx context.Context, userID string, items []Transact
 	// "IS ?" compares NULL safely: a household ledger (user_id NULL) and a
 	// missing partner ledger both give false instead of NULL.
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT t.id, t.type, t.user_id, `+ownsLedger("l")+`,
+		SELECT t.id, t.type, t.round_up_of IS NOT NULL, t.user_id, `+ownsLedger("l")+`,
 		       COALESCE(p.user_id, ''), `+ownsLedger("pl")+`
 		FROM transactions t
 		JOIN ledger l ON l.id = t.ledger_id
@@ -44,16 +44,21 @@ func (s *Store) Permissions(ctx context.Context, userID string, items []Transact
 
 	for rows.Next() {
 		var (
-			id, author, partnerAuthor string
-			txType                    TxType
-			owner, partnerOwner       bool
+			id, author, partnerAuthor    string
+			txType                       TxType
+			roundUp, owner, partnerOwner bool
 		)
-		if err := rows.Scan(&id, &txType, &author, &owner, &partnerAuthor, &partnerOwner); err != nil {
+		if err := rows.Scan(&id, &txType, &roundUp, &author, &owner, &partnerAuthor, &partnerOwner); err != nil {
 			return nil, err
 		}
 		linked := txType == TypeTransferOut || txType == TypeTransferIn
 		// A leg whose other ledger was deleted has no partner (rule X16).
 		partnerOK := partnerAuthor == "" || mayChange(ActionDelete, userID, partnerAuthor, partnerOwner)
+		// A round-up only changes together with its expense (rule X21).
+		if roundUp {
+			out[id] = Permission{}
+			continue
+		}
 		out[id] = Permission{
 			CanEdit:   !linked && mayChange(ActionEdit, userID, author, owner),
 			CanDelete: partnerOK && mayChange(ActionDelete, userID, author, owner),
