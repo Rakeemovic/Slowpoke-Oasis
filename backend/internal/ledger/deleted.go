@@ -45,6 +45,7 @@ func (s *Store) ListDeletedTransactions(ctx context.Context, ledgerID string, no
 		FROM `+transactionTables+`
 		LEFT JOIN user deleter ON deleter.id = t.deleted_by
 		WHERE t.ledger_id = ? AND t.deleted_at IS NOT NULL AND t.deleted_at >= ?
+		  AND t.round_up_of IS NULL
 		ORDER BY t.deleted_at DESC, t.id`+pc,
 		args...,
 	)
@@ -69,12 +70,15 @@ func (s *Store) ListDeletedTransactions(ctx context.Context, ledgerID string, no
 // period, because older deletions may already have been purged. Restoring an
 // expense must not take a reserve below zero (rule R12).
 func (s *Store) RestoreTransaction(ctx context.Context, ledgerID, id string, now time.Time) error {
+	if err := ensureNotRoundUp(ctx, s.db, ledgerID, id); err != nil {
+		return err
+	}
 	err := s.changeGuarded(ctx, ledgerID, id, func(tx *sql.Tx) (sql.Result, error) {
 		return tx.ExecContext(ctx, `
 			UPDATE transactions
 			SET deleted_at = NULL, deleted_by = NULL, updated_at = ?
 			WHERE deleted_at IS NOT NULL AND deleted_at >= ? AND `+selfAndLinkedLeg,
-			timestamp(now), retentionCutoff(now), id, ledgerID, id, ledgerID,
+			timestamp(now), retentionCutoff(now), id, ledgerID, id, ledgerID, id, ledgerID,
 		)
 	})
 	if store.IsUniqueViolation(err) {

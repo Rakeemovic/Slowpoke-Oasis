@@ -36,6 +36,9 @@ type Transaction struct {
 	// recurring payment that the expense pays (rule R6), or are empty.
 	RecurringPaymentID string
 	RecurringDueOn     string
+	// RoundUpOf is the ID of the expense this transfer rounds up (rule X21),
+	// or empty.
+	RoundUpOf string
 }
 
 // transactionColumns lists the columns of a Transaction for a query that
@@ -44,7 +47,8 @@ const transactionColumns = `
 	t.id, t.ledger_id, t.user_id, t.type,
 	COALESCE(t.category_id, ''), t.pot_id, COALESCE(t.counterpart_pot_id, ''),
 	t.amount_cents, t.booked_on, COALESCE(t.note, ''), COALESCE(author.username, ''),
-	t.is_spontaneous, COALESCE(t.recurring_payment_id, ''), COALESCE(t.recurring_due_on, '')`
+	t.is_spontaneous, COALESCE(t.recurring_payment_id, ''), COALESCE(t.recurring_due_on, ''),
+	COALESCE(t.round_up_of, '')`
 
 // transactionTables names the transactions table t and joins its author.
 const transactionTables = `transactions t LEFT JOIN user author ON author.id = t.user_id`
@@ -52,7 +56,7 @@ const transactionTables = `transactions t LEFT JOIN user author ON author.id = t
 func (t *Transaction) scanTargets() []any {
 	return []any{&t.ID, &t.LedgerID, &t.UserID, &t.Type, &t.CategoryID,
 		&t.PotID, &t.CounterpartPotID, &t.AmountCents, &t.BookedOn, &t.Note, &t.Username,
-		&t.IsSpontaneous, &t.RecurringPaymentID, &t.RecurringDueOn}
+		&t.IsSpontaneous, &t.RecurringPaymentID, &t.RecurringDueOn, &t.RoundUpOf}
 }
 
 // ListFilter selects transactions of one ledger. Empty optional fields mean
@@ -136,12 +140,14 @@ func (s *Store) GetTransaction(ctx context.Context, ledgerID, id string) (Transa
 
 // selfAndLinkedLeg is a WHERE condition that matches a transaction of a
 // ledger and, for a transfer between ledgers, its other leg (rule X14), so
-// both legs are always deleted and restored together. It takes the
-// transaction ID and the ledger ID, twice each.
+// both legs are always deleted and restored together. The round-up of an
+// expense (rule X21) goes with it too. It takes the transaction ID and the
+// ledger ID, three times each.
 const selfAndLinkedLeg = `(
 	(id = ? AND ledger_id = ?)
 	OR id IN (SELECT linked_transaction_id FROM transactions
 	          WHERE id = ? AND ledger_id = ? AND linked_transaction_id IS NOT NULL)
+	OR (round_up_of = ? AND ledger_id = ?)
 )`
 
 // DeleteTransaction soft-deletes a transaction (rule X10): it sets deleted_at
@@ -149,12 +155,15 @@ const selfAndLinkedLeg = `(
 // Deleting money that went into a reserve must not take it below zero (R12).
 func (s *Store) DeleteTransaction(ctx context.Context, ledgerID, id, userID string, now time.Time) error {
 	ts := timestamp(now)
+	if err := ensureNotRoundUp(ctx, s.db, ledgerID, id); err != nil {
+		return err
+	}
 	return s.changeGuarded(ctx, ledgerID, id, func(tx *sql.Tx) (sql.Result, error) {
 		return tx.ExecContext(ctx, `
 			UPDATE transactions
 			SET deleted_at = ?, deleted_by = ?, updated_at = ?
 			WHERE deleted_at IS NULL AND `+selfAndLinkedLeg,
-			ts, userID, ts, id, ledgerID, id, ledgerID,
+			ts, userID, ts, id, ledgerID, id, ledgerID, id, ledgerID,
 		)
 	})
 }
