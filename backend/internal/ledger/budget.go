@@ -23,6 +23,9 @@ type Budget struct {
 	// ReserveDues are the payments of the month that are paid from their
 	// reserve and so do not weigh on the month (rule P10).
 	ReserveDues []ReserveDue
+	// Savings are the rates of the savings goals of the month (rule P11).
+	// They have no category, so they stand apart from the categories.
+	Savings []SavingsLine
 }
 
 // BudgetCategory is one category of a budget. Its embedded line compares the
@@ -115,6 +118,9 @@ func (s *Store) Budget(ctx context.Context, q BudgetQuery) (Budget, error) {
 		return Budget{}, err
 	}
 	if out.ReserveDues, err = s.reserveDues(ctx, q.LedgerID, p, payments); err != nil {
+		return Budget{}, err
+	}
+	if out.Savings, err = s.savingsLines(ctx, q.LedgerID, q.Today, p); err != nil {
 		return Budget{}, err
 	}
 	out.Categories, err = s.groupByCategory(ctx, q.LedgerID, lines, recurring, reserves)
@@ -299,7 +305,7 @@ func (s *Store) pastReserveLines(ctx context.Context, p planPeriod, payments []R
 		if pay.ReservePotID == "" {
 			continue
 		}
-		_, saved, err := reserveMovements(ctx, s.db, pay.ReservePotID, p.From, p.To)
+		_, saved, err := potMovements(ctx, s.db, pay.ReservePotID, p.From, p.To)
 		if err != nil {
 			return nil, err
 		}
@@ -338,7 +344,7 @@ func (s *Store) reserveDues(ctx context.Context, ledgerID string, p planPeriod, 
 			}
 			d.CoveredCents = pay.AmountCents
 			if !d.Booked {
-				balance, _, err := reserveMovements(ctx, s.db, pay.ReservePotID, p.From, p.To)
+				balance, _, err := potMovements(ctx, s.db, pay.ReservePotID, p.From, p.To)
 				if err != nil {
 					return nil, err
 				}
