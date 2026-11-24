@@ -10,7 +10,8 @@ import (
 
 // Errors for planned amounts and monthly plans.
 var (
-	ErrInvalidPlanScope         = errors.New(`monthly pots need scope "this_month" or "from_now_on"; one-time pots take no scope`)
+	ErrInvalidPlanScope         = errors.New(`scope must be "this_month" or "from_now_on"`)
+	ErrBudgetOnlyMainPot        = errors.New("only the main pot of a ledger has a budget")
 	ErrMonthlyPotNeedsMonth     = errors.New("reports of a monthly pot cover one month: give month instead of from and to")
 	ErrCategoryPlannedElsewhere = errors.New("this category is already planned in another monthly pot")
 )
@@ -46,31 +47,17 @@ type PlanChange struct {
 	Today       string    // YYYY-MM-DD, the app's date; decides the current month
 }
 
-// SetPlannedAmount sets the planned amount of a category in a pot (rule P1).
-// An existing plan for the same category is replaced.
-//
-// In a one-time pot, the amount is the plan of the pot. In a monthly pot, it
-// changes the current month, and with ScopeFromNowOn also the template that
-// later months are created from.
+// SetPlannedAmount sets the planned amount of a category in the budget of a
+// ledger (rule P1), which belongs to its main pot (rule P7). An existing plan
+// for the same category is replaced. The change applies to the current month,
+// and with ScopeFromNowOn also to the template that later months are created
+// from.
 func (s *Store) SetPlannedAmount(ctx context.Context, c PlanChange) error {
 	if c.AmountCents < 0 {
 		return ErrInvalidAmount
 	}
 	return s.inTx(ctx, func(tx *sql.Tx) error {
-		monthly, err := isMonthlyPot(ctx, tx, c.LedgerID, c.PotID)
-		if err != nil {
-			return err
-		}
-		if !monthly {
-			if c.Scope != "" {
-				return ErrInvalidPlanScope
-			}
-			return upsertTemplateLine(ctx, tx, c)
-		}
-		if !c.Scope.valid() {
-			return ErrInvalidPlanScope
-		}
-		month, err := prepareCurrentMonth(ctx, tx, c.LedgerID, c.Today)
+		month, err := prepareBudgetChange(ctx, tx, c)
 		if err != nil {
 			return err
 		}
@@ -85,35 +72,15 @@ func (s *Store) SetPlannedAmount(ctx context.Context, c PlanChange) error {
 		if c.Scope == ScopeThisMonth {
 			return nil
 		}
-		if err := ensureNotPlannedInOtherMonthlyPot(ctx, tx, c); err != nil {
-			return err
-		}
 		return upsertTemplateLine(ctx, tx, c)
 	})
 }
 
-// DeletePlannedAmount removes the planned amount of a category from a pot.
-// For monthly pots, the scope works as in SetPlannedAmount.
+// DeletePlannedAmount removes the planned amount of a category from the
+// budget. The scope works as in SetPlannedAmount.
 func (s *Store) DeletePlannedAmount(ctx context.Context, c PlanChange) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
-		monthly, err := isMonthlyPot(ctx, tx, c.LedgerID, c.PotID)
-		if err != nil {
-			return err
-		}
-		if !monthly {
-			if c.Scope != "" {
-				return ErrInvalidPlanScope
-			}
-			n, err := deleteTemplateLine(ctx, tx, c)
-			if err == nil && n == 0 {
-				err = ErrPotLineNotFound
-			}
-			return err
-		}
-		if !c.Scope.valid() {
-			return ErrInvalidPlanScope
-		}
-		month, err := prepareCurrentMonth(ctx, tx, c.LedgerID, c.Today)
+		month, err := prepareBudgetChange(ctx, tx, c)
 		if err != nil {
 			return err
 		}
@@ -146,6 +113,33 @@ func (sc PlanScope) valid() bool {
 }
 
 // isMonthlyPot reports whether a pot is a monthly pot.
+// prepareBudgetChange checks a change to the budget and returns the current
+// month, whose plan it makes sure exists.
+func prepareBudgetChange(ctx context.Context, tx *sql.Tx, c PlanChange) (string, error) {
+	if err := ensureMainPot(ctx, tx, c.LedgerID, c.PotID); err != nil {
+		return "", err
+	}
+	if !c.Scope.valid() {
+		return "", ErrInvalidPlanScope
+	}
+	return prepareCurrentMonth(ctx, tx, c.LedgerID, c.Today)
+}
+
+// ensureMainPot rejects pots other than the main pot of the ledger (rule P7).
+func ensureMainPot(ctx context.Context, q queryer, ledgerID, potID string) error {
+	var isDefault bool
+	err := q.QueryRowContext(ctx,
+		`SELECT is_default FROM pot WHERE id = ? AND ledger_id = ?`, potID, ledgerID,
+	).Scan(&isDefault)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrPotNotFound
+	}
+	if err == nil && !isDefault {
+		return ErrBudgetOnlyMainPot
+	}
+	return err
+}
+
 func isMonthlyPot(ctx context.Context, q queryer, ledgerID, potID string) (bool, error) {
 	var kind string
 	err := q.QueryRowContext(ctx,
@@ -175,13 +169,10 @@ func prepareCurrentMonth(ctx context.Context, tx *sql.Tx, ledgerID, today string
 	return month, ensureMonthPlans(ctx, tx, ledgerID, month)
 }
 
-// ensureMonthPlans copies the templates of all active monthly pots of a ledger
-// into the plans of the month, once per ledger and month (rule P4). Calling it
-// again does nothing, even if lines of the month were removed since.
-//
-// All pots are filled at once: if only one pot were filled, another pot could
-// meanwhile plan a category for this month that its own template would add
-// later, which would break rule P3.
+// ensureMonthPlans copies the template of the main pot of a ledger into the
+// plan of the month, once per ledger and month (rule P4). Calling it again
+// does nothing, even if lines of the month were removed since. Other pots
+// have no budget (rule P7): their old templates stay, but are not copied.
 func ensureMonthPlans(ctx context.Context, tx *sql.Tx, ledgerID, month string) error {
 	res, err := tx.ExecContext(ctx,
 		`INSERT INTO period_plan_month (ledger_id, month) VALUES (?, ?) ON CONFLICT DO NOTHING`,
@@ -197,7 +188,7 @@ func ensureMonthPlans(ctx context.Context, tx *sql.Tx, ledgerID, month string) e
 		SELECT pl.pot_id, pl.ledger_id, pl.category_id, ?, pl.amount_cents
 		FROM pot_line pl
 		JOIN pot p ON p.id = pl.pot_id
-		WHERE pl.ledger_id = ? AND p.kind = 'monthly' AND p.archived = 0`,
+		WHERE pl.ledger_id = ? AND p.is_default = 1`,
 		month, ledgerID)
 	return err
 }
@@ -210,26 +201,6 @@ func monthPlanStored(ctx context.Context, q queryer, ledgerID, month string) (bo
 		ledgerID, month,
 	).Scan(&stored)
 	return stored, err
-}
-
-// ensureNotPlannedInOtherMonthlyPot enforces rule P3 for the templates, which
-// share the table pot_line with one-time pots and so cannot use an index.
-func ensureNotPlannedInOtherMonthlyPot(ctx context.Context, tx *sql.Tx, c PlanChange) error {
-	var taken bool
-	err := tx.QueryRowContext(ctx, `
-		SELECT EXISTS (
-			SELECT 1 FROM pot_line pl
-			JOIN pot p ON p.id = pl.pot_id
-			WHERE pl.ledger_id = ? AND pl.category_id = ? AND pl.pot_id <> ? AND p.kind = 'monthly'
-		)`, c.LedgerID, c.CategoryID, c.PotID,
-	).Scan(&taken)
-	if err != nil {
-		return err
-	}
-	if taken {
-		return ErrCategoryPlannedElsewhere
-	}
-	return nil
 }
 
 func upsertTemplateLine(ctx context.Context, tx *sql.Tx, c PlanChange) error {

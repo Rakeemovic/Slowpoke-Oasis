@@ -75,53 +75,13 @@ func (s *Store) PotSummary(ctx context.Context, q SummaryQuery) (PotSummary, err
 	}
 	ledgerID, potID, from, to := q.LedgerID, q.PotID, out.From, out.To
 
+	if out.Lines, err = categoryLines(ctx, s.db, lineQuery{
+		LedgerID: ledgerID, PotID: potID, Month: out.Month, From: from, To: to, Source: out.PlanSource,
+	}); err != nil {
+		return PotSummary{}, err
+	}
+
 	rc, rargs := rangeClause(from, to)
-	planSQL, planArgs := planLinesQuery(out.PlanSource, potID, out.Month)
-
-	lineArgs := append(planArgs, ledgerID, potID)
-	lineArgs = append(lineArgs, rargs...)
-	lineArgs = append(lineArgs, ledgerID)
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT c.id, c.name, c.is_income, COALESCE(pl.amount_cents, 0), COALESCE(a.total, 0)
-		FROM category c
-		LEFT JOIN (`+planSQL+`) pl ON pl.category_id = c.id
-		LEFT JOIN (
-			SELECT category_id, SUM(amount_cents) AS total
-			FROM transactions
-			WHERE ledger_id = ? AND pot_id = ? AND deleted_at IS NULL
-			  AND type IN ('expense', 'income')`+rc+`
-			GROUP BY category_id
-		) a ON a.category_id = c.id
-		WHERE c.ledger_id = ? AND (pl.amount_cents IS NOT NULL OR a.total IS NOT NULL)
-		ORDER BY c.name`,
-		lineArgs...,
-	)
-	if err != nil {
-		return PotSummary{}, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var l CategoryLine
-		var net int64
-		if err := rows.Scan(&l.CategoryID, &l.Name, &l.IsIncome, &l.PlannedCents, &net); err != nil {
-			return PotSummary{}, err
-		}
-		if l.IsIncome {
-			l.ActualCents = net
-			l.DifferenceCents = net - l.PlannedCents
-		} else {
-			l.ActualCents = -net
-			l.DifferenceCents = l.PlannedCents - l.ActualCents
-		}
-		out.Lines = append(out.Lines, l)
-	}
-	if err := rows.Err(); err != nil {
-		return PotSummary{}, err
-	}
-	// Close before the next query: the store uses a single connection.
-	rows.Close()
-
 	transferArgs := append([]any{potID, potID, ledgerID, potID, potID}, rargs...)
 	var in, outgoing sql.NullInt64
 	if err := s.db.QueryRowContext(ctx, `
@@ -148,40 +108,124 @@ func (s *Store) resolveMonthlyPeriod(ctx context.Context, q SummaryQuery, out *P
 	if q.From != "" || q.To != "" {
 		return ErrMonthlyPotNeedsMonth
 	}
-	payday, err := ledgerPayday(ctx, s.db, q.LedgerID)
+	p, err := s.planPeriod(ctx, q.LedgerID, q.Month, q.Today)
 	if err != nil {
 		return err
 	}
-	current, err := MonthOf(q.Today, payday)
+	out.Month, out.From, out.To, out.PlanSource = p.Month, p.From, p.To, p.Source
+	return nil
+}
+
+// planPeriod is one payday period of a monthly plan.
+type planPeriod struct {
+	Month   string // YYYY-MM, the month the period starts in
+	Current string // the month of the period that contains today
+	From    string
+	To      string
+	Source  PlanSource
+}
+
+// planPeriod resolves month (empty: the current month) to its payday period
+// and says where its plan comes from. The plan of the current month is
+// created from the templates on first access; a future month shows the
+// template as a preview; a past month shows what was stored, if anything.
+func (s *Store) planPeriod(ctx context.Context, ledgerID, month, today string) (planPeriod, error) {
+	payday, err := ledgerPayday(ctx, s.db, ledgerID)
 	if err != nil {
-		return err
+		return planPeriod{}, err
 	}
-	if out.Month == "" {
-		out.Month = current
+	p := planPeriod{Month: month}
+	if p.Current, err = MonthOf(today, payday); err != nil {
+		return planPeriod{}, err
 	}
-	if out.From, out.To, err = PeriodFor(out.Month, payday); err != nil {
-		return err
+	if p.Month == "" {
+		p.Month = p.Current
+	}
+	if p.From, p.To, err = PeriodFor(p.Month, payday); err != nil {
+		return planPeriod{}, err
 	}
 
 	switch {
-	case out.Month > current: // the format YYYY-MM sorts like time
-		out.PlanSource = PlanPreview
-	case out.Month == current:
-		out.PlanSource = PlanOfMonth
-		return s.inTx(ctx, func(tx *sql.Tx) error {
-			return ensureMonthPlans(ctx, tx, q.LedgerID, current)
+	case p.Month > p.Current: // the format YYYY-MM sorts like time
+		p.Source = PlanPreview
+	case p.Month == p.Current:
+		p.Source = PlanOfMonth
+		err = s.inTx(ctx, func(tx *sql.Tx) error {
+			return ensureMonthPlans(ctx, tx, ledgerID, p.Current)
 		})
 	default:
-		stored, err := monthPlanStored(ctx, s.db, q.LedgerID, out.Month)
-		if err != nil {
-			return err
-		}
-		out.PlanSource = PlanNotStored
+		var stored bool
+		stored, err = monthPlanStored(ctx, s.db, ledgerID, p.Month)
+		p.Source = PlanNotStored
 		if stored {
-			out.PlanSource = PlanOfMonth
+			p.Source = PlanOfMonth
 		}
 	}
-	return nil
+	return p, err
+}
+
+// lineQuery chooses the pot, period and plan of categoryLines.
+type lineQuery struct {
+	LedgerID string
+	PotID    string
+	Month    string
+	From     string
+	To       string
+	Source   PlanSource
+	// WithoutRecurring leaves out bookings of recurring payments, which the
+	// budget shows in lines of their own.
+	WithoutRecurring bool
+}
+
+// categoryLines compares the plan of a pot with its bookings per category.
+// Categories with neither a plan nor bookings are left out.
+func categoryLines(ctx context.Context, db queryer, q lineQuery) ([]CategoryLine, error) {
+	rc, rargs := rangeClause(q.From, q.To)
+	if q.WithoutRecurring {
+		rc += " AND recurring_payment_id IS NULL"
+	}
+	planSQL, planArgs := planLinesQuery(q.Source, q.PotID, q.Month)
+
+	args := append(planArgs, q.LedgerID, q.PotID)
+	args = append(args, rargs...)
+	args = append(args, q.LedgerID)
+	rows, err := db.QueryContext(ctx, `
+		SELECT c.id, c.name, c.is_income, COALESCE(pl.amount_cents, 0), COALESCE(a.total, 0)
+		FROM category c
+		LEFT JOIN (`+planSQL+`) pl ON pl.category_id = c.id
+		LEFT JOIN (
+			SELECT category_id, SUM(amount_cents) AS total
+			FROM transactions
+			WHERE ledger_id = ? AND pot_id = ? AND deleted_at IS NULL
+			  AND type IN ('expense', 'income')`+rc+`
+			GROUP BY category_id
+		) a ON a.category_id = c.id
+		WHERE c.ledger_id = ? AND (pl.amount_cents IS NOT NULL OR a.total IS NOT NULL)
+		ORDER BY c.name`,
+		args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []CategoryLine
+	for rows.Next() {
+		var l CategoryLine
+		var net int64
+		if err := rows.Scan(&l.CategoryID, &l.Name, &l.IsIncome, &l.PlannedCents, &net); err != nil {
+			return nil, err
+		}
+		if l.IsIncome {
+			l.ActualCents = net
+			l.DifferenceCents = net - l.PlannedCents
+		} else {
+			l.ActualCents = -net
+			l.DifferenceCents = l.PlannedCents - l.ActualCents
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
 }
 
 // planLinesQuery returns a query for the planned amounts (category_id,

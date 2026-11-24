@@ -148,17 +148,14 @@ func TestPlanScopes(t *testing.T) {
 	}
 }
 
-func TestPlanScopeMustFitThePot(t *testing.T) {
+func TestPlanScopeIsRequired(t *testing.T) {
 	_, s := setup(t)
 	ctx := context.Background()
 
 	if err := s.SetPlannedAmount(ctx, planChange("p-default", "c-food", 100, "")); !errors.Is(err, ErrInvalidPlanScope) {
-		t.Errorf("monthly pot without scope: err = %v, want ErrInvalidPlanScope", err)
+		t.Errorf("without scope: err = %v, want ErrInvalidPlanScope", err)
 	}
-	if err := s.SetPlannedAmount(ctx, planChange("p-holiday", "c-food", 100, ScopeThisMonth)); !errors.Is(err, ErrInvalidPlanScope) {
-		t.Errorf("one-time pot with scope: err = %v, want ErrInvalidPlanScope", err)
-	}
-	if err := s.SetPlannedAmount(ctx, planChange("nope", "c-food", 100, "")); !errors.Is(err, ErrPotNotFound) {
+	if err := s.SetPlannedAmount(ctx, planChange("nope", "c-food", 100, ScopeThisMonth)); !errors.Is(err, ErrPotNotFound) {
 		t.Errorf("unknown pot: err = %v, want ErrPotNotFound", err)
 	}
 	q := monthQuery("p-default", "")
@@ -168,22 +165,31 @@ func TestPlanScopeMustFitThePot(t *testing.T) {
 	}
 }
 
-func TestCategoryIsPlannedInOneMonthlyPotOnly(t *testing.T) {
+func TestOnlyTheMainPotHasABudget(t *testing.T) {
 	db, s := setup(t)
 	ctx := context.Background()
 	mustExec(t, db, `INSERT INTO pot (id, ledger_id, name, kind) VALUES ('p-car', 'l1', 'Car', 'monthly')`)
 
-	if err := s.SetPlannedAmount(ctx, planChange("p-default", "c-food", 100, ScopeFromNowOn)); err != nil {
-		t.Fatal(err)
-	}
-	for _, scope := range []PlanScope{ScopeThisMonth, ScopeFromNowOn} {
-		if err := s.SetPlannedAmount(ctx, planChange("p-car", "c-food", 100, scope)); !errors.Is(err, ErrCategoryPlannedElsewhere) {
-			t.Errorf("%s in a second monthly pot: err = %v, want ErrCategoryPlannedElsewhere", scope, err)
+	for _, pot := range []string{"p-car", "p-holiday"} {
+		for _, scope := range []PlanScope{ScopeThisMonth, ScopeFromNowOn} {
+			if err := s.SetPlannedAmount(ctx, planChange(pot, "c-food", 100, scope)); !errors.Is(err, ErrBudgetOnlyMainPot) {
+				t.Errorf("set %s in %s: err = %v, want ErrBudgetOnlyMainPot", scope, pot, err)
+			}
+			if err := s.DeletePlannedAmount(ctx, planChange(pot, "c-food", 0, scope)); !errors.Is(err, ErrBudgetOnlyMainPot) {
+				t.Errorf("remove %s in %s: err = %v, want ErrBudgetOnlyMainPot", scope, pot, err)
+			}
 		}
 	}
-	// One-time pots are not limited by rule P3.
-	if err := s.SetPlannedAmount(ctx, planChange("p-holiday", "c-food", 100, "")); err != nil {
-		t.Errorf("one-time pot: %v", err)
+
+	// An old template of another monthly pot is kept, but no longer copied
+	// into the plan of a new month.
+	mustExec(t, db, `INSERT INTO pot_line (pot_id, ledger_id, category_id, amount_cents) VALUES ('p-car', 'l1', 'c-food', 100)`)
+	if err := s.SetPlannedAmount(ctx, planChange("p-default", "c-food", 200, ScopeThisMonth)); err != nil {
+		t.Fatalf("plan in the main pot: %v", err)
+	}
+	var copied int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM period_plan WHERE pot_id = 'p-car'`).Scan(&copied); err != nil || copied != 0 {
+		t.Errorf("rows of p-car in period_plan = %d, %v; want 0", copied, err)
 	}
 }
 

@@ -37,8 +37,8 @@ A pot groups planned amounts and collects transactions.
 - The optional target date lets the frontend calculate the required monthly rate and show progress.
 - A **reserve** is a one-time pot that saves for a recurring payment due every 3, 6 or 12 months (rules R10–R14). The payment books from it; the app suggests a rate each payday period and offers to top it up, because a reserve never goes below zero.
 
-- `pot_line`: pot_id, ledger_id, category_id, amount_cents. Planned amount for a category within a pot. Primary key: pot_id and category_id. (`ledger_id` is included so the database can check that the pot and the category belong to the same ledger.) For a one-time pot this is the plan of the pot. For a monthly pot it is the **template** that each new month's plan is copied from.
-- `period_plan`: pot_id, ledger_id, category_id, month, amount_cents. The plan of a monthly pot for one month. `month` (`YYYY-MM`) is the month in which the payday period starts. Primary key: pot_id, category_id and month. Only monthly pots have rows here (rules P3, P4).
+- `pot_line`: pot_id, ledger_id, category_id, amount_cents. Planned amount for a category within a pot. Primary key: pot_id and category_id. (`ledger_id` is included so the database can check that the pot and the category belong to the same ledger.) For the main pot it is the **template** that each new month's plan is copied from. Only the main pot has a budget (rule P7); lines of other pots are old data that is kept but no longer changed.
+- `period_plan`: pot_id, ledger_id, category_id, month, amount_cents. The plan of the main pot for one month (older rows may belong to other monthly pots). `month` (`YYYY-MM`) is the month in which the payday period starts. Primary key: pot_id, category_id and month. Only monthly pots have rows here (rules P3, P4, P7).
 - `period_plan_month`: ledger_id, month. Marks the months of a ledger whose plans were created from the templates, so that a month whose lines were removed is not filled again.
 
 **Monthly plan:**

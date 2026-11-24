@@ -18,13 +18,6 @@ func TestPotsEndToEnd(t *testing.T) {
 	}
 	tripID := decodeID(t, rec.Body.Bytes())
 
-	// Plan 50 EUR for groceries in the holiday pot.
-	rec = do(t, h, http.MethodPut, "/ledgers/l1/pots/p-holiday/lines/c-food", "u1",
-		map[string]any{"amount_cents": 5000})
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("set plan: status %d, body %s", rec.Code, rec.Body)
-	}
-
 	// The list contains the default pot, the seeded holiday pot and the new goal.
 	rec = do(t, h, http.MethodGet, "/ledgers/l1/pots", "u1", nil)
 	if rec.Code != http.StatusOK {
@@ -46,16 +39,6 @@ func TestPotsEndToEnd(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("patch: status %d, body %s", rec.Code, rec.Body)
 	}
-
-	// Remove the plan again, then removing it a second time fails.
-	rec = do(t, h, http.MethodDelete, "/ledgers/l1/pots/p-holiday/lines/c-food", "u1", nil)
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("delete plan: status %d", rec.Code)
-	}
-	rec = do(t, h, http.MethodDelete, "/ledgers/l1/pots/p-holiday/lines/c-food", "u1", nil)
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("second delete: status %d, want 404", rec.Code)
-	}
 }
 
 func TestPotErrorStatuses(t *testing.T) {
@@ -74,8 +57,10 @@ func TestPotErrorStatuses(t *testing.T) {
 			map[string]any{"name": "X", "target_cents": -5}, http.StatusBadRequest},
 		{"archive default pot", http.MethodPatch, "/ledgers/l1/pots/p-default",
 			map[string]any{"archived": true}, http.StatusConflict},
-		{"negative planned amount", http.MethodPut, "/ledgers/l1/pots/p-holiday/lines/c-food",
-			map[string]any{"amount_cents": -1}, http.StatusBadRequest},
+		{"negative planned amount", http.MethodPut, "/ledgers/l1/pots/p-default/lines/c-food",
+			map[string]any{"amount_cents": -1, "scope": "this_month"}, http.StatusBadRequest},
+		{"budget in a one-time pot", http.MethodPut, "/ledgers/l1/pots/p-holiday/lines/c-food",
+			map[string]any{"amount_cents": 100, "scope": "this_month"}, http.StatusBadRequest},
 		{"unknown pot", http.MethodPatch, "/ledgers/l1/pots/nope",
 			map[string]any{"name": "X"}, http.StatusNotFound},
 	}
