@@ -39,6 +39,7 @@ type reserveLineResponse struct {
 type reserveDueResponse struct {
 	PaymentID    string `json:"payment_id"`
 	Name         string `json:"name"`
+	CategoryID   string `json:"category_id"`
 	PotID        string `json:"pot_id"`
 	DueOn        string `json:"due_on"`
 	AmountCents  int64  `json:"amount_cents"`

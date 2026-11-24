@@ -3,11 +3,11 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { book, euros, openLedger, register, uniqueUsername } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
-  await register(page, uniqueUsername("plan"));
+  await register(page, uniqueUsername("budget"));
   await openLedger(page, "Personal");
 });
 
-/** A row of the plan; it is a button while the plan can be changed. */
+/** The top row of a category; it is a button while the budget can be changed. */
 function planRow(page: Page, category: string): Locator {
   return page.getByRole("button", { name: new RegExp(`^${category}`) });
 }
@@ -63,18 +63,52 @@ test("the monthly plan changes this month or also the coming ones", async ({ pag
   await expect(page.getByText(/^Spent 40,00\s€ of 120,00\s€ planned$/)).toBeVisible();
 });
 
-test("a one-time pot has a single plan without months", async ({ page }) => {
-  await page.getByRole("link", { name: "Pots", exact: true }).click();
-  await page.getByRole("link", { name: "New pot" }).click();
-  await page.getByLabel("Name", { exact: true }).fill("Holiday");
+/** Creates a payment due today, so it falls into the current month whatever the date. */
+async function createDueToday(page: Page, name: string, amount: string, category: string, yearly = false): Promise<void> {
+  await page.getByRole("link", { name: "Recurring", exact: true }).click();
+  await page.getByRole("link", { name: "New recurring payment" }).click();
+  await page.getByLabel("Name", { exact: true }).fill(name);
+  await page.getByLabel("Amount (€)").fill(amount);
+  await page.getByRole("button", { name: category, exact: true }).click();
+  if (yearly) {
+    await page.getByRole("button", { name: "Yearly", exact: true }).click();
+  }
+  await page.getByLabel("Due day (1–31)").fill(String(new Date().getDate()));
   await page.getByRole("button", { name: "Save" }).click();
-  await page.getByRole("link", { name: /Holiday/ }).click();
+  await expect(page.getByRole("link", { name: new RegExp(`^${name} `) })).toContainText(`on day ${new Date().getDate()}`);
+  await page.goBack();
+  await expect(page.getByText("Estimated account balance", { exact: true })).toBeVisible();
+}
+
+/** A line below a category, found by its first text. */
+function subRow(page: Page, title: string): Locator {
+  return page.getByText(title, { exact: true }).locator("xpath=../..");
+}
+
+test("payments and reserve rates appear below their category", async ({ page }) => {
+  await createDueToday(page, "Flat", "800", "Rent");
+  await createDueToday(page, "Car", "600", "Insurance", true);
   await page.getByRole("link", { name: "Budget", exact: true }).click();
 
-  await expect(page.getByRole("button", { name: "Next month" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Budget a category" }).click();
-  await page.getByRole("button", { name: "Leisure", exact: true }).click();
-  await setAmount(page, "Leisure", "200", "Save");
-  await expect(planRow(page, "Leisure")).toContainText(euros("200,00"));
-  await expect(page.getByText(/^Spent 0,00\s€ of 200,00\s€ planned$/)).toBeVisible();
+  // The monthly payment is a line of its own below the category.
+  await expect(planRow(page, "Rent")).toContainText("Nothing else planned");
+  await expect(subRow(page, "↻ Flat")).toContainText(/0,00\s€ of 800,00\s€ · due/);
+  await expect(subRow(page, "↻ Flat")).toContainText("Open");
+
+  // The yearly payment saves its rate and is paid from its reserve this month.
+  await expect(subRow(page, "→ Save for Car")).toContainText(/600,00\s€ to save/);
+  await expect(page.getByText(/^600,00\s€ due .* from reserve “Car” \(covered: 0,00\s€\)$/)).toBeVisible();
+
+  // Plan, payments and rates count together; the payment paid from the
+  // reserve does not.
+  await expect(page.getByText(/^Spent 0,00\s€ of 1\.400,00\s€ planned$/)).toBeVisible();
+
+  // Booking the monthly payment fills its line, not the free plan.
+  await page.goBack();
+  await page.getByRole("link", { name: "Book Flat" }).click();
+  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("link", { name: "Budget", exact: true }).click();
+  await expect(subRow(page, "↻ Flat")).toContainText("Paid");
+  await expect(planRow(page, "Rent")).toContainText("Nothing else planned");
+  await expect(page.getByText(/^Spent 800,00\s€ of 1\.400,00\s€ planned$/)).toBeVisible();
 });

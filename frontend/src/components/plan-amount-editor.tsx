@@ -10,15 +10,13 @@ import { errorMessage } from "@/lib/errors";
 import { centsToAmountInput, parseAmountToCents } from "@/lib/money";
 
 /**
- * Changes the planned amount of one category. In a monthly pot every change
- * asks which months it affects (rule P5), so there is one button per scope
- * instead of a preselected choice that is easy to overlook. One-time pots
- * have a single plan and take no scope.
+ * Changes the budgeted amount of one category. Every change asks which months
+ * it affects (rule P5), so there is one button per scope instead of a
+ * preselected choice that is easy to overlook.
  */
 export function PlanAmountEditor({
   categoryName,
   plannedCents,
-  monthly,
   onSave,
   onRemove,
   onCancel,
@@ -26,9 +24,8 @@ export function PlanAmountEditor({
   categoryName: string;
   /** 0 when the category is not planned yet; then there is nothing to remove. */
   plannedCents: number;
-  monthly: boolean;
-  onSave: (cents: number, scope?: PlanScope) => Promise<void>;
-  onRemove: (scope?: PlanScope) => Promise<void>;
+  onSave: (cents: number, scope: PlanScope) => Promise<void>;
+  onRemove: (scope: PlanScope) => Promise<void>;
   onCancel: () => void;
 }) {
   const [amount, setAmount] = useState(plannedCents > 0 ? centsToAmountInput(plannedCents) : "");
@@ -47,7 +44,7 @@ export function PlanAmountEditor({
     }
   }
 
-  function save(scope?: PlanScope) {
+  function save(scope: PlanScope) {
     const cents = parseAmountToCents(amount);
     if (cents === null) {
       setError("Enter an amount greater than zero, with at most two decimal places.");
@@ -60,7 +57,7 @@ export function PlanAmountEditor({
     return (
       <View className="gap-2">
         <Text>{`Remove “${categoryName}” from the plan?`}</Text>
-        <ScopeButtons monthly={monthly} busy={busy} singleLabel="Remove" destructive onPress={(scope) => void run(() => onRemove(scope))} />
+        <ScopeButtons busy={busy} destructive onPress={(scope) => void run(() => onRemove(scope))} />
         <Button variant="ghost" onPress={() => setRemoving(false)} disabled={busy}>
           <Text>Cancel</Text>
         </Button>
@@ -79,7 +76,7 @@ export function PlanAmountEditor({
         placeholder="0.00"
         autoFocus
       />
-      <ScopeButtons monthly={monthly} busy={busy} singleLabel="Save" onPress={save} />
+      <ScopeButtons busy={busy} onPress={save} />
       <View className="flex-row gap-2">
         {plannedCents > 0 && (
           <Button className="flex-1" variant="outline" onPress={() => setRemoving(true)} disabled={busy}>
@@ -95,28 +92,16 @@ export function PlanAmountEditor({
   );
 }
 
-/** One button per scope in a monthly pot, a single one in a one-time pot. */
 function ScopeButtons({
-  monthly,
   busy,
-  singleLabel,
   destructive,
   onPress,
 }: {
-  monthly: boolean;
   busy: boolean;
-  singleLabel: string;
   destructive?: boolean;
-  onPress: (scope?: PlanScope) => void;
+  onPress: (scope: PlanScope) => void;
 }) {
   const variant = destructive ? "destructive" : "default";
-  if (!monthly) {
-    return (
-      <Button variant={variant} onPress={() => onPress()} disabled={busy}>
-        <Text>{singleLabel}</Text>
-      </Button>
-    );
-  }
   return (
     <View className="flex-row gap-2">
       <Button className="flex-1" variant={variant} onPress={() => onPress("this_month")} disabled={busy}>
