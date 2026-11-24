@@ -1,4 +1,5 @@
 import { router, useLocalSearchParams } from "expo-router";
+import { toast } from "sonner-native";
 
 import { ledgers } from "@/api/endpoints";
 import type { NewPotTransfer } from "@/api/types";
@@ -20,6 +21,7 @@ export default function MoveScreen() {
 
   async function create(values: NewPotTransfer) {
     await ledgers.createTransaction(ledgerId, { ...values, note: values.note || undefined });
+    toast.success("Money moved");
     router.back();
   }
 

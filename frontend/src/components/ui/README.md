@@ -9,3 +9,7 @@ They are licensed under the MIT license in [LICENSE](LICENSE); the rest of the a
 To add a component, copy it from `packages/registry/src/nativewind/components/ui/` in that repository,
 replace `@/registry/nativewind/` with `@/`, and install its `@rn-primitives/*` packages with
 `npx expo install`.
+
+Copied so far: button, card, icon, input, label, skeleton, switch, text. Changed against the originals: larger
+touch targets (buttons, inputs and the switch reach 44–48 px on phones, after Apple's and Material's guidelines),
+rounder corners, and headings in the app's display font (Nunito, see `tailwind.config.js`).

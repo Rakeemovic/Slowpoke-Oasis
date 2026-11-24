@@ -8,6 +8,8 @@ import type {
   Household,
   Me,
   Member,
+  ReconcileInput,
+  ReconcileResult,
   NewCategory,
   NewLedgerTransfer,
   NewPot,
@@ -98,8 +100,7 @@ export const ledgers = {
   createTransaction: (ledgerId: string, tx: NewTransaction | NewPotTransfer) =>
     request<{ id: string; topped_up_cents?: number }>("POST", `/ledgers/${enc(ledgerId)}/transactions`, tx),
 
-  transaction: (ledgerId: string, id: string) =>
-    request<Transaction>("GET", `/ledgers/${enc(ledgerId)}/transactions/${enc(id)}`),
+  transaction: (ledgerId: string, id: string) => request<Transaction>("GET", `/ledgers/${enc(ledgerId)}/transactions/${enc(id)}`),
 
   /** Incomes, expenses and transfers between pots; a transfer between ledgers can only be deleted. */
   updateTransaction: (ledgerId: string, id: string, change: TransactionChange | NewPotTransfer) =>
@@ -121,8 +122,11 @@ export const ledgers = {
     request<void>("POST", `/ledgers/${enc(ledgerId)}/transactions/${enc(id)}/restore`),
 
   /** asOf is the app's local today, since the server may be in another time zone. */
-  balance: (ledgerId: string, asOf: string) =>
-    request<Balance>("GET", `/ledgers/${enc(ledgerId)}/balance?date=${enc(asOf)}`),
+  balance: (ledgerId: string, asOf: string) => request<Balance>("GET", `/ledgers/${enc(ledgerId)}/balance?date=${enc(asOf)}`),
+
+  /** Compares the real balance with the ledger on date, the app's local today; owner only (rule L9). */
+  reconcile: (ledgerId: string, input: ReconcileInput, date: string) =>
+    request<ReconcileResult>("POST", `/ledgers/${enc(ledgerId)}/reconciliations?date=${enc(date)}`, input),
 
   /** Pots that save a rate (target date or fixed rate), with this period's rate; date is the app's local today. */
   savingsGoals: (ledgerId: string, date: string) =>
@@ -137,10 +141,7 @@ export const ledgers = {
    * date is the app's local today and decides which month is current.
    */
   budget: (ledgerId: string, date: string, month?: string) =>
-    request<Budget>(
-      "GET",
-      `/ledgers/${enc(ledgerId)}/budget?date=${enc(date)}${month ? `&month=${enc(month)}` : ""}`,
-    ),
+    request<Budget>("GET", `/ledgers/${enc(ledgerId)}/budget?date=${enc(date)}${month ? `&month=${enc(month)}` : ""}`),
 };
 
 export const pots = {
@@ -177,8 +178,7 @@ function planLinePath(ledgerId: string, potId: string, categoryId: string): stri
 // date is the app's local today: the server may run in another time zone.
 export const recurring = {
   /** Archived payments are included. */
-  list: (ledgerId: string, date: string) =>
-    request<RecurringPayment[]>("GET", `${recurringPath(ledgerId)}?date=${enc(date)}`),
+  list: (ledgerId: string, date: string) => request<RecurringPayment[]>("GET", `${recurringPath(ledgerId)}?date=${enc(date)}`),
 
   /** Every member may create one (rule R8). Earlier due dates never become open (rule R5). */
   create: (ledgerId: string, payment: RecurringPaymentInput, date: string) =>
@@ -189,8 +189,7 @@ export const recurring = {
     request<void>("PATCH", `${recurringPath(ledgerId)}/${enc(paymentId)}?date=${enc(date)}`, change),
 
   /** Open occurrences up to the end of the current payday period, oldest first. */
-  due: (ledgerId: string, date: string) =>
-    request<Occurrence[]>("GET", `${recurringPath(ledgerId)}/due?date=${enc(date)}`),
+  due: (ledgerId: string, date: string) => request<Occurrence[]>("GET", `${recurringPath(ledgerId)}/due?date=${enc(date)}`),
 
   /** The rates of the current payday period for the active reserves, by due date. */
   reserveRates: (ledgerId: string, date: string) =>
@@ -209,8 +208,7 @@ function recurringPath(ledgerId: string): string {
 }
 
 export const transfers = {
-  create: (transfer: NewLedgerTransfer) =>
-    request<{ out_id: string; in_id: string }>("POST", "/transfers", transfer),
+  create: (transfer: NewLedgerTransfer) => request<{ out_id: string; in_id: string }>("POST", "/transfers", transfer),
 };
 
 // IDs come from the API, but encoding keeps a malformed one from changing the path.

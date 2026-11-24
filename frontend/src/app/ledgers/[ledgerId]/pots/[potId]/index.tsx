@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
+import { toast } from "sonner-native";
 
 import { auth, ledgers, pots } from "@/api/endpoints";
 import type { Pot, SavingsGoal } from "@/api/types";
@@ -24,11 +25,7 @@ export default function PotScreen() {
   const { ledgerId, potId } = useLocalSearchParams<{ ledgerId: string; potId: string }>();
   const { data, error, loading, reload } = useLoader(
     useCallback(async () => {
-      const [list, goals, me] = await Promise.all([
-        pots.list(ledgerId),
-        ledgers.savingsGoals(ledgerId, today()),
-        auth.me(),
-      ]);
+      const [list, goals, me] = await Promise.all([pots.list(ledgerId), ledgers.savingsGoals(ledgerId, today()), auth.me()]);
       // Round-ups exist only in the personal ledger (rule T10).
       return { list, goals, isPersonal: me.personal_ledger_id === ledgerId };
     }, [ledgerId]),
@@ -48,6 +45,7 @@ export default function PotScreen() {
   async function save(values: PotFormValues) {
     // round_up_multiplier is only part of values when the form offered it.
     await pots.update(ledgerId, potId, { ...values, archived: pot!.archived }, today());
+    toast.success("Pot saved");
     router.back();
   }
   const collecting = collectingPot(data!.list);
@@ -86,14 +84,15 @@ export default function PotScreen() {
 function GoalSummary({ pot, goal }: { pot: Pot; goal?: SavingsGoal }) {
   const target = pot.target_cents ?? 0;
   return (
-    <Card className="py-0">
-      <ProgressRow progress={potProgress(pot)} label={pot.name} className="gap-1 px-4 py-3">
-        <Text className="font-medium">{target > 0 ? `${formatCents(pot.balance_cents)} of ${formatCents(target)}` : formatCents(pot.balance_cents)}</Text>
+    <Card className="overflow-hidden py-0">
+      <ProgressRow progress={potProgress(pot)} label={pot.name} className="gap-1 p-5">
+        <Text variant="overline">Goal</Text>
+        <Text className="font-display text-2xl">
+          {target > 0 ? `${formatCents(pot.balance_cents)} of ${formatCents(target)}` : formatCents(pot.balance_cents)}
+        </Text>
         <Text variant="muted">{describeGoal(pot)}</Text>
-        {goal?.reached && <Text className="font-semibold">Goal reached</Text>}
-        {goal && !goal.reached && goal.rate_cents > 0 && (
-          <Text variant="muted">{`This period: ${describeRate(goal)}`}</Text>
-        )}
+        {goal?.reached && <Text className="font-semibold text-positive">Goal reached</Text>}
+        {goal && !goal.reached && goal.rate_cents > 0 && <Text variant="muted">{`This period: ${describeRate(goal)}`}</Text>}
       </ProgressRow>
     </Card>
   );
@@ -110,6 +109,7 @@ function ArchiveSection({ ledgerId, pot }: { ledgerId: string; pot: Pot }) {
     try {
       // Only the archive flag changes; the goal stays as it is.
       await pots.update(ledgerId, pot.id, { archived }, today());
+      toast.success(archived ? "Pot archived" : "Pot restored");
       router.back();
     } catch (e) {
       setError(errorMessage(e));

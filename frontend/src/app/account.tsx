@@ -5,6 +5,7 @@ import { ErrorMessage } from "@/components/error-message";
 import { FormField } from "@/components/form-field";
 import { Screen } from "@/components/screen";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Text } from "@/components/ui/text";
 import { errorMessage } from "@/lib/errors";
 
@@ -34,28 +35,34 @@ export default function AccountScreen() {
 
   return (
     <Screen>
-      <Text variant="h4">Change password</Text>
-      <FormField
-        label="Current password"
-        value={currentPassword}
-        onChangeText={setCurrentPassword}
-        secureTextEntry
-        autoComplete="current-password"
-      />
-      <FormField
-        label="New password"
-        value={newPassword}
-        onChangeText={setNewPassword}
-        secureTextEntry
-        autoComplete="new-password"
-        onSubmitEditing={submit}
-      />
-      <ErrorMessage message={error} />
-      {done && <Text role="status">Password changed. Your other devices have been signed out.</Text>}
-      <Button onPress={submit} disabled={busy || !currentPassword || !newPassword}>
-        <Text>{busy ? "Saving…" : "Change password"}</Text>
-      </Button>
-      <Text variant="muted">Your recovery code stays the same.</Text>
+      <Card>
+        <CardHeader>
+          <CardTitle>Change password</CardTitle>
+          <CardDescription>Your recovery code stays the same.</CardDescription>
+        </CardHeader>
+        <CardContent className="gap-4">
+          <FormField
+            label="Current password"
+            value={currentPassword}
+            onChangeText={setCurrentPassword}
+            secureTextEntry
+            autoComplete="current-password"
+          />
+          <FormField
+            label="New password"
+            value={newPassword}
+            onChangeText={setNewPassword}
+            secureTextEntry
+            autoComplete="new-password"
+            onSubmitEditing={submit}
+          />
+          <ErrorMessage message={error} />
+          {done && <Text role="status">Password changed. Your other devices have been signed out.</Text>}
+          <Button onPress={submit} disabled={busy || !currentPassword || !newPassword}>
+            <Text>{busy ? "Saving…" : "Change password"}</Text>
+          </Button>
+        </CardContent>
+      </Card>
     </Screen>
   );
 }

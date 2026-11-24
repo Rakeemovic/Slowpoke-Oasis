@@ -3,7 +3,8 @@ import { View } from "react-native";
 
 import { ErrorMessage } from "@/components/error-message";
 import { FormField } from "@/components/form-field";
-import { KindButton } from "@/components/kind-button";
+import { KindButton, Segmented } from "@/components/kind-button";
+import { SwitchRow } from "@/components/switch-row";
 import { RoundUpChoice } from "@/components/round-up-choice";
 import { Button } from "@/components/ui/button";
 import { Text } from "@/components/ui/text";
@@ -99,11 +100,11 @@ export function PotForm({
         <>
           <View className="gap-1.5">
             <Text className="text-sm font-medium">Goal</Text>
-            <View className="flex-row gap-2">
+            <Segmented>
               <KindButton label="No goal" active={kind === "none"} onPress={() => setKind("none")} />
               <KindButton label="Target" active={kind === "target"} onPress={() => setKind("target")} />
               <KindButton label="Monthly amount" active={kind === "rate"} onPress={() => setKind("rate")} />
-            </View>
+            </Segmented>
             <Text variant="muted" className="text-sm">
               {goalHints[kind]}
             </Text>
@@ -137,17 +138,12 @@ export function PotForm({
         </>
       )}
       {!hideAccount && (
-        <View className="gap-1.5">
-          <KindButton
-            label="Separate account at my bank"
-            active={separate}
-            onPress={() => setSeparate(!separate)}
-          />
-          <Text variant="muted" className="text-sm">
-            Switch this on if the pot is a real sub-account at your bank. Its money is then not part of your estimated
-            account balance, which shows what your main account holds.
-          </Text>
-        </View>
+        <SwitchRow
+          label="Separate account at my bank"
+          description="Switch this on if the pot is a real sub-account at your bank. Its money is then not part of your estimated account balance, which shows what your main account holds."
+          checked={separate}
+          onCheckedChange={setSeparate}
+        />
       )}
       {roundUp && <RoundUpChoice value={multiplier} onChange={setMultiplier} replaces={roundUp.replaces} />}
       <ErrorMessage message={error} />

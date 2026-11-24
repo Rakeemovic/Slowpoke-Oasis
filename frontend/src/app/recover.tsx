@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { auth } from "@/api/endpoints";
 import { useAuth } from "@/auth/auth-context";
+import { AuthHeader } from "@/components/auth-header";
 import { ErrorMessage } from "@/components/error-message";
 import { FormField } from "@/components/form-field";
 import { RecoveryCodePanel } from "@/components/recovery-code-panel";
@@ -69,7 +70,10 @@ export default function RecoverScreen() {
 
   return (
     <Screen>
-      <Text>Enter the six-word recovery code you received when you created your account.</Text>
+      <AuthHeader
+        title="Reset your password"
+        text="Enter the six-word recovery code you received when you created your account."
+      />
       <FormField label="Username" value={username} onChangeText={setUsername} autoCapitalize="none" autoComplete="username" />
       <FormField
         label="Recovery code"
@@ -91,9 +95,7 @@ export default function RecoverScreen() {
       <Button onPress={submit} disabled={busy || !complete}>
         <Text>{busy ? "Resetting…" : "Reset password"}</Text>
       </Button>
-      <Text variant="muted">
-        Lost the code as well? The person who runs this server can reset your password for you.
-      </Text>
+      <Text variant="muted">Lost the code as well? The person who runs this server can reset your password for you.</Text>
     </Screen>
   );
 }

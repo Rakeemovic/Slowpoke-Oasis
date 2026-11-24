@@ -1,6 +1,16 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { book, createHousehold, ledgerCard, openLedger, openPot, register, transactionRow, uniqueUsername } from "./helpers";
+import {
+  book,
+  createHousehold,
+  ledgerCard,
+  openLedger,
+  openPot,
+  register,
+  transactionRow,
+  uniqueUsername,
+  openSection,
+} from "./helpers";
 
 /** Creates a pot from the pots screen and stays there. */
 async function createPot(page: Page, name: string): Promise<void> {
@@ -20,7 +30,7 @@ async function setRoundUp(page: Page, pot: string, multiplier: string): Promise<
 test("an expense is rounded up into the collecting pot and goes with it", async ({ page }) => {
   await register(page, uniqueUsername("round"));
   await openLedger(page, "Personal");
-  await page.getByRole("link", { name: "Pots", exact: true }).click();
+  await openSection(page, "Pots");
   await createPot(page, "Change jar");
   await setRoundUp(page, "Change jar", "x2");
   await expect(page.getByRole("link", { name: /Change jar/ })).toContainText("Collects round-ups (x2)");
@@ -46,7 +56,7 @@ test("an expense is rounded up into the collecting pot and goes with it", async 
 test("only one pot collects, and the form says which one it replaces", async ({ page }) => {
   await register(page, uniqueUsername("round"));
   await openLedger(page, "Personal");
-  await page.getByRole("link", { name: "Pots", exact: true }).click();
+  await openSection(page, "Pots");
   await createPot(page, "Jar A");
   await createPot(page, "Jar B");
   await setRoundUp(page, "Jar A", "x1");
@@ -68,7 +78,7 @@ test("a household has no round-ups", async ({ page }) => {
   await register(page, uniqueUsername("round"));
   await createHousehold(page, "Flat");
   await ledgerCard(page, "Flat").click();
-  await page.getByRole("link", { name: "Pots", exact: true }).click();
+  await openSection(page, "Pots");
   await createPot(page, "Jar");
   await openPot(page, /Jar/);
   await expect(page.getByText("Round-ups", { exact: true }).filter({ visible: true })).toHaveCount(0);

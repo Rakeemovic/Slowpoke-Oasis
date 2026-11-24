@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { balance, euros, openLedger, register, transactionRow, uniqueUsername } from "./helpers";
+import { balance, euros, openLedger, register, transactionRow, uniqueUsername, openSection, backToOverview } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await register(page, uniqueUsername("rec"));
@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => {
  * test does not depend on the date it runs on, and returns to the ledger.
  */
 async function createDueToday(page: Page, name: string, amount: string, category: string): Promise<void> {
-  await page.getByRole("link", { name: "Recurring", exact: true }).click();
+  await openSection(page, "Recurring");
   await page.getByRole("link", { name: "New recurring payment" }).click();
   await page.getByLabel("Name", { exact: true }).fill(name);
   await page.getByLabel("Amount (€)").fill(amount);
@@ -20,8 +20,7 @@ async function createDueToday(page: Page, name: string, amount: string, category
   await page.getByLabel("Due day (1–31)").fill(String(new Date().getDate()));
   await page.getByRole("button", { name: "Save" }).click();
   await expect(paymentRow(page, name)).toContainText(`Monthly on day ${new Date().getDate()}`);
-  await page.goBack();
-  await expect(page.getByText("Estimated account balance", { exact: true })).toBeVisible();
+  await backToOverview(page);
 }
 
 /** A row on the recurring payments screen; earlier screens stay hidden in the DOM. */
@@ -71,12 +70,11 @@ test("a due payment can be skipped, the skip undone, and the payment archived", 
   await expect(balance(page, "-30,00")).toBeVisible();
 
   // An archived payment shows no due dates.
-  await page.getByRole("link", { name: "Recurring", exact: true }).click();
+  await openSection(page, "Recurring");
   await paymentRow(page, "Gym").click();
   await page.getByRole("button", { name: "Archive payment" }).click();
   await expect(page.getByText("Archived", { exact: true })).toBeVisible();
-  await page.goBack();
-  await expect(page.getByText("Estimated account balance", { exact: true })).toBeVisible();
+  await backToOverview(page);
   await expect(page.getByText("Due payments")).toBeHidden();
 });
 
@@ -97,6 +95,6 @@ test("a new category for a booking of a recurring payment asks how far it reache
   await expect(transactionRow(page, "Utilities")).toBeVisible();
 
   // "All" also changes the recurring payment for future bookings.
-  await page.getByRole("link", { name: "Recurring", exact: true }).click();
+  await openSection(page, "Recurring");
   await expect(paymentRow(page, "Flat")).toContainText("Utilities");
 });

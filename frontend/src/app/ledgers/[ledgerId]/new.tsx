@@ -1,6 +1,7 @@
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
 import { ActivityIndicator } from "react-native";
+import { toast } from "sonner-native";
 
 import { ledgers, recurring } from "@/api/endpoints";
 import type { NewTransaction, TransactionChange } from "@/api/types";
@@ -114,11 +115,13 @@ function useBookingWithTopUp(ledgerId: string) {
       // The form shows this and becomes usable again, e.g. to lower the amount.
       throw new Error(`The reserve lacks ${formatCents(missingCents)} for this payment.`);
     }
+    toast.success("Transaction saved");
     router.back();
   }
 
   async function confirmTopUp() {
     await ledgers.createTransaction(ledgerId, { ...offer!.tx, top_up: true });
+    toast.success("Transaction saved");
     router.back();
   }
 

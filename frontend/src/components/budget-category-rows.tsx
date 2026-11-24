@@ -1,10 +1,15 @@
+import { PiggyBank, Repeat, Sparkles, type LucideIcon } from "lucide-react-native";
 import { Pressable, View } from "react-native";
 
 import type { BudgetSavingsLine, PlanLine } from "@/api/types";
+import { IconTile } from "@/components/icon-tile";
 import { ProgressRow } from "@/components/progress-row";
+import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
 import { type BudgetGroup, recurringText, reserveDueText, reserveText, type SubLineText } from "@/lib/budget";
 import { savingsLine } from "@/lib/goals";
+import { hueFor } from "@/lib/hues";
+import { categoryIcon } from "@/lib/icons";
 import { formatCents } from "@/lib/money";
 import { reachedProgress, spentProgress } from "@/lib/progress";
 import { cn } from "@/lib/utils";
@@ -14,15 +19,7 @@ import { cn } from "@/lib/utils";
  * below it the monthly payments, the reserve rates and the payments due
  * from a reserve. Only the top row can be pressed, to change the plan.
  */
-export function BudgetCategoryRows({
-  group,
-  editable,
-  onPress,
-}: {
-  group: BudgetGroup;
-  editable: boolean;
-  onPress: () => void;
-}) {
+export function BudgetCategoryRows({ group, editable, onPress }: { group: BudgetGroup; editable: boolean; onPress: () => void }) {
   const { line, dues } = group;
   return (
     <View>
@@ -30,18 +27,17 @@ export function BudgetCategoryRows({
         className="active:bg-accent web:hover:bg-accent/50"
         disabled={!editable}
         onPress={onPress}
-        role={editable ? "button" : undefined}
-      >
+        role={editable ? "button" : undefined}>
         <PlanRow line={line} />
       </Pressable>
       {line.recurring.map((r) => (
-        <SubRow key={`${r.payment_id}-${r.due_on}`} icon="↻" name={r.name} text={recurringText(r)} />
+        <SubRow key={`${r.payment_id}-${r.due_on}`} icon={Repeat} name={r.name} text={recurringText(r)} />
       ))}
       {line.reserves.map((r) => (
-        <SubRow key={r.payment_id} icon="→" name={`Save for ${r.name}`} text={reserveText(r)} />
+        <SubRow key={r.payment_id} icon={PiggyBank} name={`Save for ${r.name}`} text={reserveText(r)} />
       ))}
       {dues.map((d) => (
-        <Text key={`${d.payment_id}-${d.due_on}`} variant="muted" className="px-4 pb-3 pl-10 text-sm">
+        <Text key={`${d.payment_id}-${d.due_on}`} variant="muted" className="px-4 pb-3 pl-[68px] text-sm">
           {reserveDueText(d)}
         </Text>
       ))}
@@ -52,7 +48,9 @@ export function BudgetCategoryRows({
 /** The category's row is its own progress bar: spent (or received) against the plan. */
 function PlanRow({ line }: { line: PlanLine }) {
   const isPlanned = line.planned_cents > 0;
-  const bar = line.is_income ? reachedProgress(line.actual_cents, line.planned_cents) : spentProgress(line.actual_cents, line.planned_cents);
+  const bar = line.is_income
+    ? reachedProgress(line.actual_cents, line.planned_cents)
+    : spentProgress(line.actual_cents, line.planned_cents);
   let progress: string;
   if (isPlanned) {
     progress = `${formatCents(line.actual_cents)} of ${formatCents(line.planned_cents)}`;
@@ -63,7 +61,8 @@ function PlanRow({ line }: { line: PlanLine }) {
     progress = "Nothing else planned";
   }
   return (
-    <ProgressRow progress={bar} label={line.name} className="flex-row items-center gap-3 px-4 py-3">
+    <ProgressRow progress={bar} label={line.name} className="min-h-16 flex-row items-center gap-3 px-4 py-3">
+      <IconTile icon={categoryIcon(line.name)} hue={hueFor(line.category_id)} />
       <View className="flex-1 gap-0.5">
         <Text className="font-medium">{line.name}</Text>
         <Text variant="muted">{progress}</Text>
@@ -74,11 +73,12 @@ function PlanRow({ line }: { line: PlanLine }) {
 }
 
 /** A line below a category, indented, with a progress bar of its own. */
-function SubRow({ icon, name, text }: { icon: string; name: string; text: SubLineText }) {
+function SubRow({ icon, name, text }: { icon: LucideIcon; name: string; text: SubLineText }) {
   return (
-    <ProgressRow progress={text.bar} label={name} className="flex-row items-center gap-3 py-2 pl-10 pr-4">
+    <ProgressRow progress={text.bar} label={name} className="flex-row items-center gap-3 py-2 pl-[68px] pr-4">
+      <Icon as={icon} size={14} className="text-muted-foreground" />
       <View className="flex-1 gap-0.5">
-        <Text className="text-sm">{`${icon} ${name}`}</Text>
+        <Text className="text-sm">{name}</Text>
         <Text variant="muted" className="text-sm">
           {text.progress}
         </Text>
@@ -108,7 +108,8 @@ function Difference({ line }: { line: PlanLine }) {
 export function SavingsRow({ line }: { line: BudgetSavingsLine }) {
   const text = savingsLine(line);
   return (
-    <ProgressRow progress={text.bar} label={line.name} className="flex-row items-center gap-3 px-4 py-3">
+    <ProgressRow progress={text.bar} label={line.name} className="min-h-16 flex-row items-center gap-3 px-4 py-3">
+      <IconTile icon={Sparkles} hue={hueFor(line.pot_id)} />
       <View className="flex-1 gap-0.5">
         <Text className="font-medium">{line.name}</Text>
         <Text variant="muted">{text.progress}</Text>

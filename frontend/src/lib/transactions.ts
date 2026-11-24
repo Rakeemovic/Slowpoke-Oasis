@@ -42,6 +42,8 @@ function describeType(type: Transaction["type"], counterpart?: Counterpart): str
       return `Transfer to ${describeLedger(counterpart)}`;
     case "transfer_in":
       return `Transfer from ${describeLedger(counterpart)}`;
+    case "correction":
+      return "Balance correction";
     default:
       return "Uncategorised";
   }
@@ -60,4 +62,18 @@ function describeLedger(counterpart?: Counterpart): string {
   }
   // The other ledger was deleted (rule X16).
   return "a deleted ledger";
+}
+
+/** Groups a list sorted by date into days, keeping the order. */
+export function groupByDay<T extends { booked_on: string }>(items: T[]): { day: string; items: T[] }[] {
+  const groups: { day: string; items: T[] }[] = [];
+  for (const item of items) {
+    const last = groups[groups.length - 1];
+    if (last?.day === item.booked_on) {
+      last.items.push(item);
+    } else {
+      groups.push({ day: item.booked_on, items: [item] });
+    }
+  }
+  return groups;
 }

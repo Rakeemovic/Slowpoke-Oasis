@@ -55,7 +55,8 @@ export interface CategoryChange {
   archived?: boolean;
 }
 
-export type TransactionType = "expense" | "income" | "transfer" | "transfer_out" | "transfer_in";
+/** "correction" aligns the ledger with the bank after a reconciliation (rule L9); it can only be deleted. */
+export type TransactionType = "expense" | "income" | "transfer" | "transfer_out" | "transfer_in" | "correction";
 
 export interface Transaction {
   id: string;
@@ -160,14 +161,39 @@ export interface Balance {
   total_cents: number;
   /** Name of the default pot, usually "Main". */
   default_pot_name: string;
+  default_pot_id: string;
+  /** The last reconciliation of the bank account, or null. */
+  reconciled: Reconciliation | null;
   /** All pots minus the unbooked payments: what the bank account most likely shows. */
   estimated_cents: number;
   /** Recurring payments due or overdue on as_of that are neither booked nor skipped. */
   unbooked_count: number;
   unbooked_cents: number;
   /** Pots that are real sub-accounts at the bank (rule T9); their money is not in estimated_cents. */
-  separate_accounts: { pot_id: string; name: string; balance_cents: number }[];
+  separate_accounts: { pot_id: string; name: string; balance_cents: number; reconciled: Reconciliation | null }[];
   separate_cents: number;
+}
+
+/** The last time the user compared an account with the bank (rule L9). */
+export interface Reconciliation {
+  reconciled_on: string;
+  actual_cents: number;
+}
+
+/** Compares the real balance of the bank account (no pot_id) or of a separate account. */
+export interface ReconcileInput {
+  actual_cents: number;
+  pot_id?: string;
+  /** Books the difference as a correction. */
+  correct: boolean;
+}
+
+export interface ReconcileResult {
+  pot_id: string;
+  expected_cents: number;
+  actual_cents: number;
+  difference_cents: number;
+  correction_id?: string;
 }
 
 /** A transfer between two ledgers. Without pot IDs, both sides use the default pot. */

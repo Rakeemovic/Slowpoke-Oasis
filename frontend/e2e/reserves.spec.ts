@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { balance, euros, openLedger, register, transactionRow, uniqueUsername } from "./helpers";
+import { balance, euros, openLedger, register, transactionRow, uniqueUsername, openSection, backToOverview } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await register(page, uniqueUsername("res"));
@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => {
  * amount in the current period, whatever date the test runs on.
  */
 async function createYearlyDueToday(page: Page, name: string, amount: string): Promise<void> {
-  await page.getByRole("link", { name: "Recurring", exact: true }).click();
+  await openSection(page, "Recurring");
   await page.getByRole("link", { name: "New recurring payment" }).click();
   await page.getByLabel("Name", { exact: true }).fill(name);
   await page.getByLabel("Amount (€)").fill(amount);
@@ -23,8 +23,7 @@ async function createYearlyDueToday(page: Page, name: string, amount: string): P
   await page.getByLabel("Due day (1–31)").fill(String(new Date().getDate()));
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText(`Yearly on day ${new Date().getDate()}`)).toBeVisible();
-  await page.goBack();
-  await expect(page.getByText("Estimated account balance", { exact: true })).toBeVisible();
+  await backToOverview(page);
 }
 
 /** A row of the "Due payments" card whose first line is title. */
@@ -40,7 +39,7 @@ test("a reserve is filled by its rate and topped up when booking", async ({ page
   await expect(cardRow(page, "Save for Car")).toContainText(euros("600,00"));
 
   // The reserve shows up as its own group of pots.
-  await page.getByRole("link", { name: "Pots", exact: true }).click();
+  await openSection(page, "Pots");
   await expect(page.getByText("Reserves", { exact: true })).toBeVisible();
   await page.goBack();
 
@@ -69,7 +68,7 @@ test("archiving a payment offers to archive its reserve", async ({ page }) => {
   await page.getByRole("button", { name: "Save" }).click();
   await expect(cardRow(page, "Save for Bike")).toContainText(euros("70,00"));
 
-  await page.getByRole("link", { name: "Recurring", exact: true }).click();
+  await openSection(page, "Recurring");
   await linkRow(page, "Bike").click();
   await page.getByRole("button", { name: "Archive payment" }).click();
   await page.getByRole("button", { name: /Move 50,00\s€ and archive/ }).click();
@@ -78,10 +77,9 @@ test("archiving a payment offers to archive its reserve", async ({ page }) => {
   await expect(page).toHaveURL(/\/recurring$/);
 
   // The money is back in the default pot; the reserve is archived and empty.
-  await page.goBack();
-  await expect(page.getByText("Estimated account balance", { exact: true })).toBeVisible();
+  await backToOverview(page);
   await expect(page.getByText("Due payments", { exact: true })).toBeHidden();
-  await page.getByRole("link", { name: "Pots", exact: true }).click();
+  await openSection(page, "Pots");
   await expect(page.getByText("Reserves", { exact: true })).toBeHidden();
   await expect(linkRow(page, "Bike")).toContainText(euros("0,00"));
   await expect(linkRow(page, "Main")).toContainText(euros("0,00"));

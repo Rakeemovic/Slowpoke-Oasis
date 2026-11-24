@@ -35,3 +35,22 @@ export function formatCents(cents: number): string {
 export function formatSignedCents(cents: number): string {
   return cents > 0 ? `+${formatCents(cents)}` : formatCents(cents);
 }
+
+/**
+ * Reads a balance typed by the user. Unlike an amount it may be zero or
+ * negative (an overdrawn account): "-12,50", "−12.50" or "0". Returns null for
+ * anything else.
+ */
+export function parseBalanceToCents(input: string): number | null {
+  const trimmed = input.trim().replace(/^[−–]/, "-");
+  const negative = trimmed.startsWith("-");
+  const digits = negative ? trimmed.slice(1).trim() : trimmed;
+  if (/^0+(?:[.,]0{1,2})?$/.test(digits)) {
+    return 0;
+  }
+  const cents = parseAmountToCents(digits);
+  if (cents === null) {
+    return null;
+  }
+  return negative ? -cents : cents;
+}

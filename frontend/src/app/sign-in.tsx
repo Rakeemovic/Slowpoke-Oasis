@@ -2,6 +2,7 @@ import { Link } from "expo-router";
 import { useState } from "react";
 
 import { useAuth } from "@/auth/auth-context";
+import { AuthHeader } from "@/components/auth-header";
 import { ErrorMessage } from "@/components/error-message";
 import { FormField } from "@/components/form-field";
 import { Screen } from "@/components/screen";
@@ -30,14 +31,8 @@ export default function SignInScreen() {
 
   return (
     <Screen>
-      <Text variant="h3">Welcome to Slowpoke Oasis</Text>
-      <FormField
-        label="Username"
-        value={username}
-        onChangeText={setUsername}
-        autoCapitalize="none"
-        autoComplete="username"
-      />
+      <AuthHeader title="Welcome back" text="Your money, your household, at a calm pace." />
+      <FormField label="Username" value={username} onChangeText={setUsername} autoCapitalize="none" autoComplete="username" />
       <FormField
         label="Password"
         value={password}
