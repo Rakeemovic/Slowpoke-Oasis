@@ -15,6 +15,7 @@ import { useLoader } from "@/hooks/use-loader";
 import { describeGoal, isGoal, potProgress } from "@/lib/goals";
 import { formatCents } from "@/lib/money";
 import { isReserve } from "@/lib/reserves";
+import { describeRoundUp } from "@/lib/round-ups";
 import { cn } from "@/lib/utils";
 
 export default function PotsScreen() {
@@ -87,6 +88,7 @@ function PotList({ ledgerId, pots: items }: { ledgerId: string; pots: Pot[] }) {
 /** A goal's row is its own progress bar: filled up to the balance against the target. */
 function PotRow({ pot, first }: { pot: Pot; first: boolean }) {
   const reached = pot.target_cents !== undefined && pot.balance_cents >= pot.target_cents;
+  const roundUp = describeRoundUp(pot);
   return (
     <ProgressRow
       progress={isGoal(pot) ? potProgress(pot) : undefined}
@@ -97,6 +99,7 @@ function PotRow({ pot, first }: { pot: Pot; first: boolean }) {
         {pot.is_default && <Text variant="muted">Default pot, shown as “available”</Text>}
         {isGoal(pot) && <Text variant="muted">{describeGoal(pot)}</Text>}
         {pot.is_separate_account && <Text variant="muted">Separate account at the bank</Text>}
+        {roundUp && <Text variant="muted">{roundUp}</Text>}
       </View>
       <View className="items-end">
         <Text className={cn("font-semibold", pot.balance_cents < 0 && "text-destructive")}>{formatCents(pot.balance_cents)}</Text>

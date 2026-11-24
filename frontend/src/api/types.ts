@@ -77,6 +77,8 @@ export interface Transaction {
   /** The occurrence of a recurring payment this expense pays (rule R6). */
   recurring_payment_id?: string;
   recurring_due_on?: string;
+  /** Set on the transfer that rounds up this expense (rule X21); it only changes together with the expense. */
+  round_up_of?: string;
   /** Only for transfers between ledgers (rule X17). */
   counterpart?: Counterpart;
   /** What the signed-in user may do with it (rule X19). The server checks again. */
@@ -193,6 +195,10 @@ export interface Pot {
   monthly_rate_cents?: number;
   /** A real sub-account at the bank (rule T9): its money is not part of the estimated account balance. */
   is_separate_account: boolean;
+  /** 0 = off, else 1, 2, 3 or 5: the pot collects the round-ups of the main pot's expenses (rule T10). */
+  round_up_multiplier: number;
+  /** The first day that is rounded up, as YYYY-MM-DD; only while the pot collects. */
+  round_up_from?: string;
   /** Calculated by the server from all bookings, never stored. */
   balance_cents: number;
   /** The recurring payment this pot is the reserve of (rule R10), or null. */
@@ -337,6 +343,8 @@ export interface PotChange {
   target_date: string;
   monthly_rate_cents: number;
   is_separate_account: boolean;
+  /** 0 switches the round-up off; switching it on moves it from the pot that collected before (rule T10). */
+  round_up_multiplier: number;
   archived: boolean;
 }
 

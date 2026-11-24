@@ -149,9 +149,12 @@ export const pots = {
 
   create: (ledgerId: string, pot: NewPot) => request<{ id: string }>("POST", `/ledgers/${enc(ledgerId)}/pots`, pot),
 
-  /** Only the fields sent are changed. */
-  update: (ledgerId: string, potId: string, change: Partial<PotChange>) =>
-    request<void>("PATCH", `/ledgers/${enc(ledgerId)}/pots/${enc(potId)}`, change),
+  /**
+   * Only the fields sent are changed. date is the app's local today: a
+   * round-up switched on starts with it (rule T10).
+   */
+  update: (ledgerId: string, potId: string, change: Partial<PotChange>, date: string) =>
+    request<void>("PATCH", `/ledgers/${enc(ledgerId)}/pots/${enc(potId)}?date=${enc(date)}`, change),
 
   /** Monthly pots need a scope (rule P5); one-time pots take none. */
   setPlanned: (ledgerId: string, potId: string, categoryId: string, amountCents: number, date: string, scope?: PlanScope) =>

@@ -220,6 +220,26 @@ func TestARoundUpCannotBeChangedOnItsOwn(t *testing.T) {
 	}
 }
 
+// The app hides what the server refuses (rule X19), so the permissions of a
+// round-up say it cannot be changed, while its expense can.
+func TestARoundUpHasNoPermissions(t *testing.T) {
+	_, s := setup(t)
+	roundUpOn(t, s, "p-holiday", 1, "2026-11-01")
+	expense := expenseOf(t, s, 1250, "2026-11-16")
+	r, _ := roundUpOf(t, s, expense)
+
+	perms, err := s.Permissions(context.Background(), "u1", []Transaction{{ID: expense}, {ID: r.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := perms[r.ID]; got.CanEdit || got.CanDelete {
+		t.Errorf("round-up permissions = %+v, want none", got)
+	}
+	if got := perms[expense]; !got.CanEdit || !got.CanDelete {
+		t.Errorf("expense permissions = %+v, want edit and delete", got)
+	}
+}
+
 func TestOnlyOnePotCollectsAndTheSettingIsChecked(t *testing.T) {
 	_, s := setup(t)
 	ctx := context.Background()
