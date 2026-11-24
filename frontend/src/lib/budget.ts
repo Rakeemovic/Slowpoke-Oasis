@@ -1,6 +1,7 @@
 import type { Budget, BudgetCategory, BudgetRecurringLine, BudgetReserveLine, Category, ReserveDue } from "@/api/types";
 import { formatDate } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
+import { type Progress, reachedProgress, spentProgress } from "@/lib/progress";
 
 /** One category of the budget together with the payments its reserves pay this month. */
 export interface BudgetGroup {
@@ -80,6 +81,8 @@ export interface SubLineText {
   progress: string;
   status?: string;
   warn?: boolean;
+  /** How far the line is; none when it has no amount to measure against. */
+  bar?: Progress;
 }
 
 export function recurringText(line: BudgetRecurringLine): SubLineText {
@@ -93,16 +96,17 @@ export function recurringText(line: BudgetRecurringLine): SubLineText {
     return { progress: `${formatCents(line.actual_cents)}, not planned` };
   }
   const progress = `${formatCents(line.actual_cents)} of ${formatCents(line.planned_cents)} · ${due}`;
+  const bar = spentProgress(line.actual_cents, line.planned_cents);
   if (line.actual_cents === 0) {
-    return { progress, status: "Open" };
+    return { progress, status: "Open", bar };
   }
   if (line.difference_cents < 0) {
-    return { progress, status: `${formatCents(-line.difference_cents)} over`, warn: true };
+    return { progress, status: `${formatCents(-line.difference_cents)} over`, warn: true, bar };
   }
   if (line.difference_cents === 0) {
-    return { progress, status: "Paid" };
+    return { progress, status: "Paid", bar };
   }
-  return { progress, status: `${formatCents(line.difference_cents)} left` };
+  return { progress, status: `${formatCents(line.difference_cents)} left`, bar };
 }
 
 export function reserveText(line: BudgetReserveLine): SubLineText {
@@ -113,7 +117,11 @@ export function reserveText(line: BudgetReserveLine): SubLineText {
   const forDue = line.due_on ? ` · for ${formatDate(line.due_on)}` : "";
   const progress = `${formatCents(line.actual_cents)} of ${formatCents(line.planned_cents)} saved${forDue}`;
   const open = line.planned_cents - line.actual_cents;
-  return { progress, status: open > 0 ? `${formatCents(open)} to save` : "Saved" };
+  return {
+    progress,
+    status: open > 0 ? `${formatCents(open)} to save` : "Saved",
+    bar: reachedProgress(line.actual_cents, line.planned_cents),
+  };
 }
 
 /** “120,00 € due 15.2.2027 from reserve “Car tax””, or that it was paid. */

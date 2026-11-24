@@ -22,6 +22,7 @@ import type {
   RecurringPaymentInput,
   ReserveRate,
   SafeToSpend,
+  SavingsGoal,
   Transaction,
   TransactionChange,
 } from "@/api/types";
@@ -122,6 +123,10 @@ export const ledgers = {
   /** asOf is the app's local today, since the server may be in another time zone. */
   balance: (ledgerId: string, asOf: string) =>
     request<Balance>("GET", `/ledgers/${enc(ledgerId)}/balance?date=${enc(asOf)}`),
+
+  /** Pots that save a rate (target date or fixed rate), with this period's rate; date is the app's local today. */
+  savingsGoals: (ledgerId: string, date: string) =>
+    request<SavingsGoal[]>("GET", `/ledgers/${enc(ledgerId)}/savings-goals?date=${enc(date)}`),
 
   /** What is safe to spend until the end of the payday period; date is the app's local today. */
   safeToSpend: (ledgerId: string, date: string) =>
