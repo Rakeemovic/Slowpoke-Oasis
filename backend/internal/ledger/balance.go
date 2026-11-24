@@ -28,6 +28,11 @@ type Balance struct {
 	// separate accounts, whose money is not on the main account, and minus the
 	// unbooked payments, because the bank has most likely paid them already.
 	EstimatedCents int64
+	// DefaultPotID identifies the bank account of the ledger when reconciling.
+	DefaultPotID string
+	// Reconciled is the last reconciliation of the bank account, or nil
+	// (rule L9).
+	Reconciled *Reconciliation
 }
 
 // SeparateAccount is a pot that is a real sub-account at the bank.
@@ -35,6 +40,8 @@ type SeparateAccount struct {
 	PotID        string
 	Name         string
 	BalanceCents int64
+	// Reconciled is the last reconciliation of the sub-account, or nil.
+	Reconciled *Reconciliation
 }
 
 // LedgerBalance returns the balance of a ledger, counting only transactions
@@ -46,15 +53,38 @@ func (s *Store) LedgerBalance(ctx context.Context, ledgerID, asOf string, now ti
 	if err != nil {
 		return Balance{}, err
 	}
+	b, err := ledgerBalance(ctx, s.db, ledgerID, asOf)
+	if err != nil {
+		return Balance{}, err
+	}
+	return b, s.addReconciliations(ctx, ledgerID, &b)
+}
 
+// addReconciliations fills in the last reconciliation of the bank account
+// and of each separate account.
+func (s *Store) addReconciliations(ctx context.Context, ledgerID string, b *Balance) error {
+	last, err := lastReconciliations(ctx, s.db, ledgerID)
+	if err != nil {
+		return err
+	}
+	b.Reconciled = last[b.DefaultPotID]
+	for i := range b.SeparateAccounts {
+		b.SeparateAccounts[i].Reconciled = last[b.SeparateAccounts[i].PotID]
+	}
+	return nil
+}
+
+// ledgerBalance is LedgerBalance on q for a valid asOf, so it also works
+// inside a database transaction.
+func ledgerBalance(ctx context.Context, q queryer, ledgerID, asOf string) (Balance, error) {
 	// Pot balances follow the same rules as in ListPots. A transfer between
 	// two pots of the ledger leaves the total unchanged, but moves money out
 	// of (pot_id) or into (counterpart_pot_id) the default pot. Starting from
 	// the default pot gives one row even for a ledger without transactions.
 	b := Balance{AsOf: asOf}
-	err = s.db.QueryRowContext(ctx, `
+	err := q.QueryRowContext(ctx, `
 		SELECT
-		  d.name,
+		  d.id, d.name,
 		  COALESCE(SUM(CASE WHEN t.type <> 'transfer' THEN t.amount_cents ELSE 0 END), 0),
 		  COALESCE(SUM(CASE
 		    WHEN t.type <> 'transfer' AND t.pot_id = d.id THEN t.amount_cents
@@ -67,17 +97,17 @@ func (s *Store) LedgerBalance(ctx context.Context, ledgerID, asOf string, now ti
 		WHERE d.ledger_id = ? AND d.is_default = 1
 		GROUP BY d.id`,
 		asOf, ledgerID,
-	).Scan(&b.DefaultPotName, &b.TotalCents, &b.AvailableCents)
+	).Scan(&b.DefaultPotID, &b.DefaultPotName, &b.TotalCents, &b.AvailableCents)
 	if err != nil {
 		return Balance{}, err
 	}
-	if b.SeparateAccounts, err = s.separateAccounts(ctx, ledgerID, asOf); err != nil {
+	if b.SeparateAccounts, err = separateAccounts(ctx, q, ledgerID, asOf); err != nil {
 		return Balance{}, err
 	}
 	for _, a := range b.SeparateAccounts {
 		b.SeparateCents += a.BalanceCents
 	}
-	if err := s.addUnbookedPayments(ctx, ledgerID, &b); err != nil {
+	if err := addUnbookedPayments(ctx, q, ledgerID, &b); err != nil {
 		return Balance{}, err
 	}
 	return b, nil
@@ -86,8 +116,8 @@ func (s *Store) LedgerBalance(ctx context.Context, ledgerID, asOf string, now ti
 // separateAccounts returns the sub-account pots of a ledger with their
 // balance on asOf, ordered by name. The balance counts like the default
 // pot's in LedgerBalance.
-func (s *Store) separateAccounts(ctx context.Context, ledgerID, asOf string) ([]SeparateAccount, error) {
-	rows, err := s.db.QueryContext(ctx, `
+func separateAccounts(ctx context.Context, q queryer, ledgerID, asOf string) ([]SeparateAccount, error) {
+	rows, err := q.QueryContext(ctx, `
 		SELECT p.id, p.name,
 		  COALESCE(SUM(CASE
 		    WHEN t.type <> 'transfer' AND t.pot_id = p.id THEN t.amount_cents
@@ -119,8 +149,8 @@ func (s *Store) separateAccounts(ctx context.Context, ledgerID, asOf string) ([]
 // addUnbookedPayments fills in the unbooked recurring payments and the
 // estimated balance. Upcoming occurrences do not count: the bank has not
 // paid them yet.
-func (s *Store) addUnbookedPayments(ctx context.Context, ledgerID string, b *Balance) error {
-	open, err := s.OpenOccurrences(ctx, ledgerID, b.AsOf)
+func addUnbookedPayments(ctx context.Context, q queryer, ledgerID string, b *Balance) error {
+	open, err := openOccurrences(ctx, q, ledgerID, b.AsOf)
 	if err != nil {
 		return err
 	}

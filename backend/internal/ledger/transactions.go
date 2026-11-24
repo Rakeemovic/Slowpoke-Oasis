@@ -21,6 +21,10 @@ const (
 	// by CreateLinkedTransfer only and cannot be entered directly.
 	TypeTransferOut TxType = "transfer_out"
 	TypeTransferIn  TxType = "transfer_in"
+	// TypeCorrection evens out the difference found when reconciling an
+	// account (rule X22). It has no category and either sign, and is created
+	// by Reconcile only.
+	TypeCorrection TxType = "correction"
 )
 
 // maxNoteLength is the longest note a transaction can have (rule X9).
