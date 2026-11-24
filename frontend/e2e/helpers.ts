@@ -119,6 +119,23 @@ export function transactionRow(page: Page, title: string): Locator {
   return page.locator('a[href*="/transactions/"]').filter({ hasText: title });
 }
 
+/** Creates a payment due today, so it falls into the current month whatever the date. */
+export async function createPaymentDueToday(page: Page, name: string, amount: string, category: string, yearly = false): Promise<void> {
+  await page.getByRole("link", { name: "Recurring", exact: true }).click();
+  await page.getByRole("link", { name: "New recurring payment" }).click();
+  await page.getByLabel("Name", { exact: true }).fill(name);
+  await page.getByLabel("Amount (€)").fill(amount);
+  await page.getByRole("button", { name: category, exact: true }).click();
+  if (yearly) {
+    await page.getByRole("button", { name: "Yearly", exact: true }).click();
+  }
+  await page.getByLabel("Due day (1–31)").fill(String(new Date().getDate()));
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("link", { name: new RegExp(`^${name} `) })).toContainText(`on day ${new Date().getDate()}`);
+  await page.goBack();
+  await expect(page.getByText("Estimated account balance", { exact: true })).toBeVisible();
+}
+
 function escape(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

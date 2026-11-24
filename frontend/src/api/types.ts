@@ -218,6 +218,29 @@ export interface PlanLine {
   difference_cents: number;
 }
 
+/**
+ * What the main pot can spend freely until the end of the payday period
+ * (rule L8): main_pot_cents minus the three deductions.
+ */
+export interface SafeToSpend {
+  as_of: string;
+  period_end: string;
+  /** Days from as_of to period_end, both included. */
+  days_left: number;
+  main_pot_cents: number;
+  /** Open monthly payments of the main pot up to period_end, overdue ones included. */
+  recurring_cents: number;
+  recurring_count: number;
+  /** What the reserves still need to receive this period. */
+  reserve_rates_cents: number;
+  /** Rest of the budget of planned expense categories. */
+  budget_left_cents: number;
+  /** Negative when the period is over-planned. */
+  amount_cents: number;
+  /** Rounded down; 0 when nothing is left. */
+  per_day_cents: number;
+}
+
 /** A monthly recurring payment of the main pot, below its category (rule P9). */
 export interface BudgetRecurringLine {
   payment_id: string;
