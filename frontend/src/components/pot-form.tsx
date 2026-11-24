@@ -4,6 +4,7 @@ import { View } from "react-native";
 import { ErrorMessage } from "@/components/error-message";
 import { FormField } from "@/components/form-field";
 import { KindButton } from "@/components/kind-button";
+import { RoundUpChoice } from "@/components/round-up-choice";
 import { Button } from "@/components/ui/button";
 import { Text } from "@/components/ui/text";
 import { isIsoDate } from "@/lib/dates";
@@ -20,6 +21,8 @@ export interface PotFormValues {
   target_date: string;
   monthly_rate_cents: number;
   is_separate_account: boolean;
+  /** Only set when the form offers round-ups (rule T10). */
+  round_up_multiplier?: number;
 }
 
 /**
@@ -41,18 +44,22 @@ const goalHints: Record<GoalKind, string> = {
  * The form for a pot, used both to create one and to edit one. The default
  * pot is monthly and has no savings goal, so its goal fields are hidden. The
  * default pot and reserves can never be a separate account at the bank, so
- * `hideAccount` hides that switch. onSubmit saves the values and throws on
+ * `hideAccount` hides that switch. Round-ups are only offered when `roundUp`
+ * is given, since only some pots of personal ledgers may collect them. onSubmit saves the values and throws on
  * failure; the form shows the error.
  */
 export function PotForm({
   initial,
   hideGoal,
   hideAccount,
+  roundUp,
   onSubmit,
 }: {
   initial?: PotFormValues;
   hideGoal?: boolean;
   hideAccount?: boolean;
+  /** Offers round-ups; `replaces` names the pot that collects now, if another one does. */
+  roundUp?: { replaces?: string };
   onSubmit: (values: PotFormValues) => Promise<void>;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
@@ -61,6 +68,7 @@ export function PotForm({
   const [targetDate, setTargetDate] = useState(initial?.target_date ?? "");
   const [rate, setRate] = useState(initial?.monthly_rate_cents ? centsToAmountInput(initial.monthly_rate_cents) : "");
   const [separate, setSeparate] = useState(initial?.is_separate_account ?? false);
+  const [multiplier, setMultiplier] = useState(initial?.round_up_multiplier ?? 0);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
 
@@ -71,6 +79,9 @@ export function PotForm({
       return;
     }
     result.is_separate_account = !hideAccount && separate;
+    if (roundUp) {
+      result.round_up_multiplier = multiplier;
+    }
     setBusy(true);
     setError(undefined);
     try {
@@ -138,6 +149,7 @@ export function PotForm({
           </Text>
         </View>
       )}
+      {roundUp && <RoundUpChoice value={multiplier} onChange={setMultiplier} replaces={roundUp.replaces} />}
       <ErrorMessage message={error} />
       <Button onPress={submit} disabled={busy}>
         <Text>{busy ? "Saving…" : "Save"}</Text>

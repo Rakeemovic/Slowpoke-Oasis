@@ -170,7 +170,7 @@ function LeftoverOffer({ ledgerId, leftover }: { ledgerId: string; leftover: Lef
           booked_on: today(),
         });
       }
-      await pots.update(ledgerId, reserve.id, { archived: true });
+      await pots.update(ledgerId, reserve.id, { archived: true }, today());
       router.back();
     } catch (e) {
       setError(errorMessage(e));
