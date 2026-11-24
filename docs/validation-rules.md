@@ -1,5 +1,7 @@
 # Validation Rules
 
+API paths are relative to the API root `/api` (see [self-hosting.md](self-hosting.md)).
+
 Each rule is enforced either by the database (CHECK, UNIQUE, NOT NULL, foreign keys, triggers) or by the application. The database enforcement is in the migrations under `backend/migrations/`, starting with `0001_init.sql`. The data model is described in [data-model.md](data-model.md).
 
 ## Ledger
