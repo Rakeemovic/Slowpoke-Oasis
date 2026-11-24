@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { book, euros, openLedger, register, uniqueUsername } from "./helpers";
+import { book, createPaymentDueToday, euros, openLedger, register, uniqueUsername } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await register(page, uniqueUsername("budget"));
@@ -63,31 +63,14 @@ test("the monthly plan changes this month or also the coming ones", async ({ pag
   await expect(page.getByText(/^Spent 40,00\s€ of 120,00\s€ planned$/)).toBeVisible();
 });
 
-/** Creates a payment due today, so it falls into the current month whatever the date. */
-async function createDueToday(page: Page, name: string, amount: string, category: string, yearly = false): Promise<void> {
-  await page.getByRole("link", { name: "Recurring", exact: true }).click();
-  await page.getByRole("link", { name: "New recurring payment" }).click();
-  await page.getByLabel("Name", { exact: true }).fill(name);
-  await page.getByLabel("Amount (€)").fill(amount);
-  await page.getByRole("button", { name: category, exact: true }).click();
-  if (yearly) {
-    await page.getByRole("button", { name: "Yearly", exact: true }).click();
-  }
-  await page.getByLabel("Due day (1–31)").fill(String(new Date().getDate()));
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByRole("link", { name: new RegExp(`^${name} `) })).toContainText(`on day ${new Date().getDate()}`);
-  await page.goBack();
-  await expect(page.getByText("Estimated account balance", { exact: true })).toBeVisible();
-}
-
 /** A line below a category, found by its first text. */
 function subRow(page: Page, title: string): Locator {
   return page.getByText(title, { exact: true }).locator("xpath=../..");
 }
 
 test("payments and reserve rates appear below their category", async ({ page }) => {
-  await createDueToday(page, "Flat", "800", "Rent");
-  await createDueToday(page, "Car", "600", "Insurance", true);
+  await createPaymentDueToday(page, "Flat", "800", "Rent");
+  await createPaymentDueToday(page, "Car", "600", "Insurance", true);
   await page.getByRole("link", { name: "Budget", exact: true }).click();
 
   // The monthly payment is a line of its own below the category.

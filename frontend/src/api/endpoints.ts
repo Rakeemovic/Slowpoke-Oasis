@@ -14,13 +14,14 @@ import type {
   NewPotTransfer,
   NewTransaction,
   Occurrence,
+  PlanScope,
+  Pot,
+  PotChange,
   RecurringPayment,
   RecurringPaymentChange,
   RecurringPaymentInput,
   ReserveRate,
-  Pot,
-  PotChange,
-  PlanScope,
+  SafeToSpend,
   Transaction,
   TransactionChange,
 } from "@/api/types";
@@ -121,6 +122,10 @@ export const ledgers = {
   /** asOf is the app's local today, since the server may be in another time zone. */
   balance: (ledgerId: string, asOf: string) =>
     request<Balance>("GET", `/ledgers/${enc(ledgerId)}/balance?date=${enc(asOf)}`),
+
+  /** What is safe to spend until the end of the payday period; date is the app's local today. */
+  safeToSpend: (ledgerId: string, date: string) =>
+    request<SafeToSpend>("GET", `/ledgers/${enc(ledgerId)}/safe-to-spend?date=${enc(date)}`),
 
   /**
    * The budget of the main pot for one month, by default the current one.
