@@ -2,22 +2,32 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 
-import { pots } from "@/api/endpoints";
-import type { Pot, PotChange } from "@/api/types";
+import { ledgers, pots } from "@/api/endpoints";
+import type { Pot, SavingsGoal } from "@/api/types";
 import { ConfirmPanel } from "@/components/confirm-panel";
 import { ErrorMessage } from "@/components/error-message";
 import { PotForm, type PotFormValues } from "@/components/pot-form";
+import { ProgressRow } from "@/components/progress-row";
 import { Screen } from "@/components/screen";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Text } from "@/components/ui/text";
 import { useLoader } from "@/hooks/use-loader";
+import { today } from "@/lib/dates";
 import { errorMessage } from "@/lib/errors";
+import { describeGoal, describeRate, isGoal, potProgress } from "@/lib/goals";
 import { formatCents } from "@/lib/money";
 
 export default function PotScreen() {
   const { ledgerId, potId } = useLocalSearchParams<{ ledgerId: string; potId: string }>();
-  const { data, error, loading, reload } = useLoader(useCallback(() => pots.list(ledgerId), [ledgerId]));
-  const pot = data?.find((p) => p.id === potId);
+  const { data, error, loading, reload } = useLoader(
+    useCallback(async () => {
+      const [list, goals] = await Promise.all([pots.list(ledgerId), ledgers.savingsGoals(ledgerId, today())]);
+      return { list, goals };
+    }, [ledgerId]),
+  );
+  const pot = data?.list.find((p) => p.id === potId);
+  const goal = data?.goals.find((g) => g.pot_id === potId);
 
   if (!pot) {
     return (
@@ -35,14 +45,40 @@ export default function PotScreen() {
 
   return (
     <Screen>
+      {isGoal(pot) && !pot.archived && <GoalSummary pot={pot} goal={goal} />}
       <PotForm
-        initial={{ name: pot.name, target_cents: pot.target_cents ?? 0, target_date: pot.target_date ?? "" }}
+        initial={{
+          name: pot.name,
+          target_cents: pot.target_cents ?? 0,
+          target_date: pot.target_date ?? "",
+          monthly_rate_cents: pot.monthly_rate_cents ?? 0,
+        }}
         hideGoal={pot.is_default}
         onSubmit={save}
       />
       {/* Rule T2: the default pot is never archived. */}
       {!pot.is_default && <ArchiveSection ledgerId={ledgerId} pot={pot} />}
     </Screen>
+  );
+}
+
+/**
+ * How far the pot is on its way: the row is a progress bar against the
+ * target, below it what this payday period asks for (rule T8).
+ */
+function GoalSummary({ pot, goal }: { pot: Pot; goal?: SavingsGoal }) {
+  const target = pot.target_cents ?? 0;
+  return (
+    <Card className="py-0">
+      <ProgressRow progress={potProgress(pot)} label={pot.name} className="gap-1 px-4 py-3">
+        <Text className="font-medium">{target > 0 ? `${formatCents(pot.balance_cents)} of ${formatCents(target)}` : formatCents(pot.balance_cents)}</Text>
+        <Text variant="muted">{describeGoal(pot)}</Text>
+        {goal?.reached && <Text className="font-semibold">Goal reached</Text>}
+        {goal && !goal.reached && goal.rate_cents > 0 && (
+          <Text variant="muted">{`This period: ${describeRate(goal)}`}</Text>
+        )}
+      </ProgressRow>
+    </Card>
   );
 }
 
@@ -55,13 +91,8 @@ function ArchiveSection({ ledgerId, pot }: { ledgerId: string; pot: Pot }) {
     setBusy(true);
     setError(undefined);
     try {
-      const change: PotChange = {
-        name: pot.name,
-        target_cents: pot.target_cents ?? 0,
-        target_date: pot.target_date ?? "",
-        archived,
-      };
-      await pots.update(ledgerId, pot.id, change);
+      // Only the archive flag changes; the goal stays as it is.
+      await pots.update(ledgerId, pot.id, { archived });
       router.back();
     } catch (e) {
       setError(errorMessage(e));

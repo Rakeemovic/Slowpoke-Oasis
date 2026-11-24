@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { book, createPaymentDueToday, euros, openLedger, register, uniqueUsername } from "./helpers";
+import { bar, book, createPaymentDueToday, euros, openLedger, register, uniqueUsername } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await register(page, uniqueUsername("budget"));
@@ -30,6 +30,8 @@ test("the monthly plan changes this month or also the coming ones", async ({ pag
   await setAmount(page, "Groceries", "100", "This and coming months");
   await expect(planRow(page, "Groceries")).toContainText(euros("60,00"));
   await expect(page.getByText(/^Spent 40,00\s€ of 100,00\s€ planned$/)).toBeVisible();
+  // The row itself is the bar: 40 € of 100 € is filled to 40 %.
+  await expect(bar(page, "Groceries")).toHaveAttribute("aria-valuenow", "40");
 
   // Only this month: the coming month keeps the template.
   await planRow(page, "Groceries").click();
