@@ -76,6 +76,9 @@ type transactionResponse struct {
 	// The occurrence of a recurring payment this expense pays (rule R6).
 	RecurringPaymentID string `json:"recurring_payment_id,omitempty"`
 	RecurringDueOn     string `json:"recurring_due_on,omitempty"`
+	// RoundUpOf is the expense this transfer rounds up (rule X21). Such a
+	// transfer cannot be changed or deleted on its own.
+	RoundUpOf string `json:"round_up_of,omitempty"`
 	// Counterpart is set for transfers between ledgers (rule X17).
 	Counterpart *counterpartResponse `json:"counterpart,omitempty"`
 }
@@ -107,6 +110,7 @@ func newTransactionResponse(t ledger.Transaction, counterparts map[string]ledger
 
 		RecurringPaymentID: t.RecurringPaymentID,
 		RecurringDueOn:     t.RecurringDueOn,
+		RoundUpOf:          t.RoundUpOf,
 	}
 	if c, ok := counterparts[t.ID]; ok {
 		resp.Counterpart = &counterpartResponse{Kind: c.Kind, LedgerID: c.LedgerID, Name: c.Name}

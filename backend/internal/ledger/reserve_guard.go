@@ -101,7 +101,7 @@ func activeReserveBalances(ctx context.Context, q queryer, potIDs []string) (map
 func transactionPots(ctx context.Context, q queryer, ledgerID, id string) ([]string, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT pot_id, COALESCE(counterpart_pot_id, '') FROM transactions
-		WHERE `+selfAndLinkedLeg, id, ledgerID, id, ledgerID)
+		WHERE `+selfAndLinkedLeg, id, ledgerID, id, ledgerID, id, ledgerID)
 	if err != nil {
 		return nil, err
 	}
