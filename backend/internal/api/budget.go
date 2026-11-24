@@ -36,6 +36,15 @@ type reserveLineResponse struct {
 	Preview      bool   `json:"preview"`
 }
 
+// savingsLineResponse has planned_cents null in past months (rule P11).
+type savingsLineResponse struct {
+	PotID        string `json:"pot_id"`
+	Name         string `json:"name"`
+	PlannedCents *int64 `json:"planned_cents"`
+	ActualCents  int64  `json:"actual_cents"`
+	Preview      bool   `json:"preview"`
+}
+
 type reserveDueResponse struct {
 	PaymentID    string `json:"payment_id"`
 	Name         string `json:"name"`
@@ -77,6 +86,10 @@ func (s *Server) budget(w http.ResponseWriter, r *http.Request) {
 	for _, d := range b.ReserveDues {
 		dues = append(dues, reserveDueResponse(d))
 	}
+	savings := make([]savingsLineResponse, 0, len(b.Savings))
+	for _, l := range b.Savings {
+		savings = append(savings, savingsLineResponse(l))
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"pot_id":        b.PotID,
 		"month":         b.Month,
@@ -86,6 +99,7 @@ func (s *Server) budget(w http.ResponseWriter, r *http.Request) {
 		"to":            b.To,
 		"categories":    categories,
 		"reserve_dues":  dues,
+		"savings":       savings,
 	})
 }
 

@@ -22,10 +22,13 @@ type SafeToSpend struct {
 	// ReserveRatesCents is what the reserves still need to receive this
 	// period: the parts of their rates not saved yet.
 	ReserveRatesCents int64
+	// SavingsCents is what the savings goals still need to receive this
+	// period: the parts of their rates not saved yet.
+	SavingsCents int64
 	// BudgetLeftCents is the rest of the budget of the planned expense
 	// categories, without recurring bookings; overspent categories count 0.
 	BudgetLeftCents int64
-	// AmountCents is MainPotCents minus the three deductions; negative means
+	// AmountCents is MainPotCents minus the four deductions; negative means
 	// the period is over-planned.
 	AmountCents int64
 	// PerDayCents is AmountCents spread over DaysLeft, rounded down; 0 when
@@ -63,11 +66,14 @@ func (s *Store) SafeToSpend(ctx context.Context, ledgerID, today string) (SafeTo
 	if err := s.addOpenReserveRates(ctx, ledgerID, today, &out); err != nil {
 		return SafeToSpend{}, err
 	}
+	if err := s.addOpenSavings(ctx, ledgerID, today, &out); err != nil {
+		return SafeToSpend{}, err
+	}
 	if err := s.addBudgetLeft(ctx, ledgerID, mainPot, p, &out); err != nil {
 		return SafeToSpend{}, err
 	}
 
-	out.AmountCents = out.MainPotCents - out.RecurringCents - out.ReserveRatesCents - out.BudgetLeftCents
+	out.AmountCents = out.MainPotCents - out.RecurringCents - out.ReserveRatesCents - out.SavingsCents - out.BudgetLeftCents
 	if out.AmountCents > 0 {
 		out.PerDayCents = out.AmountCents / int64(out.DaysLeft)
 	}
@@ -98,6 +104,17 @@ func (s *Store) addOpenReserveRates(ctx context.Context, ledgerID, today string,
 	}
 	for _, r := range rates {
 		out.ReserveRatesCents += r.OpenCents
+	}
+	return nil
+}
+
+func (s *Store) addOpenSavings(ctx context.Context, ledgerID, today string, out *SafeToSpend) error {
+	goals, err := s.SavingsGoals(ctx, ledgerID, today)
+	if err != nil {
+		return err
+	}
+	for _, g := range goals {
+		out.SavingsCents += g.OpenCents
 	}
 	return nil
 }

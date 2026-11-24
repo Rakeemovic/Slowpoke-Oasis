@@ -15,6 +15,8 @@ type potResponse struct {
 	Archived    bool   `json:"archived"`
 	TargetCents int64  `json:"target_cents,omitempty"`
 	TargetDate  string `json:"target_date,omitempty"`
+	// MonthlyRateCents is the fixed rate per payday period (rule T6).
+	MonthlyRateCents int64 `json:"monthly_rate_cents,omitempty"`
 	// ReserveFor is the recurring payment this pot is the reserve of (R10).
 	ReserveFor   *string           `json:"reserve_for"`
 	BalanceCents int64             `json:"balance_cents"`
@@ -32,18 +34,20 @@ func (s *Server) createPot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Name        string `json:"name"`
-		TargetCents int64  `json:"target_cents"`
-		TargetDate  string `json:"target_date"`
+		Name             string `json:"name"`
+		TargetCents      int64  `json:"target_cents"`
+		TargetDate       string `json:"target_date"`
+		MonthlyRateCents int64  `json:"monthly_rate_cents"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
 	}
 	id, err := s.store.CreatePot(r.Context(), ledger.NewPot{
-		LedgerID:    r.PathValue("ledger"),
-		Name:        req.Name,
-		TargetCents: req.TargetCents,
-		TargetDate:  req.TargetDate,
+		LedgerID:         r.PathValue("ledger"),
+		Name:             req.Name,
+		TargetCents:      req.TargetCents,
+		TargetDate:       req.TargetDate,
+		MonthlyRateCents: req.MonthlyRateCents,
 	})
 	if err != nil {
 		fail(w, err)
@@ -70,16 +74,17 @@ func (s *Server) listPots(w http.ResponseWriter, r *http.Request) {
 			planned = append(planned, plannedResponse{CategoryID: l.CategoryID, AmountCents: l.AmountCents})
 		}
 		out = append(out, potResponse{
-			ID:           p.ID,
-			Name:         p.Name,
-			Kind:         p.Kind,
-			IsDefault:    p.IsDefault,
-			Archived:     p.Archived,
-			TargetCents:  p.TargetCents,
-			TargetDate:   p.TargetDate,
-			ReserveFor:   nullIfEmpty(p.ReserveFor),
-			BalanceCents: p.BalanceCents,
-			Planned:      planned,
+			ID:               p.ID,
+			Name:             p.Name,
+			Kind:             p.Kind,
+			IsDefault:        p.IsDefault,
+			Archived:         p.Archived,
+			TargetCents:      p.TargetCents,
+			TargetDate:       p.TargetDate,
+			MonthlyRateCents: p.MonthlyRateCents,
+			ReserveFor:       nullIfEmpty(p.ReserveFor),
+			BalanceCents:     p.BalanceCents,
+			Planned:          planned,
 		})
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -87,25 +92,27 @@ func (s *Server) listPots(w http.ResponseWriter, r *http.Request) {
 
 // PATCH /ledgers/{ledger}/pots/{pot}
 // Only the fields present in the body are changed. Sending target_cents: 0
-// removes the target and its date.
+// removes the target and its date, monthly_rate_cents: 0 the fixed rate.
 func (s *Server) updatePot(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireLedgerAccess(w, r); !ok {
 		return
 	}
 	var req struct {
-		Name        *string `json:"name"`
-		TargetCents *int64  `json:"target_cents"`
-		TargetDate  *string `json:"target_date"`
-		Archived    *bool   `json:"archived"`
+		Name             *string `json:"name"`
+		TargetCents      *int64  `json:"target_cents"`
+		TargetDate       *string `json:"target_date"`
+		MonthlyRateCents *int64  `json:"monthly_rate_cents"`
+		Archived         *bool   `json:"archived"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
 	}
 	err := s.store.UpdatePot(r.Context(), r.PathValue("ledger"), r.PathValue("pot"), ledger.PotUpdate{
-		Name:        req.Name,
-		TargetCents: req.TargetCents,
-		TargetDate:  req.TargetDate,
-		Archived:    req.Archived,
+		Name:             req.Name,
+		TargetCents:      req.TargetCents,
+		TargetDate:       req.TargetDate,
+		MonthlyRateCents: req.MonthlyRateCents,
+		Archived:         req.Archived,
 	})
 	if err != nil {
 		fail(w, err)
