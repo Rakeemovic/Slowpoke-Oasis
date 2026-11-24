@@ -19,6 +19,10 @@ type potResponse struct {
 	MonthlyRateCents int64 `json:"monthly_rate_cents,omitempty"`
 	// IsSeparateAccount: a real sub-account at the bank (rule T9).
 	IsSeparateAccount bool `json:"is_separate_account"`
+	// RoundUpMultiplier is 0 (off) or 1, 2, 3 or 5: the pot collects the
+	// spare change of expenses from the main pot (rule T10).
+	RoundUpMultiplier int    `json:"round_up_multiplier"`
+	RoundUpFrom       string `json:"round_up_from,omitempty"`
 	// ReserveFor is the recurring payment this pot is the reserve of (R10).
 	ReserveFor   *string           `json:"reserve_for"`
 	BalanceCents int64             `json:"balance_cents"`
@@ -87,6 +91,8 @@ func (s *Server) listPots(w http.ResponseWriter, r *http.Request) {
 			TargetDate:        p.TargetDate,
 			MonthlyRateCents:  p.MonthlyRateCents,
 			IsSeparateAccount: p.IsSeparateAccount,
+			RoundUpMultiplier: p.RoundUpMultiplier,
+			RoundUpFrom:       p.RoundUpFrom,
 			ReserveFor:        nullIfEmpty(p.ReserveFor),
 			BalanceCents:      p.BalanceCents,
 			Planned:           planned,
@@ -98,28 +104,37 @@ func (s *Server) listPots(w http.ResponseWriter, r *http.Request) {
 // PATCH /ledgers/{ledger}/pots/{pot}
 // Only the fields present in the body are changed. Sending target_cents: 0
 // removes the target and its date, monthly_rate_cents: 0 the fixed rate.
+// round_up_multiplier (0, 1, 2, 3 or 5) switches the round-up of the pot; date
+// (the app's local today) is the first day that is rounded up.
 func (s *Server) updatePot(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireLedgerAccess(w, r); !ok {
 		return
 	}
 	var req struct {
-		Name             *string `json:"name"`
-		TargetCents      *int64  `json:"target_cents"`
-		TargetDate       *string `json:"target_date"`
-		MonthlyRateCents *int64  `json:"monthly_rate_cents"`
-		SeparateAccount  *bool   `json:"is_separate_account"`
-		Archived         *bool   `json:"archived"`
+		Name              *string `json:"name"`
+		TargetCents       *int64  `json:"target_cents"`
+		TargetDate        *string `json:"target_date"`
+		MonthlyRateCents  *int64  `json:"monthly_rate_cents"`
+		SeparateAccount   *bool   `json:"is_separate_account"`
+		RoundUpMultiplier *int    `json:"round_up_multiplier"`
+		Archived          *bool   `json:"archived"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
 	}
+	today, ok := s.today(w, r)
+	if !ok {
+		return
+	}
 	err := s.store.UpdatePot(r.Context(), r.PathValue("ledger"), r.PathValue("pot"), ledger.PotUpdate{
-		Name:             req.Name,
-		TargetCents:      req.TargetCents,
-		TargetDate:       req.TargetDate,
-		MonthlyRateCents: req.MonthlyRateCents,
-		SeparateAccount:  req.SeparateAccount,
-		Archived:         req.Archived,
+		Name:              req.Name,
+		TargetCents:       req.TargetCents,
+		TargetDate:        req.TargetDate,
+		MonthlyRateCents:  req.MonthlyRateCents,
+		SeparateAccount:   req.SeparateAccount,
+		RoundUpMultiplier: req.RoundUpMultiplier,
+		Today:             today,
+		Archived:          req.Archived,
 	})
 	if err != nil {
 		fail(w, err)

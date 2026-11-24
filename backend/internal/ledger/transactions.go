@@ -178,6 +178,9 @@ func (s *Store) createTransaction(ctx context.Context, in NewTransaction, topUp 
 		if id, err = insertTransaction(ctx, tx, in, now); err != nil {
 			return err
 		}
+		if err := syncRoundUp(ctx, tx, in.LedgerID, id, now); err != nil {
+			return err
+		}
 		return guard.check(ctx, tx)
 	})
 	if err != nil {
