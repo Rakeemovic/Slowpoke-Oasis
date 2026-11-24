@@ -37,7 +37,8 @@ async function createPot(
   await page.getByRole("link", { name: "New pot" }).click();
   await page.getByLabel("Name", { exact: true }).fill(name);
   if (goal) {
-    await page.getByLabel("Savings goal (€, optional)").fill(goal);
+    await page.getByRole("button", { name: "Target", exact: true }).click();
+    await page.getByLabel("Target amount (€)").fill(goal);
   }
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("link", { name: "New pot" })).toBeVisible();

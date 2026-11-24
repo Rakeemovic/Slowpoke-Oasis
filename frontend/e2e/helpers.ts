@@ -136,6 +136,16 @@ export async function createPaymentDueToday(page: Page, name: string, amount: st
   await expect(page.getByText("Estimated account balance", { exact: true })).toBeVisible();
 }
 
+/**
+ * The fill of a progress row (see ProgressRow), named like the row. It is
+ * decoration for screen readers, so it is found by its label, and a fill of
+ * 0 % has no size. Call it where only one such row is on screen: earlier
+ * screens stay in the DOM.
+ */
+export function bar(page: Page, name: string): Locator {
+  return page.locator(`[aria-label="${name} progress"]`);
+}
+
 function escape(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

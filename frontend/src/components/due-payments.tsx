@@ -2,8 +2,8 @@ import { Link } from "expo-router";
 import { useCallback, useState } from "react";
 import { View } from "react-native";
 
-import { recurring } from "@/api/endpoints";
-import type { Occurrence, ReserveRate } from "@/api/types";
+import { ledgers, recurring } from "@/api/endpoints";
+import type { Occurrence } from "@/api/types";
 import { ErrorMessage } from "@/components/error-message";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,23 +13,38 @@ import { today } from "@/lib/dates";
 import { errorMessage } from "@/lib/errors";
 import { formatCents } from "@/lib/money";
 import { describeOccurrence } from "@/lib/recurring";
-import { describeRate } from "@/lib/reserves";
+import { describeRate as describeGoalRate } from "@/lib/goals";
+import { describeRate as describeReserveRate } from "@/lib/reserves";
 import { cn } from "@/lib/utils";
 
 /**
  * The open occurrences of a ledger's recurring payments up to the end of the
  * current period. "Book" opens a prefilled booking, "Skip" closes one without
  * booking (rule R7). A skipped row stays while the ledger is open, so the
- * skip can be undone. Below them, the rates the reserves should receive in
- * this period (rule R14); "Transfer" opens a prefilled move into the reserve.
+ * skip can be undone. Below them, the rates the reserves (rule R14) and the
+ * savings goals (rule T8) should receive in this period; "Transfer" opens a
+ * prefilled move into their pot.
  * Without anything due or to save, the card is not shown.
  */
 export function DuePayments({ ledgerId, onChanged }: { ledgerId: string; onChanged?: () => void }) {
   const { data, error, reload } = useLoader(
     useCallback(async () => {
       const date = today();
-      const [due, rates] = await Promise.all([recurring.due(ledgerId, date), recurring.reserveRates(ledgerId, date)]);
-      return { due, rates: rates.filter((r) => r.rate_cents > 0) };
+      const [due, rates, goals] = await Promise.all([
+        recurring.due(ledgerId, date),
+        recurring.reserveRates(ledgerId, date),
+        ledgers.savingsGoals(ledgerId, date),
+      ]);
+      // Reserves and goals ask for a rate the same way; both have a pot to move money into.
+      const saving: SaveRate[] = [
+        ...rates
+          .filter((r) => r.rate_cents > 0)
+          .map((r) => ({ key: r.recurring_payment_id, name: r.name, potId: r.pot_id, openCents: r.open_cents, detail: describeReserveRate(r) })),
+        ...goals
+          .filter((g) => g.rate_cents > 0)
+          .map((g) => ({ key: g.pot_id, name: g.name, potId: g.pot_id, openCents: g.open_cents, detail: describeGoalRate(g) })),
+      ];
+      return { due, saving };
     }, [ledgerId]),
   );
   // Occurrences skipped here, so they can be undone. If someone else undid
@@ -43,8 +58,8 @@ export function DuePayments({ ledgerId, onChanged }: { ledgerId: string; onChang
   if (error) {
     return <ErrorMessage message={error} onRetry={reload} />;
   }
-  const rates = data?.rates ?? [];
-  if (rows.length === 0 && rates.length === 0) {
+  const saving = data?.saving ?? [];
+  if (rows.length === 0 && saving.length === 0) {
     return null;
   }
 
@@ -71,8 +86,8 @@ export function DuePayments({ ledgerId, onChanged }: { ledgerId: string; onChang
               }}
             />
           ))}
-          {rates.map((rate, index) => (
-            <RateRow key={rate.recurring_payment_id} ledgerId={ledgerId} rate={rate} first={rows.length === 0 && index === 0} />
+          {saving.map((rate, index) => (
+            <SaveRow key={rate.key} ledgerId={ledgerId} rate={rate} first={rows.length === 0 && index === 0} />
           ))}
         </CardContent>
       </Card>
@@ -150,23 +165,33 @@ function DueRow({
   );
 }
 
-function RateRow({ ledgerId, rate, first }: { ledgerId: string; rate: ReserveRate; first: boolean }) {
-  const done = rate.open_cents === 0;
+/** What a reserve or a savings goal should receive in this period, in the shape the card shows. */
+interface SaveRate {
+  key: string;
+  name: string;
+  /** The pot the money goes into. */
+  potId: string;
+  openCents: number;
+  detail: string;
+}
+
+function SaveRow({ ledgerId, rate, first }: { ledgerId: string; rate: SaveRate; first: boolean }) {
+  const done = rate.openCents === 0;
   return (
     <View className={cn("gap-2 px-4 py-3", !first && "border-t border-border")}>
       <View className="flex-row items-center gap-3">
         <View className="flex-1 gap-0.5">
           <Text className="font-medium">Save for {rate.name}</Text>
-          <Text variant="muted">{done ? "Saved for this period" : describeRate(rate)}</Text>
+          <Text variant="muted">{done ? "Saved for this period" : rate.detail}</Text>
         </View>
-        <Text className={cn("font-semibold", done && "text-muted-foreground")}>{formatCents(rate.open_cents)}</Text>
+        <Text className={cn("font-semibold", done && "text-muted-foreground")}>{formatCents(rate.openCents)}</Text>
       </View>
       {!done && (
         <View className="flex-row gap-2">
           <Link
             href={{
               pathname: "/ledgers/[ledgerId]/move",
-              params: { ledgerId, toPotId: rate.pot_id, amountCents: String(rate.open_cents) },
+              params: { ledgerId, toPotId: rate.potId, amountCents: String(rate.openCents) },
             }}
             asChild>
             <Button size="sm" aria-label={`Transfer to ${rate.name}`}>

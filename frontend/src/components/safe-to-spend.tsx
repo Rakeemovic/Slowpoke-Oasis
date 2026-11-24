@@ -72,6 +72,7 @@ function Breakdown({ data }: { data: SafeToSpendData }) {
     { label: "Main pot today", cents: data.main_pot_cents },
     { label: `Open ${payments} (${data.recurring_count})`, cents: -data.recurring_cents },
     { label: "Reserve rates to save", cents: -data.reserve_rates_cents },
+    { label: "Savings goals to save", cents: -data.savings_cents },
     { label: "Budget left", cents: -data.budget_left_cents },
     { label: "Safe to spend", cents: data.amount_cents, total: true },
   ];
