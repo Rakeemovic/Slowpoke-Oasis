@@ -19,6 +19,7 @@ export interface PotFormValues {
   target_cents: number;
   target_date: string;
   monthly_rate_cents: number;
+  is_separate_account: boolean;
 }
 
 /**
@@ -38,16 +39,20 @@ const goalHints: Record<GoalKind, string> = {
 
 /**
  * The form for a pot, used both to create one and to edit one. The default
- * pot is monthly and has no savings goal, so its goal fields are hidden.
- * onSubmit saves the values and throws on failure; the form shows the error.
+ * pot is monthly and has no savings goal, so its goal fields are hidden. The
+ * default pot and reserves can never be a separate account at the bank, so
+ * `hideAccount` hides that switch. onSubmit saves the values and throws on
+ * failure; the form shows the error.
  */
 export function PotForm({
   initial,
   hideGoal,
+  hideAccount,
   onSubmit,
 }: {
   initial?: PotFormValues;
   hideGoal?: boolean;
+  hideAccount?: boolean;
   onSubmit: (values: PotFormValues) => Promise<void>;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
@@ -55,6 +60,7 @@ export function PotForm({
   const [target, setTarget] = useState(initial?.target_cents ? centsToAmountInput(initial.target_cents) : "");
   const [targetDate, setTargetDate] = useState(initial?.target_date ?? "");
   const [rate, setRate] = useState(initial?.monthly_rate_cents ? centsToAmountInput(initial.monthly_rate_cents) : "");
+  const [separate, setSeparate] = useState(initial?.is_separate_account ?? false);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
 
@@ -64,6 +70,7 @@ export function PotForm({
       setError(result);
       return;
     }
+    result.is_separate_account = !hideAccount && separate;
     setBusy(true);
     setError(undefined);
     try {
@@ -118,6 +125,19 @@ export function PotForm({
           )}
         </>
       )}
+      {!hideAccount && (
+        <View className="gap-1.5">
+          <KindButton
+            label="Separate account at my bank"
+            active={separate}
+            onPress={() => setSeparate(!separate)}
+          />
+          <Text variant="muted" className="text-sm">
+            Switch this on if the pot is a real sub-account at your bank. Its money is then not part of your estimated
+            account balance, which shows what your main account holds.
+          </Text>
+        </View>
+      )}
       <ErrorMessage message={error} />
       <Button onPress={submit} disabled={busy}>
         <Text>{busy ? "Saving…" : "Save"}</Text>
@@ -146,7 +166,13 @@ function collect(
   if (!name.trim()) {
     return "Enter a name.";
   }
-  const values: PotFormValues = { name: name.trim(), target_cents: 0, target_date: "", monthly_rate_cents: 0 };
+  const values: PotFormValues = {
+    name: name.trim(),
+    target_cents: 0,
+    target_date: "",
+    monthly_rate_cents: 0,
+    is_separate_account: false,
+  };
   if (kind === "none") {
     return values;
   }

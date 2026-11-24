@@ -64,6 +64,29 @@ export function LedgerBalance({
       <Text variant="muted" className="text-sm">
         {`${formatCents(data.available_cents)} in ${data.default_pot_name}`}
       </Text>
+      {large && data.separate_accounts.length > 0 && <SeparateAccounts accounts={data.separate_accounts} />}
+    </View>
+  );
+}
+
+/**
+ * The real sub-accounts at the bank, one line each. Their money is not part
+ * of the estimated balance above, so it is listed on its own.
+ */
+function SeparateAccounts({ accounts }: { accounts: Balance["separate_accounts"] }) {
+  return (
+    <View className="mt-2 gap-0.5" aria-label="Separate accounts">
+      <Text variant="muted" className="text-sm">
+        Separate accounts, not included above
+      </Text>
+      {accounts.map((a) => (
+        <View key={a.pot_id} className="flex-row justify-between gap-3">
+          <Text className="text-sm">{a.name}</Text>
+          <Text className={cn("text-sm font-medium", a.balance_cents < 0 && "text-destructive")}>
+            {formatCents(a.balance_cents)}
+          </Text>
+        </View>
+      ))}
     </View>
   );
 }

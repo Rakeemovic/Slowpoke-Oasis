@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { bar, euros, openLedger, register, uniqueUsername } from "./helpers";
+import { bar, euros, openLedger, openPot, register, uniqueUsername } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await register(page, uniqueUsername("goal"));
@@ -88,7 +88,7 @@ test("a passed target date makes the rest due now, and removing the goal ends th
 
   // Without a goal the pot asks for nothing, and the card disappears.
   await page.getByRole("link", { name: "Pots", exact: true }).click();
-  await page.getByRole("link", { name: /Old plan/ }).click();
+  await openPot(page, /Old plan/);
   await page.getByRole("button", { name: "No goal", exact: true }).click();
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("link", { name: "New pot" })).toBeVisible();

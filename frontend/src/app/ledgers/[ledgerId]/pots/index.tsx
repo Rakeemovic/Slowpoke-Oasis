@@ -96,6 +96,7 @@ function PotRow({ pot, first }: { pot: Pot; first: boolean }) {
         <Text className="font-medium">{pot.name}</Text>
         {pot.is_default && <Text variant="muted">Default pot, shown as “available”</Text>}
         {isGoal(pot) && <Text variant="muted">{describeGoal(pot)}</Text>}
+        {pot.is_separate_account && <Text variant="muted">Separate account at the bank</Text>}
       </View>
       <View className="items-end">
         <Text className={cn("font-semibold", pot.balance_cents < 0 && "text-destructive")}>{formatCents(pot.balance_cents)}</Text>
