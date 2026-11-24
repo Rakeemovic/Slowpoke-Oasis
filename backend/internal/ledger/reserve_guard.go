@@ -15,13 +15,13 @@ var (
 )
 
 // potBalanceSQL is the balance of pot p over all bookings that are not
-// deleted: income, expenses and transfers between ledgers count with their
-// sign; a transfer between two pots of the ledger takes money out of its pot
+// deleted: income, expenses, corrections and transfers between ledgers count
+// with their sign; a transfer between two pots of the ledger takes money out of its pot
 // (pot_id) and puts it into its counterpart pot.
 const potBalanceSQL = `(
 	(SELECT COALESCE(SUM(t.amount_cents), 0) FROM transactions t
 	  WHERE t.pot_id = p.id AND t.deleted_at IS NULL
-	    AND t.type IN ('expense', 'income', 'transfer_out', 'transfer_in'))
+	    AND t.type <> 'transfer')
 	- (SELECT COALESCE(SUM(t.amount_cents), 0) FROM transactions t
 	  WHERE t.pot_id = p.id AND t.type = 'transfer' AND t.deleted_at IS NULL)
 	+ (SELECT COALESCE(SUM(t.amount_cents), 0) FROM transactions t

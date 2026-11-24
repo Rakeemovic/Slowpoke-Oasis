@@ -36,8 +36,12 @@ func TestLedgerBalanceCountsOnlyUpToTheGivenDay(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
+	if got.DefaultPotID == "" {
+		t.Error("default_pot_id is missing")
+	}
 	want := balanceResponse{
-		AsOf: "2026-11-19", AvailableCents: 1000, TotalCents: 1000, DefaultPotName: "Main", EstimatedCents: 1000,
+		DefaultPotID: got.DefaultPotID,
+		AsOf:         "2026-11-19", AvailableCents: 1000, TotalCents: 1000, DefaultPotName: "Main", EstimatedCents: 1000,
 		SeparateAccounts: []separateAccountResponse{},
 	}
 	if !reflect.DeepEqual(got, want) {

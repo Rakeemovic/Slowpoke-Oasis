@@ -133,7 +133,7 @@ func (s *Server) createRecurringPayment(w http.ResponseWriter, r *http.Request) 
 // Only the owner (rule R8). Fields that are left out stay unchanged;
 // "last_month": "" removes the end.
 func (s *Server) updateRecurringPayment(w http.ResponseWriter, r *http.Request) {
-	if !s.requireLedgerOwner(w, r) {
+	if _, ok := s.requireLedgerOwner(w, r); !ok {
 		return
 	}
 	today, ok := s.today(w, r)

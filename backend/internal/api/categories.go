@@ -82,24 +82,25 @@ func (s *Server) createCategory(w http.ResponseWriter, r *http.Request) {
 }
 
 // requireLedgerOwner checks ledger access and that the user owns the ledger,
-// as needed to change categories (rule K9) and recurring payments (rule R8).
-// If not, it writes the response.
-func (s *Server) requireLedgerOwner(w http.ResponseWriter, r *http.Request) bool {
+// as needed to change categories (rule K9) and recurring payments (rule R8)
+// and to reconcile (rule L9). It returns the user ID; if the check fails, it
+// writes the response.
+func (s *Server) requireLedgerOwner(w http.ResponseWriter, r *http.Request) (string, bool) {
 	userID, ok := s.requireLedgerAccess(w, r)
 	if !ok {
-		return false
+		return "", false
 	}
 	if err := s.store.AuthorizeLedgerOwner(r.Context(), userID, r.PathValue("ledger")); err != nil {
 		fail(w, err)
-		return false
+		return "", false
 	}
-	return true
+	return userID, true
 }
 
 // PATCH /ledgers/{ledger}/categories/{category}
 // Fields that are left out stay unchanged; "purpose": "" removes the purpose.
 func (s *Server) updateCategory(w http.ResponseWriter, r *http.Request) {
-	if !s.requireLedgerOwner(w, r) {
+	if _, ok := s.requireLedgerOwner(w, r); !ok {
 		return
 	}
 	var req struct {
@@ -123,7 +124,7 @@ func (s *Server) updateCategory(w http.ResponseWriter, r *http.Request) {
 // The transactions move to move_to, or without it to the fallback category.
 // Answers with the category that took over the transactions.
 func (s *Server) deleteCategory(w http.ResponseWriter, r *http.Request) {
-	if !s.requireLedgerOwner(w, r) {
+	if _, ok := s.requireLedgerOwner(w, r); !ok {
 		return
 	}
 	res, err := s.store.DeleteCategory(r.Context(), r.PathValue("ledger"), r.PathValue("category"),
