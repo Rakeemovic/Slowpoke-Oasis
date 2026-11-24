@@ -96,6 +96,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /ledgers/{ledger}/pots/{pot}/summary", s.potSummary)
 	mux.HandleFunc("GET /ledgers/{ledger}/analytics", s.analytics)
 	mux.HandleFunc("GET /ledgers/{ledger}/balance", s.ledgerBalance)
+	mux.HandleFunc("GET /ledgers/{ledger}/safe-to-spend", s.safeToSpend)
 
 	return mux
 }
