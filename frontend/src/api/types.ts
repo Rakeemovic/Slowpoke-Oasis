@@ -163,6 +163,9 @@ export interface Balance {
   /** Recurring payments due or overdue on as_of that are neither booked nor skipped. */
   unbooked_count: number;
   unbooked_cents: number;
+  /** Pots that are real sub-accounts at the bank (rule T9); their money is not in estimated_cents. */
+  separate_accounts: { pot_id: string; name: string; balance_cents: number }[];
+  separate_cents: number;
 }
 
 /** A transfer between two ledgers. Without pot IDs, both sides use the default pot. */
@@ -188,6 +191,8 @@ export interface Pot {
   target_date?: string;
   /** Fixed amount the pot saves per payday period (rule T6); never together with target_date. */
   monthly_rate_cents?: number;
+  /** A real sub-account at the bank (rule T9): its money is not part of the estimated account balance. */
+  is_separate_account: boolean;
   /** Calculated by the server from all bookings, never stored. */
   balance_cents: number;
   /** The recurring payment this pot is the reserve of (rule R10), or null. */
@@ -319,6 +324,7 @@ export interface NewPot {
   target_cents?: number;
   target_date?: string;
   monthly_rate_cents?: number;
+  is_separate_account?: boolean;
 }
 
 /**
@@ -330,6 +336,7 @@ export interface PotChange {
   target_cents: number;
   target_date: string;
   monthly_rate_cents: number;
+  is_separate_account: boolean;
   archived: boolean;
 }
 
