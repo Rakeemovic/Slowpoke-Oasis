@@ -5,7 +5,7 @@ import type { Purpose } from "@/api/types";
 import { ChoicePicker } from "@/components/choice-picker";
 import { ErrorMessage } from "@/components/error-message";
 import { FormField } from "@/components/form-field";
-import { KindButton } from "@/components/kind-button";
+import { KindButton, Segmented } from "@/components/kind-button";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Text } from "@/components/ui/text";
@@ -58,10 +58,10 @@ export function CategoryForm({
   return (
     <>
       {!editing && (
-        <View className="flex-row gap-2">
+        <Segmented>
           <KindButton label="Expense" active={!isIncome} onPress={() => setIsIncome(false)} />
           <KindButton label="Income" active={isIncome} onPress={() => setIsIncome(true)} />
-        </View>
+        </Segmented>
       )}
       <FormField label="Name" value={name} onChangeText={setName} />
       {!isIncome && (

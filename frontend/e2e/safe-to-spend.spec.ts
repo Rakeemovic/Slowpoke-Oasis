@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { book, createPaymentDueToday, euros, openLedger, register, uniqueUsername } from "./helpers";
+import { book, createPaymentDueToday, euros, openLedger, register, uniqueUsername, openSection } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await register(page, uniqueUsername("sts"));
@@ -30,7 +30,7 @@ test("safe to spend deducts open payments and the rest of the budget", async ({ 
   await createPaymentDueToday(page, "Flat", "300", "Rent");
 
   // Budget 200 € for groceries, of which 50 € are spent.
-  await page.getByRole("link", { name: "Budget", exact: true }).click();
+  await openSection(page, "Budget");
   await page.getByRole("button", { name: /^Groceries/ }).click();
   await page.getByLabel("Planned for Groceries (€)").fill("200");
   await page.getByRole("button", { name: "This and coming months", exact: true }).click();

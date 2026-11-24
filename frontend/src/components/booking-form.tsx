@@ -1,13 +1,15 @@
+import { Plus } from "lucide-react-native";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 
 import { ledgers, pots } from "@/api/endpoints";
 import type { TransactionChange } from "@/api/types";
-import { ChoicePicker } from "@/components/choice-picker";
+import { ChoicePicker, NewChoiceChip } from "@/components/choice-picker";
 import { ErrorMessage } from "@/components/error-message";
 import { PotPicker } from "@/components/pot-picker";
-import { FormField } from "@/components/form-field";
-import { KindButton } from "@/components/kind-button";
+import { AmountField, FormField } from "@/components/form-field";
+import { KindButton, Segmented } from "@/components/kind-button";
+import { SwitchRow } from "@/components/switch-row";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Text } from "@/components/ui/text";
@@ -15,6 +17,8 @@ import { useLoader } from "@/hooks/use-loader";
 import { bookingProblem } from "@/lib/booking";
 import { today } from "@/lib/dates";
 import { errorMessage } from "@/lib/errors";
+import { hueFor } from "@/lib/hues";
+import { categoryIcon } from "@/lib/icons";
 import { defaultPot } from "@/lib/pots";
 import { centsToAmountInput, parseAmountToCents } from "@/lib/money";
 
@@ -56,6 +60,8 @@ export function BookingForm({
   const [bookedOn, setBookedOn] = useState(initial?.booked_on ?? today);
   const [note, setNote] = useState(initial?.note ?? "");
   const [spontaneous, setSpontaneous] = useState(initial?.is_spontaneous ?? false);
+  // The field for a new category only shows on request, to keep the form short.
+  const [addingCategory, setAddingCategory] = useState(false);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
 
@@ -102,13 +108,13 @@ export function BookingForm({
   return (
     <>
       {!expenseOnly && (
-        <View className="flex-row gap-2">
+        <Segmented>
           <KindButton label="Expense" active={kind === "expense"} onPress={() => changeKind("expense")} />
           <KindButton label="Income" active={kind === "income"} onPress={() => changeKind("income")} />
-        </View>
+        </Segmented>
       )}
 
-      <FormField label="Amount (€)" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" />
+      <AmountField label="Amount (€)" value={amount} onChangeText={setAmount} />
       <FormField label="Date (YYYY-MM-DD)" value={bookedOn} onChangeText={setBookedOn} autoCapitalize="none" />
 
       <View className="gap-2">
@@ -116,19 +122,23 @@ export function BookingForm({
         {categories.loading && !categories.data && <ActivityIndicator />}
         <ErrorMessage message={categories.error} onRetry={categories.reload} />
         <ChoicePicker
-          choices={choices.map((c) => ({ id: c.id, label: c.name }))}
+          choices={choices.map((c) => ({ id: c.id, label: c.name, icon: categoryIcon(c.name), hue: hueFor(c.id) }))}
           selected={categoryId}
           onSelect={setCategoryId}
-          emptyText="No categories of this type yet. Add one below."
+          emptyText="No categories of this type yet."
+          extra={!addingCategory && <NewChoiceChip label="New category" icon={Plus} onPress={() => setAddingCategory(true)} />}
         />
-        <AddCategory
-          ledgerId={ledgerId}
-          isIncome={kind === "income"}
-          onAdded={(id) => {
-            setCategoryId(id);
-            void categories.reload();
-          }}
-        />
+        {addingCategory && (
+          <AddCategory
+            ledgerId={ledgerId}
+            isIncome={kind === "income"}
+            onAdded={(id) => {
+              setCategoryId(id);
+              setAddingCategory(false);
+              void categories.reload();
+            }}
+          />
+        )}
       </View>
 
       <PotPicker
@@ -143,12 +153,12 @@ export function BookingForm({
 
       <FormField label="Note (optional)" value={note} onChangeText={setNote} />
       {canMarkSpontaneous && kind === "expense" && (
-        <Button
-          variant={spontaneous ? "default" : "outline"}
-          onPress={() => setSpontaneous(!spontaneous)}
-          aria-pressed={spontaneous}>
-          <Text>⚡ Spontaneous</Text>
-        </Button>
+        <SwitchRow
+          label="Spontaneous"
+          description="An unplanned purchase. Marking it helps you spot impulse spending later."
+          checked={spontaneous}
+          onCheckedChange={setSpontaneous}
+        />
       )}
       <ErrorMessage message={error} />
       <Button onPress={submit} disabled={busy}>
@@ -163,15 +173,7 @@ function validate(cents: number | null, bookedOn: string, categoryId?: string): 
   return bookingProblem(cents, bookedOn) ?? (categoryId ? undefined : "Choose a category.");
 }
 
-function AddCategory({
-  ledgerId,
-  isIncome,
-  onAdded,
-}: {
-  ledgerId: string;
-  isIncome: boolean;
-  onAdded: (id: string) => void;
-}) {
+function AddCategory({ ledgerId, isIncome, onAdded }: { ledgerId: string; isIncome: boolean; onAdded: (id: string) => void }) {
   const [name, setName] = useState("");
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);

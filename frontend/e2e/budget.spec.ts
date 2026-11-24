@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { bar, book, createPaymentDueToday, euros, openLedger, register, uniqueUsername } from "./helpers";
+import { bar, book, createPaymentDueToday, euros, openLedger, register, uniqueUsername, openSection } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await register(page, uniqueUsername("budget"));
@@ -20,7 +20,7 @@ async function setAmount(page: Page, category: string, amount: string, save: str
 
 test("the monthly plan changes this month or also the coming ones", async ({ page }) => {
   await book(page, { kind: "Expense", amount: "40", category: "Groceries" });
-  await page.getByRole("link", { name: "Budget", exact: true }).click();
+  await openSection(page, "Budget");
 
   // A booking without a plan still shows up.
   await expect(planRow(page, "Groceries")).toContainText(euros("40,00"));
@@ -67,21 +67,21 @@ test("the monthly plan changes this month or also the coming ones", async ({ pag
 
 /** A line below a category, found by its first text. */
 function subRow(page: Page, title: string): Locator {
-  return page.getByText(title, { exact: true }).locator("xpath=../..");
+  return page.getByText(title, { exact: true }).filter({ visible: true }).locator("xpath=../..");
 }
 
 test("payments and reserve rates appear below their category", async ({ page }) => {
   await createPaymentDueToday(page, "Flat", "800", "Rent");
   await createPaymentDueToday(page, "Car", "600", "Insurance", true);
-  await page.getByRole("link", { name: "Budget", exact: true }).click();
+  await openSection(page, "Budget");
 
   // The monthly payment is a line of its own below the category.
   await expect(planRow(page, "Rent")).toContainText("Nothing else planned");
-  await expect(subRow(page, "↻ Flat")).toContainText(/0,00\s€ of 800,00\s€ · due/);
-  await expect(subRow(page, "↻ Flat")).toContainText("Open");
+  await expect(subRow(page, "Flat")).toContainText(/0,00\s€ of 800,00\s€ · due/);
+  await expect(subRow(page, "Flat")).toContainText("Open");
 
   // The yearly payment saves its rate and is paid from its reserve this month.
-  await expect(subRow(page, "→ Save for Car")).toContainText(/600,00\s€ to save/);
+  await expect(subRow(page, "Save for Car")).toContainText(/600,00\s€ to save/);
   await expect(page.getByText(/^600,00\s€ due .* from reserve “Car” \(covered: 0,00\s€\)$/)).toBeVisible();
 
   // Plan, payments and rates count together; the payment paid from the
@@ -92,8 +92,8 @@ test("payments and reserve rates appear below their category", async ({ page }) 
   await page.goBack();
   await page.getByRole("link", { name: "Book Flat" }).click();
   await page.getByRole("button", { name: "Save" }).click();
-  await page.getByRole("link", { name: "Budget", exact: true }).click();
-  await expect(subRow(page, "↻ Flat")).toContainText("Paid");
+  await openSection(page, "Budget");
+  await expect(subRow(page, "Flat")).toContainText("Paid");
   await expect(planRow(page, "Rent")).toContainText("Nothing else planned");
   await expect(page.getByText(/^Spent 800,00\s€ of 1\.400,00\s€ planned$/)).toBeVisible();
 });

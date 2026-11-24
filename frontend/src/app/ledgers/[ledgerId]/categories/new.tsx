@@ -1,4 +1,5 @@
 import { router, useLocalSearchParams } from "expo-router";
+import { toast } from "sonner-native";
 
 import { ledgers } from "@/api/endpoints";
 import { CategoryForm, type CategoryFormValues } from "@/components/category-form";
@@ -9,6 +10,7 @@ export default function NewCategoryScreen() {
 
   async function create(values: CategoryFormValues) {
     await ledgers.createCategory(ledgerId, values);
+    toast.success("Category added");
     router.back();
   }
 

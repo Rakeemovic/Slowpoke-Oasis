@@ -1,6 +1,17 @@
 import { expect, test } from "@playwright/test";
 
-import { balance, book, euros, fillBooking, openLedger, register, transactionRow, uniqueUsername } from "./helpers";
+import {
+  balance,
+  book,
+  euros,
+  fillBooking,
+  openLedger,
+  register,
+  transactionRow,
+  uniqueUsername,
+  openSection,
+  backToOverview,
+} from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await register(page, uniqueUsername("book"));
@@ -8,7 +19,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("income and expenses change the balance", async ({ page }) => {
-  await expect(page.getByText("No transactions yet.", { exact: false })).toBeVisible();
+  await expect(page.getByText("No transactions yet", { exact: true })).toBeVisible();
 
   await book(page, { kind: "Income", amount: "1000", category: "Salary" });
   await expect(transactionRow(page, "Salary")).toContainText(euros("+1.000,00"));
@@ -52,12 +63,12 @@ test("a deleted booking can be restored", async ({ page }) => {
   await page.getByRole("alertdialog").getByRole("button", { name: "Delete" }).click();
   await expect(transactionRow(page, "Salary")).toHaveCount(0);
 
-  await page.getByRole("link", { name: "Deleted transactions" }).click();
+  await openSection(page, "Deleted transactions");
   await expect(page.getByText("Salary", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Restore Salary" }).click();
-  await expect(page.getByText("Nothing to restore.")).toBeVisible();
+  await expect(page.getByText("Nothing to restore", { exact: true })).toBeVisible();
 
-  await page.goBack();
+  await backToOverview(page);
   await expect(transactionRow(page, "Salary")).toBeVisible();
   await expect(balance(page, "100,00").last()).toBeVisible();
 });

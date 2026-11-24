@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
+import { toast } from "sonner-native";
 
 import { ledgers } from "@/api/endpoints";
 import type { Category } from "@/api/types";
@@ -33,6 +34,7 @@ export default function CategoryScreen() {
 
   async function save(values: CategoryFormValues) {
     await ledgers.updateCategory(ledgerId, categoryId, { name: values.name, purpose: values.purpose });
+    toast.success("Category saved");
     router.back();
   }
 

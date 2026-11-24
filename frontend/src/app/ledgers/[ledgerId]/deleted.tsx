@@ -1,20 +1,26 @@
 import { useLocalSearchParams } from "expo-router";
+import { Trash2 } from "lucide-react-native";
 import { useCallback, useState } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { View } from "react-native";
+import { toast } from "sonner-native";
 
 import { ledgers } from "@/api/endpoints";
 import type { Category, DeletedTransaction } from "@/api/types";
+import { Amount } from "@/components/amount";
+import { EmptyState } from "@/components/empty-state";
 import { ErrorMessage } from "@/components/error-message";
+import { IconTile } from "@/components/icon-tile";
+import { ListSection } from "@/components/list";
 import { Screen } from "@/components/screen";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Text } from "@/components/ui/text";
 import { useLoader } from "@/hooks/use-loader";
 import { usePagedLoader } from "@/hooks/use-paged-loader";
 import { errorMessage } from "@/lib/errors";
-import { formatCents, formatSignedCents } from "@/lib/money";
+import { hueFor, NEUTRAL_HUE } from "@/lib/hues";
+import { categoryIcon, TRANSFER_ICON } from "@/lib/icons";
 import { transactionTitle } from "@/lib/transactions";
-import { cn } from "@/lib/utils";
 
 export default function DeletedTransactionsScreen() {
   const { ledgerId, kind } = useLocalSearchParams<{ ledgerId: string; kind?: string }>();
@@ -37,6 +43,7 @@ export default function DeletedTransactionsScreen() {
     setRestoreError(undefined);
     try {
       await ledgers.restoreTransaction(ledgerId, id);
+      toast.success("Transaction restored");
       await reload();
     } catch (e) {
       // The server decides who may restore (e.g. not someone else's booking), so its answer is shown as is.
@@ -49,26 +56,23 @@ export default function DeletedTransactionsScreen() {
   return (
     <Screen>
       <Text variant="muted">Deleted transactions are removed for good 30 days after deletion.</Text>
-      {loading && !items && <ActivityIndicator />}
+      {loading && !items && <Skeleton className="h-40 w-full rounded-2xl" />}
       <ErrorMessage message={error ?? categoryList.error} onRetry={reload} />
       <ErrorMessage message={restoreError} />
-      {items?.length === 0 && <Text variant="muted">Nothing to restore.</Text>}
+      {items?.length === 0 && <EmptyState icon={Trash2} title="Nothing to restore" />}
       {items && items.length > 0 && (
-        <Card className="py-2">
-          <CardContent className="gap-0 px-0">
-            {items.map((tx, index) => (
-              <DeletedRow
-                key={tx.id}
-                tx={tx}
-                categories={categories ?? []}
-                first={index === 0}
-                showAuthor={showAuthor}
-                busy={restoringId !== undefined}
-                onRestore={() => restore(tx.id)}
-              />
-            ))}
-          </CardContent>
-        </Card>
+        <ListSection>
+          {items.map((tx) => (
+            <DeletedRow
+              key={tx.id}
+              tx={tx}
+              categories={categories ?? []}
+              showAuthor={showAuthor}
+              busy={restoringId !== undefined}
+              onRestore={() => restore(tx.id)}
+            />
+          ))}
+        </ListSection>
       )}
       {list.hasMore && (
         <Button variant="outline" onPress={list.loadMore} disabled={list.loadingMore}>
@@ -82,14 +86,12 @@ export default function DeletedTransactionsScreen() {
 function DeletedRow({
   tx,
   categories,
-  first,
   showAuthor,
   busy,
   onRestore,
 }: {
   tx: DeletedTransaction;
   categories: Category[];
-  first: boolean;
   showAuthor: boolean;
   busy: boolean;
   onRestore: () => void;
@@ -98,15 +100,20 @@ function DeletedRow({
   const title = transactionTitle(tx, categories);
   const deletedBy = showAuthor ? ` by ${tx.deleted_by_username ?? "a former member"}` : "";
   const details = [tx.booked_on, tx.note, `Deleted${deletedBy} on ${tx.deleted_at.slice(0, 10)}`].filter(Boolean).join(" · ");
+  const category = categories.find((c) => c.id === tx.category_id);
 
   return (
-    <View className={cn("flex-row items-center gap-3 px-4 py-3", !first && "border-t border-border")}>
+    <View className="flex-row items-center gap-3 px-4 py-3">
+      <IconTile
+        icon={category ? categoryIcon(category.name) : TRANSFER_ICON}
+        hue={category ? hueFor(category.id) : NEUTRAL_HUE}
+      />
       <View className="flex-1 gap-0.5">
         <Text className="font-medium">{title}</Text>
         <Text variant="muted" numberOfLines={2}>
           {details}
         </Text>
-        <Text>{isTransfer ? formatCents(Math.abs(tx.amount_cents)) : formatSignedCents(tx.amount_cents)}</Text>
+        <Amount cents={isTransfer ? Math.abs(tx.amount_cents) : tx.amount_cents} signed={!isTransfer} size="sm" />
       </View>
       <Button variant="outline" size="sm" onPress={onRestore} disabled={busy} aria-label={`Restore ${title}`}>
         <Text>Restore</Text>

@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
+import { toast } from "sonner-native";
 
 import { ledgers, pots, recurring } from "@/api/endpoints";
 import type { Pot, RecurringPayment, RecurringPaymentInput } from "@/api/types";
@@ -144,6 +145,7 @@ async function afterChange(
       return;
     }
   }
+  toast.success("Recurring payment saved");
   router.back();
 }
 
@@ -171,6 +173,7 @@ function LeftoverOffer({ ledgerId, leftover }: { ledgerId: string; leftover: Lef
         });
       }
       await pots.update(ledgerId, reserve.id, { archived: true }, today());
+      toast.success("Reserve archived");
       router.back();
     } catch (e) {
       setError(errorMessage(e));

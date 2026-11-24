@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { bar, euros, openLedger, openPot, register, uniqueUsername } from "./helpers";
+import { bar, euros, openLedger, openPot, register, uniqueUsername, openSection, backToOverview } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await register(page, uniqueUsername("goal"));
@@ -13,7 +13,7 @@ async function createGoal(
   name: string,
   goal: { kind: "Target" | "Monthly amount"; amount?: string; target?: string; date?: string },
 ): Promise<void> {
-  await page.getByRole("link", { name: "Pots", exact: true }).click();
+  await openSection(page, "Pots");
   await page.getByRole("link", { name: "New pot" }).click();
   await page.getByLabel("Name", { exact: true }).fill(name);
   await page.getByRole("button", { name: goal.kind, exact: true }).click();
@@ -58,21 +58,23 @@ test("a goal with a monthly amount shows its progress and asks for its rate ever
   await expect(cardRow(page, "Save for Bike")).toContainText(euros("150,00"));
 
   // Safe to spend holds back what is still to be saved.
-  await page.getByRole("button", { name: /^Safe to spend: / }).filter({ visible: true }).click();
+  await page
+    .getByRole("button", { name: /^Safe to spend: / })
+    .filter({ visible: true })
+    .click();
   const breakdown = page.getByLabel("Safe to spend breakdown").filter({ visible: true });
   await expect(breakdown).toContainText("Savings goals to save");
   await expect(breakdown).toContainText(euros("-150,00"));
 
   // The budget has a section of its own, filled by what was saved.
-  await page.getByRole("link", { name: "Budget", exact: true }).click();
+  await openSection(page, "Budget");
   await expect(page.getByText("Savings", { exact: true })).toBeVisible();
   await expect(page.getByText(/^50,00\s€ of 200,00\s€ saved$/)).toBeVisible();
   await expect(page.getByText(/^150,00\s€ to save$/)).toBeVisible();
   await expect(bar(page, "Bike")).toHaveAttribute("aria-valuenow", "25");
-  await page.goBack();
 
   // The pot shows how far it is: 50 of 500 €.
-  await page.getByRole("link", { name: "Pots", exact: true }).click();
+  await openSection(page, "Pots");
   await expect(bar(page, "Bike")).toHaveAttribute("aria-valuenow", "10");
   await page.getByRole("link", { name: /Bike/ }).click();
   await expect(page.getByText(/^50,00\s€ of 500,00\s€$/)).toBeVisible();
@@ -87,18 +89,17 @@ test("a passed target date makes the rest due now, and removing the goal ends th
   await expect(cardRow(page, "Save for Old plan")).toContainText("Target date passed");
 
   // Without a goal the pot asks for nothing, and the card disappears.
-  await page.getByRole("link", { name: "Pots", exact: true }).click();
+  await openSection(page, "Pots");
   await openPot(page, /Old plan/);
   await page.getByRole("button", { name: "No goal", exact: true }).click();
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("link", { name: "New pot" })).toBeVisible();
-  await page.goBack();
-  await expect(page.getByText("Estimated account balance", { exact: true })).toBeVisible();
+  await backToOverview(page);
   await expect(page.getByText("Due payments", { exact: true })).toBeHidden();
 });
 
 test("the form only offers the fields of the chosen kind", async ({ page }) => {
-  await page.getByRole("link", { name: "Pots", exact: true }).click();
+  await openSection(page, "Pots");
   await page.getByRole("link", { name: "New pot" }).click();
 
   await expect(page.getByLabel(/^Target amount/)).toHaveCount(0);

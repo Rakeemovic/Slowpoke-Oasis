@@ -15,16 +15,10 @@ const textVariants = cva(
     variants: {
       variant: {
         default: '',
-        h1: cn(
-          'text-center text-4xl font-extrabold tracking-tight',
-          Platform.select({ web: 'scroll-m-20 text-balance' })
-        ),
-        h2: cn(
-          'border-border border-b pb-2 text-3xl font-semibold tracking-tight',
-          Platform.select({ web: 'scroll-m-20 first:mt-0' })
-        ),
-        h3: cn('text-2xl font-semibold tracking-tight', Platform.select({ web: 'scroll-m-20' })),
-        h4: cn('text-xl font-semibold tracking-tight', Platform.select({ web: 'scroll-m-20' })),
+        h1: cn('font-display text-3xl tracking-tight', Platform.select({ web: 'text-balance' })),
+        h2: 'font-display text-2xl tracking-tight',
+        h3: 'font-heading text-xl tracking-tight',
+        h4: 'font-heading text-lg tracking-tight',
         p: 'mt-3 leading-7 sm:mt-6',
         blockquote: 'mt-4 border-l-2 pl-3 italic sm:mt-6 sm:pl-6',
         code: cn(
@@ -33,6 +27,8 @@ const textVariants = cva(
         lead: 'text-muted-foreground text-xl',
         large: 'text-lg font-semibold',
         small: 'text-sm font-medium leading-none',
+        // Section titles above grouped lists, like iOS settings or Material lists.
+        overline: 'text-muted-foreground text-xs font-semibold uppercase tracking-wider',
         muted: 'text-muted-foreground text-sm',
       },
     },

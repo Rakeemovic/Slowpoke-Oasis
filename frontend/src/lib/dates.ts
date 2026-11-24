@@ -29,3 +29,31 @@ export function formatDate(date: string): string {
   const [year, month, day] = date.split("-").map(Number);
   return new Date(year, month - 1, day).toLocaleDateString();
 }
+
+/** Shifts a date given as YYYY-MM-DD by delta days. */
+export function shiftDay(date: string, delta: number): string {
+  const [year, month, day] = date.split("-").map(Number);
+  const shifted = new Date(year, month - 1, day + delta);
+  return `${shifted.getFullYear()}-${String(shifted.getMonth() + 1).padStart(2, "0")}-${String(shifted.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * The heading of a day in a list: "Today", "Yesterday", or the weekday and
+ * date in the user's locale. `now` is today as YYYY-MM-DD.
+ */
+export function dayHeading(date: string, now: string = today()): string {
+  if (date === now) {
+    return "Today";
+  }
+  if (date === shiftDay(now, -1)) {
+    return "Yesterday";
+  }
+  const [year, month, day] = date.split("-").map(Number);
+  const sameYear = year === Number(now.slice(0, 4));
+  return new Date(year, month - 1, day).toLocaleDateString(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    ...(!sameYear && { year: "numeric" }),
+  });
+}

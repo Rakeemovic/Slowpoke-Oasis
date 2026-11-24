@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { balance, openLedger, register, uniqueUsername } from "./helpers";
+import { balance, openLedger, register, uniqueUsername, openSection, backToOverview } from "./helpers";
 
 // The test server delivers app and API under one origin; relative paths go to
 // Playwright's baseURL and carry the session cookie of the page.
@@ -47,8 +47,7 @@ test("a long list is shown in pages", async ({ page }) => {
   // Returning from another screen reloads the list but keeps what was already shown.
   await rows.first().click();
   await expect(page.getByLabel("Amount (€)")).toBeVisible();
-  await page.goBack();
-  await expect(page.getByText("Estimated account balance", { exact: true })).toBeVisible();
+  await backToOverview(page);
   await expect(rows).toHaveCount(105);
 });
 
@@ -60,7 +59,7 @@ test("the list of deleted transactions is shown in pages", async ({ page }) => {
     expect(response.ok()).toBeTruthy();
   }
   await openLedger(page, "Personal");
-  await page.getByRole("link", { name: "Deleted transactions" }).click();
+  await openSection(page, "Deleted transactions");
 
   const restoreButtons = page.getByRole("button", { name: /^Restore / });
   await expect(restoreButtons).toHaveCount(100);

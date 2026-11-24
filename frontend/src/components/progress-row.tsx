@@ -5,9 +5,9 @@ import { percent, type Progress, type ProgressTone } from "@/lib/progress";
 import { cn } from "@/lib/utils";
 
 const fillColour: Record<ProgressTone, string> = {
-  default: "bg-primary/15",
-  done: "bg-primary/30",
-  over: "bg-destructive/25",
+  default: "bg-primary/10",
+  done: "bg-positive/20",
+  over: "bg-destructive/15",
 };
 
 /**

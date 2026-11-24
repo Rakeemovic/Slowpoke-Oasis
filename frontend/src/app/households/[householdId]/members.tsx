@@ -1,19 +1,21 @@
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { View } from "react-native";
 
 import { auth, households } from "@/api/endpoints";
 import type { Member } from "@/api/types";
 import { ConfirmPanel } from "@/components/confirm-panel";
 import { ErrorMessage } from "@/components/error-message";
+import { ListSection } from "@/components/list";
 import { FormField } from "@/components/form-field";
 import { HeaderActions } from "@/components/header-actions";
 import { Screen } from "@/components/screen";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Text } from "@/components/ui/text";
 import { useLoader } from "@/hooks/use-loader";
 import { errorMessage } from "@/lib/errors";
+import { hueFor } from "@/lib/hues";
 import { cn } from "@/lib/utils";
 
 /** An action that cannot be undone, waiting for the user to confirm it. */
@@ -70,47 +72,46 @@ export default function MembersScreen() {
   return (
     <Screen>
       <Stack.Screen options={{ headerRight: () => <HeaderActions /> }} />
-      {loading && !data && <ActivityIndicator />}
+      {loading && !data && <Skeleton className="h-32 w-full rounded-2xl" />}
       <ErrorMessage message={error} onRetry={reload} />
       {members && me && (
-        <Card className="py-2">
-          <CardContent className="gap-0 px-0">
-            {members.map((member, index) => {
-              const isMe = member.user_id === me.user_id;
-              const target = pending && pending.kind !== "leave" && pending.member.user_id === member.user_id;
-              return (
-                <View key={member.user_id} className={cn("gap-3 px-4 py-3", index > 0 && "border-t border-border")}>
-                  <View className="flex-row items-center gap-3">
-                    <View className="flex-1 gap-0.5">
-                      <Text className="font-medium">
-                        {member.username}
-                        {isMe && " (you)"}
-                      </Text>
-                      <Text variant="muted">{member.role === "owner" ? "Owner" : "Member"}</Text>
-                    </View>
-                    {/* Only the owner manages others; everyone else just sees the list. */}
-                    {isOwner && !isMe && (
-                      <View className="flex-row">
-                        <Button variant="ghost" size="sm" disabled={busy} onPress={() => ask({ kind: "owner", member })}>
-                          <Text>Make owner</Text>
-                        </Button>
-                        <Button variant="ghost" size="sm" disabled={busy} onPress={() => ask({ kind: "remove", member })}>
-                          <Text className="text-destructive">Remove</Text>
-                        </Button>
-                      </View>
-                    )}
+        <ListSection title={`${members.length} ${members.length === 1 ? "member" : "members"}`}>
+          {members.map((member) => {
+            const isMe = member.user_id === me.user_id;
+            const target = pending && pending.kind !== "leave" && pending.member.user_id === member.user_id;
+            return (
+              <View key={member.user_id} className="gap-3 px-4 py-3">
+                <View className="flex-row items-center gap-3">
+                  <Avatar name={member.username} id={member.user_id} />
+                  <View className="flex-1 gap-0.5">
+                    <Text className="font-medium">
+                      {member.username}
+                      {isMe && " (you)"}
+                    </Text>
+                    <Text variant="muted">{member.role === "owner" ? "Owner" : "Member"}</Text>
                   </View>
-                  {target && confirmPanel(pending)}
+                  {/* Only the owner manages others; everyone else just sees the list. */}
+                  {isOwner && !isMe && (
+                    <View className="flex-row">
+                      <Button variant="ghost" size="sm" disabled={busy} onPress={() => ask({ kind: "owner", member })}>
+                        <Text>Make owner</Text>
+                      </Button>
+                      <Button variant="ghost" size="sm" disabled={busy} onPress={() => ask({ kind: "remove", member })}>
+                        <Text className="text-destructive">Remove</Text>
+                      </Button>
+                    </View>
+                  )}
                 </View>
-              );
-            })}
-          </CardContent>
-        </Card>
+                {target && confirmPanel(pending)}
+              </View>
+            );
+          })}
+        </ListSection>
       )}
       <ErrorMessage message={actionError} />
       {isOwner && <AddMember householdId={householdId} onAdded={reload} />}
       {members && me && (
-        <View className="mt-4 gap-3">
+        <View className="gap-3">
           <Button variant="outline" disabled={busy} onPress={() => ask({ kind: "leave" })}>
             <Text className="text-destructive">Leave household</Text>
           </Button>
@@ -118,6 +119,16 @@ export default function MembersScreen() {
         </View>
       )}
     </Screen>
+  );
+}
+
+/** A round tile with the member's initial, coloured per member, so people are easy to tell apart. */
+function Avatar({ name, id }: { name: string; id: string }) {
+  const hue = hueFor(id);
+  return (
+    <View aria-hidden className={cn("h-10 w-10 items-center justify-center rounded-full", hue.tile)}>
+      <Text className={cn("font-heading text-base", hue.icon)}>{name.slice(0, 1).toUpperCase()}</Text>
+    </View>
   );
 }
 
@@ -134,11 +145,7 @@ function runAction(householdId: string, action: PendingAction, myUserId: string)
 }
 
 /** What happens after confirming, so nobody is surprised by the consequences. */
-function describeAction(
-  action: PendingAction,
-  memberCount: number,
-  isOwner: boolean,
-): { message: string; confirmLabel: string } {
+function describeAction(action: PendingAction, memberCount: number, isOwner: boolean): { message: string; confirmLabel: string } {
   switch (action.kind) {
     case "remove":
       return {

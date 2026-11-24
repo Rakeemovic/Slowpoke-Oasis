@@ -8,6 +8,8 @@ import {
   register,
   transactionRow,
   uniqueUsername,
+  openSection,
+  backToOverview,
 } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
@@ -25,15 +27,11 @@ function inMain(page: Page, amount: string): Locator {
 
 /** Opens the pots screen from the ledger screen. */
 async function openPots(page: Page): Promise<void> {
-  await page.getByRole("link", { name: "Pots", exact: true }).click();
+  await openSection(page, "Pots");
   await expect(page.getByRole("link", { name: "New pot" })).toBeVisible();
 }
 
-async function createPot(
-  page: Page,
-  name: string,
-  goal?: string,
-): Promise<void> {
+async function createPot(page: Page, name: string, goal?: string): Promise<void> {
   await page.getByRole("link", { name: "New pot" }).click();
   await page.getByLabel("Name", { exact: true }).fill(name);
   if (goal) {
@@ -44,14 +42,10 @@ async function createPot(
   await expect(page.getByRole("link", { name: "New pot" })).toBeVisible();
 }
 
-test("a booking goes into a chosen pot and money moves between pots", async ({
-  page,
-}) => {
+test("a booking goes into a chosen pot and money moves between pots", async ({ page }) => {
   await openPots(page);
   await createPot(page, "Holiday", "500");
-  await expect(page.getByRole("link", { name: /Holiday/ })).toContainText(
-    euros("Goal 500,00"),
-  );
+  await expect(page.getByRole("link", { name: /Holiday/ })).toContainText(euros("Goal 500,00"));
   await page.goBack();
 
   // The picker only appears once there is more than the default pot.
@@ -73,21 +67,14 @@ test("a booking goes into a chosen pot and money moves between pots", async ({
 
   // Move 30 € out of Holiday into the default pot.
   await openPots(page);
-  await page.getByRole("link", { name: "Move between pots" }).click();
-  await page
-    .getByRole("button", { name: "Holiday", exact: true })
-    .first()
-    .click();
-  await page
-    .getByRole("button", { name: "Main", exact: true })
-    .last()
-    .click();
+  await openSection(page, "Move between pots");
+  await page.getByRole("button", { name: "Holiday", exact: true }).first().click();
+  await page.getByRole("button", { name: "Main", exact: true }).last().click();
   await page.getByLabel("Amount (€)").fill("30");
   await page.getByRole("button", { name: "Save" }).click();
+  await openSection(page, "Pots");
   await expect(page.getByRole("link", { name: "New pot" })).toBeVisible();
-  await expect(page.getByRole("link", { name: /Holiday/ })).toContainText(
-    euros("70,00"),
-  );
+  await expect(page.getByRole("link", { name: /Holiday/ })).toContainText(euros("70,00"));
   await page.goBack();
   await expect(inMain(page, "30,00")).toBeVisible();
   await expect(balance(page, "100,00")).toBeVisible();
@@ -111,10 +98,7 @@ test("a pot can be renamed, archived and restored", async ({ page }) => {
 
   await page.getByRole("link", { name: /Trip/ }).click();
   await page.getByRole("button", { name: "Archive pot" }).click();
-  await page
-    .getByRole("alertdialog")
-    .getByRole("button", { name: "Archive" })
-    .click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Archive" }).click();
   await expect(page.getByText("Archived", { exact: true })).toBeVisible();
 
   // An archived pot is no longer offered when booking (rule T5). The picker only
@@ -123,8 +107,7 @@ test("a pot can be renamed, archived and restored", async ({ page }) => {
   await page.getByRole("link", { name: "Add transaction" }).click();
   await expect(page.getByRole("button", { name: "Spare", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Trip", exact: true })).toHaveCount(0);
-  await page.goBack();
-  await expect(page.getByText("Estimated account balance", { exact: true })).toBeVisible();
+  await backToOverview(page);
 
   await openPots(page);
   await page.getByRole("link", { name: /Trip/ }).click();

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { balance, book, fillBooking, openLedger, openPot, register, uniqueUsername } from "./helpers";
+import { balance, book, fillBooking, openLedger, openPot, register, uniqueUsername, openSection } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await register(page, uniqueUsername("sep"));
@@ -12,10 +12,10 @@ test("a real sub-account is left out of the estimated balance and listed on its 
   await expect(balance(page, "1.000,00")).toBeVisible();
 
   // A pot that is a separate account at the bank.
-  await page.getByRole("link", { name: "Pots", exact: true }).click();
+  await openSection(page, "Pots");
   await page.getByRole("link", { name: "New pot" }).click();
   await page.getByLabel("Name", { exact: true }).fill("Savings");
-  await page.getByRole("button", { name: "Separate account at my bank" }).click();
+  await page.getByRole("switch", { name: "Separate account at my bank" }).click();
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("link", { name: /Savings/ })).toContainText("Separate account at the bank");
   await page.goBack();
@@ -33,9 +33,9 @@ test("a real sub-account is left out of the estimated balance and listed on its 
   await expect(accounts).toContainText(/300,00\s€/);
 
   // Switching the flag off counts the money as part of the account again.
-  await page.getByRole("link", { name: "Pots", exact: true }).click();
+  await openSection(page, "Pots");
   await openPot(page, /Savings/);
-  await page.getByRole("button", { name: "Separate account at my bank" }).click();
+  await page.getByRole("switch", { name: "Separate account at my bank" }).click();
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("link", { name: /Savings/ })).not.toContainText("Separate account at the bank");
   await page.goBack();
@@ -44,7 +44,7 @@ test("a real sub-account is left out of the estimated balance and listed on its 
 });
 
 test("the main pot cannot be a separate account", async ({ page }) => {
-  await page.getByRole("link", { name: "Pots", exact: true }).click();
+  await openSection(page, "Pots");
   await openPot(page, /Main/);
-  await expect(page.getByRole("button", { name: "Separate account at my bank" })).toHaveCount(0);
+  await expect(page.getByRole("switch", { name: "Separate account at my bank" })).toHaveCount(0);
 });
