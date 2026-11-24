@@ -89,6 +89,9 @@ func (s *Store) UpdateTransaction(ctx context.Context, ledgerID, id string, p Tr
 		if old.Type == TypeTransferOut || old.Type == TypeTransferIn {
 			return ErrLinkedTransaction
 		}
+		if err := ensureNotRoundUp(ctx, tx, ledgerID, id); err != nil {
+			return err
+		}
 
 		// The link to a recurring payment stays (rule R6), so a booking that
 		// pays an occurrence cannot become income or a transfer.
@@ -137,6 +140,9 @@ func (s *Store) UpdateTransaction(ctx context.Context, ledgerID, id string, p Tr
 			return err
 		}
 		if err := guard.check(ctx, tx); err != nil {
+			return err
+		}
+		if err := syncRoundUp(ctx, tx, ledgerID, id, now); err != nil {
 			return err
 		}
 		if !p.CategoryScope.series() {

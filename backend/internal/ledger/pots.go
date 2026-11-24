@@ -17,6 +17,8 @@ var (
 	ErrRateWithTargetDate    = errors.New("a fixed monthly rate and a target date exclude each other")
 	ErrGoalRateNotAllowed    = errors.New("the main pot and reserves cannot save a fixed monthly rate")
 	ErrSeparateNotAllowed    = errors.New("the main pot and reserves cannot be separate accounts")
+	ErrInvalidMultiplier     = errors.New("round_up_multiplier must be 0 (off), 1, 2, 3 or 5")
+	ErrRoundUpNotAllowed     = errors.New("round-ups go to a pot that is neither the main pot nor a reserve, in a personal ledger")
 	ErrInvalidAmount         = errors.New("amount_cents must not be negative")
 	ErrPotArchived           = errors.New("this pot is archived and accepts no new transactions")
 	ErrDefaultPotProtected   = errors.New("the default pot cannot be archived")
@@ -46,7 +48,12 @@ type PotUpdate struct {
 	TargetDate       *string
 	MonthlyRateCents *int64
 	SeparateAccount  *bool
-	Archived         *bool
+	// RoundUpMultiplier switches the round-up of the pot: 0 off, otherwise
+	// 1, 2, 3 or 5 (rule T10). Today (the app's date, YYYY-MM-DD) is the
+	// first day that is rounded up when it is switched on.
+	RoundUpMultiplier *int
+	Today             string
+	Archived          *bool
 }
 
 // PotLine is a planned amount for one category within a pot.
@@ -70,6 +77,10 @@ type Pot struct {
 	MonthlyRateCents int64
 	// IsSeparateAccount: the pot is a real sub-account at the bank (rule T9).
 	IsSeparateAccount bool
+	// RoundUpMultiplier is 0 or the multiplier of the round-up the pot
+	// collects; RoundUpFrom the first booking day it applies to (rule T10).
+	RoundUpMultiplier int
+	RoundUpFrom       string
 	// ReserveFor is the recurring payment this pot is the reserve of, or ""
 	// (rule R10).
 	ReserveFor   string
@@ -144,7 +155,8 @@ func (s *Store) ListPots(ctx context.Context, ledgerID string) ([]Pot, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT p.id, p.name, p.kind, p.is_default, p.archived,
 		       COALESCE(p.target_cents, 0), COALESCE(p.target_date, ''), COALESCE(p.monthly_rate_cents, 0),
-		       p.is_separate_account, COALESCE(p.reserve_for, ''), `+potBalanceSQL+`
+		       p.is_separate_account, COALESCE(p.round_up_multiplier, 0), COALESCE(p.round_up_from, ''),
+		       COALESCE(p.reserve_for, ''), `+potBalanceSQL+`
 		FROM pot p
 		WHERE p.ledger_id = ?
 		ORDER BY p.is_default DESC, p.name`, ledgerID)
@@ -157,7 +169,7 @@ func (s *Store) ListPots(ctx context.Context, ledgerID string) ([]Pot, error) {
 	for rows.Next() {
 		p := Pot{LedgerID: ledgerID}
 		if err := rows.Scan(&p.ID, &p.Name, &p.Kind, &p.IsDefault, &p.Archived,
-			&p.TargetCents, &p.TargetDate, &p.MonthlyRateCents, &p.IsSeparateAccount, &p.ReserveFor, &p.BalanceCents); err != nil {
+			&p.TargetCents, &p.TargetDate, &p.MonthlyRateCents, &p.IsSeparateAccount, &p.RoundUpMultiplier, &p.RoundUpFrom, &p.ReserveFor, &p.BalanceCents); err != nil {
 			return nil, err
 		}
 		p.Planned = planned[p.ID]
@@ -198,12 +210,13 @@ func (s *Store) UpdatePot(ctx context.Context, ledgerID, potID string, u PotUpda
 	return s.inTx(ctx, func(tx *sql.Tx) error {
 		var name string
 		var isDefault, archived, separate bool
-		var target, rate sql.NullInt64
-		var date, reserveFor sql.NullString
+		var target, rate, multiplier sql.NullInt64
+		var date, reserveFor, roundUpFrom sql.NullString
 		err := tx.QueryRowContext(ctx, `
-			SELECT name, is_default, archived, target_cents, target_date, monthly_rate_cents, is_separate_account, reserve_for
+			SELECT name, is_default, archived, target_cents, target_date, monthly_rate_cents, is_separate_account, reserve_for,
+			       round_up_multiplier, round_up_from
 			FROM pot WHERE id = ? AND ledger_id = ?`, potID, ledgerID,
-		).Scan(&name, &isDefault, &archived, &target, &date, &rate, &separate, &reserveFor)
+		).Scan(&name, &isDefault, &archived, &target, &date, &rate, &separate, &reserveFor, &multiplier, &roundUpFrom)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrPotNotFound
 		}
@@ -247,6 +260,10 @@ func (s *Store) UpdatePot(ctx context.Context, ledgerID, potID string, u PotUpda
 		if separate && (isDefault || reserveFor.Valid) {
 			return ErrSeparateNotAllowed
 		}
+		roundUp, err := nextRoundUp(ctx, tx, ledgerID, potID, u, roundUpState{multiplier: int(multiplier.Int64), from: roundUpFrom.String}, isDefault || reserveFor.Valid, archived)
+		if err != nil {
+			return err
+		}
 		if isDefault && archived {
 			return ErrDefaultPotProtected
 		}
@@ -257,9 +274,11 @@ func (s *Store) UpdatePot(ctx context.Context, ledgerID, potID string, u PotUpda
 		}
 
 		_, err = tx.ExecContext(ctx, `
-			UPDATE pot SET name = ?, target_cents = ?, target_date = ?, monthly_rate_cents = ?, is_separate_account = ?, archived = ?
+			UPDATE pot SET name = ?, target_cents = ?, target_date = ?, monthly_rate_cents = ?, is_separate_account = ?,
+			               round_up_multiplier = ?, round_up_from = ?, archived = ?
 			WHERE id = ? AND ledger_id = ?`,
-			name, nullIfZero(newTarget), nullIfEmpty(newDate), nullIfZero(newRate), separate, archived, potID, ledgerID,
+			name, nullIfZero(newTarget), nullIfEmpty(newDate), nullIfZero(newRate), separate,
+			nullIfZero(int64(roundUp.multiplier)), nullIfEmpty(roundUp.from), archived, potID, ledgerID,
 		)
 		return nameError(err)
 	})
