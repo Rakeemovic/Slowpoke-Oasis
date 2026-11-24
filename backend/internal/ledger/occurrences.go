@@ -37,18 +37,24 @@ type Occurrence struct {
 // payments of a ledger, from the start of tracking (rule R5) to the end of the
 // current payday period, oldest first. today is the app's local date.
 func (s *Store) OpenOccurrences(ctx context.Context, ledgerID, today string) ([]Occurrence, error) {
+	return openOccurrences(ctx, s.db, ledgerID, today)
+}
+
+// openOccurrences is OpenOccurrences on q, so it also works inside a
+// database transaction.
+func openOccurrences(ctx context.Context, q queryer, ledgerID, today string) ([]Occurrence, error) {
 	if !validDate(today) {
 		return nil, ErrInvalidDate
 	}
-	periodEnd, err := currentPeriodEnd(ctx, s.db, ledgerID, today)
+	periodEnd, err := currentPeriodEnd(ctx, q, ledgerID, today)
 	if err != nil {
 		return nil, err
 	}
-	payments, err := queryRecurringPayments(ctx, s.db, `WHERE ledger_id = ? AND archived = 0`, ledgerID)
+	payments, err := queryRecurringPayments(ctx, q, `WHERE ledger_id = ? AND archived = 0`, ledgerID)
 	if err != nil {
 		return nil, err
 	}
-	closed, err := closedOccurrences(ctx, s.db, ledgerID)
+	closed, err := closedOccurrences(ctx, q, ledgerID)
 	if err != nil {
 		return nil, err
 	}

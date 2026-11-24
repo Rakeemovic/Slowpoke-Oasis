@@ -52,6 +52,8 @@ func (s *Store) Permissions(ctx context.Context, userID string, items []Transact
 			return nil, err
 		}
 		linked := txType == TypeTransferOut || txType == TypeTransferIn
+		// Neither a transfer between ledgers nor a correction (X22) can be edited.
+		editable := !linked && txType != TypeCorrection
 		// A leg whose other ledger was deleted has no partner (rule X16).
 		partnerOK := partnerAuthor == "" || mayChange(ActionDelete, userID, partnerAuthor, partnerOwner)
 		// A round-up only changes together with its expense (rule X21).
@@ -60,7 +62,7 @@ func (s *Store) Permissions(ctx context.Context, userID string, items []Transact
 			continue
 		}
 		out[id] = Permission{
-			CanEdit:   !linked && mayChange(ActionEdit, userID, author, owner),
+			CanEdit:   editable && mayChange(ActionEdit, userID, author, owner),
 			CanDelete: partnerOK && mayChange(ActionDelete, userID, author, owner),
 		}
 	}
