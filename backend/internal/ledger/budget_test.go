@@ -157,7 +157,7 @@ func TestReserveDueIsShownInItsMonth(t *testing.T) {
 	}
 	dues := budgetFor(t, s, "2027-02").ReserveDues
 	want := ReserveDue{
-		PaymentID: id, Name: "Car insurance", PotID: reserve,
+		PaymentID: id, Name: "Car insurance", CategoryID: "c-food", PotID: reserve,
 		DueOn: "2027-02-15", AmountCents: 120000, CoveredCents: 10000,
 	}
 	if len(dues) != 1 || dues[0] != want {

@@ -61,10 +61,11 @@ type ReserveLine struct {
 
 // ReserveDue is an occurrence of a payment that is paid from its reserve.
 type ReserveDue struct {
-	PaymentID string
-	Name      string
-	PotID     string
-	DueOn     string
+	PaymentID  string
+	Name       string
+	CategoryID string
+	PotID      string
+	DueOn      string
 	// AmountCents is the amount of the payment; CoveredCents the part the
 	// reserve holds today. Booked occurrences are covered by definition.
 	AmountCents  int64
@@ -329,8 +330,8 @@ func (s *Store) reserveDues(ctx context.Context, ledgerID string, p planPeriod, 
 				continue
 			}
 			d := ReserveDue{
-				PaymentID: pay.ID, Name: pay.Name, PotID: pay.ReservePotID,
-				DueOn: due, AmountCents: pay.AmountCents,
+				PaymentID: pay.ID, Name: pay.Name, CategoryID: pay.CategoryID,
+				PotID: pay.ReservePotID, DueOn: due, AmountCents: pay.AmountCents,
 			}
 			if d.Booked, err = occurrenceBooked(ctx, s.db, pay.ID, due); err != nil {
 				return nil, err

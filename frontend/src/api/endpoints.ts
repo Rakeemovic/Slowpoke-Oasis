@@ -1,6 +1,7 @@
 import { request } from "@/api/client";
 import type {
   Balance,
+  Budget,
   Category,
   CategoryChange,
   DeletedTransaction,
@@ -20,7 +21,6 @@ import type {
   Pot,
   PotChange,
   PlanScope,
-  PotSummary,
   Transaction,
   TransactionChange,
 } from "@/api/types";
@@ -121,6 +121,16 @@ export const ledgers = {
   /** asOf is the app's local today, since the server may be in another time zone. */
   balance: (ledgerId: string, asOf: string) =>
     request<Balance>("GET", `/ledgers/${enc(ledgerId)}/balance?date=${enc(asOf)}`),
+
+  /**
+   * The budget of the main pot for one month, by default the current one.
+   * date is the app's local today and decides which month is current.
+   */
+  budget: (ledgerId: string, date: string, month?: string) =>
+    request<Budget>(
+      "GET",
+      `/ledgers/${enc(ledgerId)}/budget?date=${enc(date)}${month ? `&month=${enc(month)}` : ""}`,
+    ),
 };
 
 export const pots = {
@@ -132,17 +142,6 @@ export const pots = {
   /** Only the fields sent are changed. */
   update: (ledgerId: string, potId: string, change: Partial<PotChange>) =>
     request<void>("PATCH", `/ledgers/${enc(ledgerId)}/pots/${enc(potId)}`, change),
-
-  /**
-   * Plan versus actual. Monthly pots report one month, by default the current
-   * one; one-time pots report all dates. date is the app's local today and
-   * decides which month is current.
-   */
-  summary: (ledgerId: string, potId: string, date: string, month?: string) =>
-    request<PotSummary>(
-      "GET",
-      `/ledgers/${enc(ledgerId)}/pots/${enc(potId)}/summary?date=${enc(date)}${month ? `&month=${enc(month)}` : ""}`,
-    ),
 
   /** Monthly pots need a scope (rule P5); one-time pots take none. */
   setPlanned: (ledgerId: string, potId: string, categoryId: string, amountCents: number, date: string, scope?: PlanScope) =>
