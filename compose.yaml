@@ -1,0 +1,23 @@
+# Slowpoke Oasis without HTTPS: for a home network (with COOKIE_SECURE=false)
+# or behind a reverse proxy of your own that provides HTTPS.
+# For automatic HTTPS with Caddy, add compose.https.yaml (docs/self-hosting.md).
+#
+#   docker compose up -d --build
+services:
+  slowpoke:
+    build: .
+    image: slowpoke-oasis
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # true (default) sends the login cookie only over HTTPS. Set to false
+      # only in a trusted home network without HTTPS.
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      # Only needed when the web app is hosted somewhere else (comma-separated).
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+    volumes:
+      - slowpoke-data:/data
+
+volumes:
+  slowpoke-data:

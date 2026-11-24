@@ -1,0 +1,17 @@
+# Only the sources go into the build: no dependencies, builds, local
+# databases or local settings from a developer's machine.
+.git
+.github
+**/node_modules
+**/*.db
+**/*.db-*
+frontend/.expo
+frontend/dist
+frontend/e2e/.dist
+frontend/test-results
+frontend/playwright-report
+frontend/.env*.local
+backend/server
+CLAUDE.md
+CLAUDE.local.md
+.claude

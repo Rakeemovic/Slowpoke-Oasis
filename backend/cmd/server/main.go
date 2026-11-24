@@ -21,6 +21,7 @@ import (
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/auth"
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/ledger"
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/store"
+	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/web"
 )
 
 const (
@@ -82,6 +83,16 @@ func run() error {
 	}
 
 	server := api.NewServer(ledgers, accounts)
+	// With WEB_DIR the server also delivers the web app, so app and API share
+	// one origin and the web login needs no CORS.
+	webDir := os.Getenv("WEB_DIR")
+	handler, err := web.Handler(api.WithCORS(corsOrigins, server.Routes()), webDir)
+	if err != nil {
+		return err
+	}
+	if webDir != "" {
+		log.Printf("serving the web app from %s", webDir)
+	}
 	if !secureCookies {
 		server.AllowInsecureCookies()
 		log.Printf("WARNING: COOKIE_SECURE=false: the web login cookie is sent over plain HTTP. " +
@@ -90,7 +101,7 @@ func run() error {
 
 	srv := &http.Server{
 		Addr:    addr,
-		Handler: api.WithCORS(corsOrigins, server.Routes()),
+		Handler: handler,
 		// Limits for slow or stalled clients, so they cannot hold connections open forever.
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
@@ -99,7 +110,7 @@ func run() error {
 	}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.ListenAndServe() }()
-	log.Printf("listening on %s, database %s", addr, dbPath)
+	log.Printf("listening on %s (API under %s), database %s", addr, web.APIPrefix, dbPath)
 
 	select {
 	case err := <-serveErr:
