@@ -16,6 +16,7 @@ Each rule is enforced either by the database (CHECK, UNIQUE, NOT NULL, foreign k
 | L6 | Every account gets a personal ledger named "Personal" at registration, in the same transaction. It is the user's primary ledger (`is_primary`); `GET /me` returns it as `personal_ledger_id`. Further personal ledgers are allowed but never primary. | DB (partial unique index) + App |
 | L7 | A ledger's balance is given as of one day (`date`, default: today on the server; the app sends its local today). `available_cents` is the default pot (named in `default_pot_name`), `total_cents` all pots including archived ones. Transactions after that day and deleted ones do not count. `separate_accounts` lists the pots that are real sub-accounts (T9) with their balance on that day, archived ones included (`separate_cents` is their sum). `estimated_cents` (estimated account balance) is `total_cents` minus `separate_cents` (that money is not on the main account) minus the recurring payments that are due or overdue on that day and neither booked nor skipped (`unbooked_count`, `unbooked_cents`); upcoming ones do not count. | App |
 | L8 | Safe to spend (`GET /ledgers/{ledger}/safe-to-spend?date=`) is what the main pot can spend freely until the end of the current payday period (`period_end`): its balance on `date` (`main_pot_cents`) minus the open occurrences of monthly payments of the main pot up to `period_end`, overdue ones included (`recurring_cents`, `recurring_count`; payments due every few months are paid from their reserve, payments of other pots do not count), minus the unsaved parts of the reserve rates of the period (`reserve_rates_cents`, R14), minus the open parts of the rates of the savings goals (`savings_cents`, T8), minus the rest of the budget of the planned expense categories (`budget_left_cents`: per category max(0, planned − spent), bookings of recurring payments left out, P9). Income counts only once booked. `amount_cents` may be negative (over-planned); `per_day_cents` spreads it over `days_left` (today included), rounded down, and is 0 when nothing is left. Nothing is stored. | App |
+| L9 | Reconciling (`POST /ledgers/{ledger}/reconciliations?date=`, body `actual_cents`, optional `pot_id`, `correct`) compares the real balance of an account on `date` with the ledger: the bank account (no `pot_id`) with the estimated account balance (L7), a separate account (T9) with its pot balance; any other pot → 409. The answer has `expected_cents`, `actual_cents`, `difference_cents` (actual − expected) and, with `correct` and a difference, `correction_id` (X22). The last reconciliation of each account is kept and returned by the balance (`reconciled`, also per separate account). Only the owner of the ledger may reconcile (403). | App |
 
 ## Categories
 
@@ -90,7 +91,7 @@ Open occurrences (`GET /ledgers/{ledger}/recurring-payments/due?date=`) are thos
 | ID | Rule | Enforced by |
 |---|---|---|
 | X1 | `amount_cents` is not 0. | DB |
-| X2 | Sign by type: `expense` and `transfer_out` negative, `income`, `transfer` and `transfer_in` positive. Input is always a positive amount, and the app sets the sign. | DB |
+| X2 | Sign by type: `expense` and `transfer_out` negative, `income`, `transfer` and `transfer_in` positive, `correction` either (X22). Input is always a positive amount, and the app sets the sign. | DB |
 | X3 | `expense` and `income`: `category_id` is required, `counterpart_pot_id` and `linked_transaction_id` are empty. | DB |
 | X4 | `transfer`: `category_id` and `linked_transaction_id` are empty, `counterpart_pot_id` is required and differs from `pot_id`. Both pots belong to the same ledger. | DB |
 | X5 | `pot_id` is required. If none is given, the ledger's default pot is used. | DB (NOT NULL) + App |
@@ -110,6 +111,7 @@ Open occurrences (`GET /ledgers/{ledger}/recurring-payments/due?date=`) are thos
 | X19 | Transaction lists tell the viewer, per booking, whether they may change it: `can_edit` and `can_delete` follow the rules for editing and deleting below. A transfer between ledgers (X14) is never editable, a round-up (X21) neither editable nor deletable, and deleting one of its legs needs the right on both legs. The flags only let the app hide actions; the server still checks every change. | App |
 | X20 | Only expenses can be marked as spontaneous (`is_spontaneous`, UI "⚡ Spontaneous"). Changing an expense into income or a transfer removes the mark. | DB + App |
 | X21 | An expense is rounded up when it is in the main pot of a personal ledger, is booked on or after `round_up_from`, pays no recurring payment and has cents: a transfer from the main pot into the collecting pot on the same day, of (100 − cents) × multiplier cents, belongs to it (`round_up_of`, at most one per expense). It is created, changed or removed with every change of the expense (amount, day, pot, type), deleted and restored with it, and removed for good with it. It is no entry of its own in the deleted list, and cannot be changed, deleted or restored on its own (409). Whole euro amounts have none. The main pot may go negative because of it. | App |
+| X22 | A `correction` evens out the difference found when reconciling (L9): booked on `date` into the account's pot (active, T5), without category, counterpart or link; amount = difference, at most X11. It is created only by reconciling (`POST /transactions` with this type → 400), cannot be edited (409), but can be deleted and restored like other bookings. It counts in every balance, not in the budget, category reports or the spending of safe to spend. | DB + App |
 
 ## Permissions
 
@@ -124,6 +126,7 @@ Every member of a household may read its ledger and book in it. Changing an exis
 | Rename, archive, delete a category or change its purpose | The owner of the ledger (in a household the household owner). |
 | Create a recurring payment, book or skip an occurrence, undo a skip | Every member of the ledger (R7, R8). |
 | Change or archive a recurring payment | The owner of the ledger (R8). |
+| Reconcile an account and book a correction (L9, X22) | The owner of the ledger (in a household the household owner). |
 | Give earlier bookings of a recurring payment the new category (R9) | The owner for all bookings; a member for their own. |
 | Give later or all bookings the new category, which also changes the payment (R9) | The owner of the ledger. |
 | See the members of a household | Every member. Only the user ID, username and role are shown; the display name and other personal data stay hidden. |

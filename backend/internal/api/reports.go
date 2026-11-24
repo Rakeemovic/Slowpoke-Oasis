@@ -135,12 +135,16 @@ type balanceResponse struct {
 	// the estimated balance leaves them out (rule L7).
 	SeparateAccounts []separateAccountResponse `json:"separate_accounts"`
 	SeparateCents    int64                     `json:"separate_cents"`
+	// DefaultPotID and Reconciled describe the bank account (rule L9).
+	DefaultPotID string                  `json:"default_pot_id"`
+	Reconciled   *reconciliationResponse `json:"reconciled"`
 }
 
 type separateAccountResponse struct {
-	PotID        string `json:"pot_id"`
-	Name         string `json:"name"`
-	BalanceCents int64  `json:"balance_cents"`
+	PotID        string                  `json:"pot_id"`
+	Name         string                  `json:"name"`
+	BalanceCents int64                   `json:"balance_cents"`
+	Reconciled   *reconciliationResponse `json:"reconciled"`
 }
 
 // GET /ledgers/{ledger}/balance?date=YYYY-MM-DD
@@ -157,7 +161,12 @@ func (s *Server) ledgerBalance(w http.ResponseWriter, r *http.Request) {
 	}
 	separate := make([]separateAccountResponse, 0, len(b.SeparateAccounts))
 	for _, a := range b.SeparateAccounts {
-		separate = append(separate, separateAccountResponse(a))
+		separate = append(separate, separateAccountResponse{
+			PotID:        a.PotID,
+			Name:         a.Name,
+			BalanceCents: a.BalanceCents,
+			Reconciled:   newReconciliationResponse(a.Reconciled),
+		})
 	}
 	writeJSON(w, http.StatusOK, balanceResponse{
 		AsOf:             b.AsOf,
@@ -169,5 +178,7 @@ func (s *Server) ledgerBalance(w http.ResponseWriter, r *http.Request) {
 		UnbookedCents:    b.UnbookedCents,
 		SeparateAccounts: separate,
 		SeparateCents:    b.SeparateCents,
+		DefaultPotID:     b.DefaultPotID,
+		Reconciled:       newReconciliationResponse(b.Reconciled),
 	})
 }

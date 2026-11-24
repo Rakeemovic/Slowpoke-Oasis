@@ -89,6 +89,9 @@ func (s *Store) UpdateTransaction(ctx context.Context, ledgerID, id string, p Tr
 		if old.Type == TypeTransferOut || old.Type == TypeTransferIn {
 			return ErrLinkedTransaction
 		}
+		if old.Type == TypeCorrection {
+			return ErrCorrectionTransaction
+		}
 		if err := ensureNotRoundUp(ctx, tx, ledgerID, id); err != nil {
 			return err
 		}

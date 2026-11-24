@@ -23,6 +23,7 @@ var statusByError = []struct {
 		ledger.ErrInvalidType,
 		ledger.ErrAmountNotPositive,
 		ledger.ErrInvalidDate,
+		ledger.ErrInvalidBalance,
 		ledger.ErrCategoryRequired,
 		ledger.ErrCategoryForbidden,
 		ledger.ErrCounterpartRequired,
@@ -89,6 +90,8 @@ var statusByError = []struct {
 	// The request is valid but does not fit the current state of the data.
 	{http.StatusConflict, []error{
 		ledger.ErrLinkedTransaction,
+		ledger.ErrCorrectionTransaction,
+		ledger.ErrNotAnAccount,
 		ledger.ErrPotArchived,
 		ledger.ErrDefaultPotProtected,
 		ledger.ErrGoalRateNotAllowed,

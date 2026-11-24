@@ -51,6 +51,7 @@ A pot groups planned amounts and collects transactions.
 ### Recurring payments
 - `recurring_payment`: id, ledger_id, name, amount_cents, category_id, pot_id, interval_months (1, 3, 6, 12), due_day (1–31), first_month, last_month (optional, `YYYY-MM`), tracked_from (date from which occurrences can be open), archived, created_at. Only expenses (rules R1–R5, R8). A payment due every few months books from its reserve (`pot_id` = the pot whose `reserve_for` is the payment, rule R10).
 - `recurring_skip`: recurring_payment_id, due_on. Occurrences a member chose not to book (rule R7).
+- `reconciliation`: pot_id (primary key), ledger_id, reconciled_on, actual_cents. The last reconciliation of an account (rule L9): the default pot stands for the bank account of the ledger, other pots are separate accounts. Only the last one is kept.
 
 **Occurrences** are not stored. They are calculated from the schedule: one due date per `interval_months` months from `first_month` on. An occurrence is *open* if it is due on or after `tracked_from`, is neither booked nor skipped, and the payment is not archived. The app lists open occurrences up to the end of the current payday period and books one with a tap as a normal expense that remembers the occurrence (rule R6). Nothing is booked automatically.
 
@@ -61,6 +62,7 @@ A pot groups planned amounts and collects transactions.
 - `expense`: negative amount, category required
 - `income`: positive amount, category required
 - `transfer`: positive amount moved between two pots of the same ledger. `pot_id` is the source pot and `counterpart_pot_id` the target pot. No category.
+- `correction`: amount of either sign that evens out a difference found when reconciling an account (rules X22, L9). Booked into the main pot or into a pot that is a separate account. No category, so it counts in balances but not in the budget or the category reports.
 - `transfer_out` and `transfer_in`: the two legs of a transfer between two ledgers, for example from a personal ledger into a household ledger. The outgoing leg is negative and sits in the source ledger, the incoming leg is positive and sits in the target ledger. Each leg points at the other with `linked_transaction_id`. No category.
 
 **Assignment:**
