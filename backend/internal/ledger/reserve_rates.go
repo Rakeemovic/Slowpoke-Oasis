@@ -32,21 +32,11 @@ type ReserveRate struct {
 // The rate corrects itself: whatever was saved too little or too much changes
 // the rates of the following periods.
 func (s *Store) ReserveRates(ctx context.Context, ledgerID, today string) ([]ReserveRate, error) {
-	if !validDate(today) {
-		return nil, ErrInvalidDate
-	}
-	payday, err := ledgerPayday(ctx, s.db, ledgerID)
+	cur, err := currentPeriod(ctx, s.db, ledgerID, today)
 	if err != nil {
 		return nil, err
 	}
-	month, err := MonthOf(today, payday)
-	if err != nil {
-		return nil, err
-	}
-	from, to, err := PeriodFor(month, payday)
-	if err != nil {
-		return nil, err
-	}
+	payday, month, from, to := cur.Payday, cur.Month, cur.From, cur.To
 	payments, err := queryRecurringPayments(ctx, s.db,
 		`WHERE ledger_id = ? AND archived = 0 AND interval_months > 1`, ledgerID)
 	if err != nil {
@@ -69,7 +59,7 @@ func (s *Store) ReserveRates(ctx context.Context, ledgerID, today string) ([]Res
 		}
 		r := ReserveRate{Payment: p, DueOn: due, Periods: periodsUntil(month, dueMonth)}
 		var moved int64
-		if r.BalanceCents, moved, err = reserveMovements(ctx, s.db, p.ReservePotID, from, to); err != nil {
+		if r.BalanceCents, moved, err = potMovements(ctx, s.db, p.ReservePotID, from, to); err != nil {
 			return nil, err
 		}
 		r.SavedCents = min(moved, r.BalanceCents)
@@ -79,6 +69,31 @@ func (s *Store) ReserveRates(ctx context.Context, ledgerID, today string) ([]Res
 	}
 	sort.SliceStable(out, func(i, j int) bool { return rateBefore(out[i], out[j]) })
 	return out, nil
+}
+
+// period is the payday period that contains a day.
+type period struct {
+	Payday int
+	Month  string // YYYY-MM, the month the period starts in
+	From   string
+	To     string
+}
+
+// currentPeriod returns the payday period of a ledger that contains today.
+func currentPeriod(ctx context.Context, q queryer, ledgerID, today string) (period, error) {
+	if !validDate(today) {
+		return period{}, ErrInvalidDate
+	}
+	payday, err := ledgerPayday(ctx, q, ledgerID)
+	if err != nil {
+		return period{}, err
+	}
+	month, err := MonthOf(today, payday)
+	if err != nil {
+		return period{}, err
+	}
+	from, to, err := PeriodFor(month, payday)
+	return period{Payday: payday, Month: month, From: from, To: to}, err
 }
 
 // nextOpenOccurrence returns the oldest due date since the start of tracking
@@ -112,9 +127,9 @@ func reserveRate(amount, basis int64, periods int) int64 {
 	return (missing + n - 1) / n
 }
 
-// reserveMovements returns the balance of a reserve and the net amount moved
-// into it by transfers booked from..to (inclusive).
-func reserveMovements(ctx context.Context, q queryer, potID, from, to string) (balance, saved int64, err error) {
+// potMovements returns the balance of a pot (a reserve or a savings goal)
+// and the net amount moved into it by transfers booked from..to (inclusive).
+func potMovements(ctx context.Context, q queryer, potID, from, to string) (balance, saved int64, err error) {
 	err = q.QueryRowContext(ctx, `
 		SELECT `+potBalanceSQL+`,
 		  (SELECT COALESCE(SUM(CASE

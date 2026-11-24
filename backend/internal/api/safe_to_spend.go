@@ -12,6 +12,7 @@ type safeToSpendResponse struct {
 	RecurringCents    int64  `json:"recurring_cents"`
 	RecurringCount    int    `json:"recurring_count"`
 	ReserveRatesCents int64  `json:"reserve_rates_cents"`
+	SavingsCents      int64  `json:"savings_cents"`
 	BudgetLeftCents   int64  `json:"budget_left_cents"`
 	AmountCents       int64  `json:"amount_cents"`
 	PerDayCents       int64  `json:"per_day_cents"`

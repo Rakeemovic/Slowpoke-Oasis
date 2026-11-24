@@ -31,7 +31,7 @@ Categories belong to a ledger. The personal ledger has its own categories, and t
 ### Pots
 A pot groups planned amounts and collects transactions.
 
-- `pot`: id, ledger_id, name, kind (`monthly` or `one_time`), is_default, target_cents (optional savings goal), target_date (optional), archived, reserve_for (the recurring payment this one-time pot is the reserve of, rule R10)
+- `pot`: id, ledger_id, name, kind (`monthly` or `one_time`), is_default, target_cents (optional savings goal), target_date (optional), monthly_rate_cents (optional fixed rate per payday period, excludes target_date), archived, reserve_for (the recurring payment this one-time pot is the reserve of, rule R10)
 - Each ledger has **exactly one default pot** (`is_default = true`), called "Main" ("Monthly" before migration 0017). It holds the money of the account, is a monthly pot and can be renamed but never deleted.
 - **One-time pots have no period.** They stay open until archived. Transactions are assigned to them explicitly through `pot_id`, regardless of the booking date. Example: a holiday pot can contain a flight booked in November 2027 and a balance payment from June 2028.
 - The optional target date lets the frontend calculate the required monthly rate and show progress.
@@ -82,7 +82,7 @@ A pot groups planned amounts and collects transactions.
 - **Balance of a ledger** (`GET /ledgers/{ledger}/balance`, rule L7): *available* is the balance of the default pot, *total* the sum of all pots. Only transactions booked on or before the given day count, so planned transactions do not lower it early.
 - **Safe to spend** (`GET /ledgers/{ledger}/safe-to-spend`, rule L8): computed on request from the main pot's balance, the open monthly payments, the open reserve rates and the rest of the budget; nothing is stored.
 - **Progress toward a savings goal:** the pot balance relative to `target_cents`. Balances are calculated on demand and not stored.
-- **Required monthly rate:** the remaining amount up to `target_cents`, divided by the number of months until `target_date`. Only available when a target date is set.
+- **Rate of a savings goal** (rule T8, `GET /ledgers/{ledger}/savings-goals`): with a target date the same formula as a reserve's rate, with `target_cents` as the amount and the payday period of `target_date` as the due month (a passed date makes the rest due now); with a fixed rate `monthly_rate_cents`, but never more than the target still lacks. A pot with only a target amount has no rate.
 - **Rate of a reserve** (rule R14): what is missing up to the payment's amount without this period's savings, divided by the payday periods until the next open occurrence, rounded up to the cent. It corrects itself: too little or too much this period changes the next rates.
 
 ## Deferred
