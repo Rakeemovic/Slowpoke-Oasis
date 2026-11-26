@@ -8,9 +8,6 @@ import type {
   Household,
   Me,
   Member,
-  PurposeReport,
-  ReconcileInput,
-  ReconcileResult,
   NewCategory,
   NewLedgerTransfer,
   NewPot,
@@ -20,6 +17,9 @@ import type {
   PlanScope,
   Pot,
   PotChange,
+  PurposeReport,
+  ReconcileInput,
+  ReconcileResult,
   RecurringPayment,
   RecurringPaymentChange,
   RecurringPaymentInput,
@@ -28,6 +28,7 @@ import type {
   SavingsGoal,
   Transaction,
   TransactionChange,
+  WeeklyReview,
 } from "@/api/types";
 
 // One small function per API endpoint, so screens never build URLs themselves.
@@ -52,6 +53,9 @@ export const auth = {
   logout: () => request<void>("POST", "/auth/logout"),
 
   me: () => request<Me>("GET", "/me"),
+
+  /** One day for the weekly reviews of all ledgers, 1 = Monday to 7 = Sunday (rule W1). */
+  setReviewWeekday: (weekday: number) => request<void>("PUT", "/me/review-weekday", { weekday }),
 };
 
 export const households = {
@@ -107,6 +111,10 @@ export const ledgers = {
   updateTransaction: (ledgerId: string, id: string, change: TransactionChange | NewPotTransfer) =>
     request<void>("PATCH", `/ledgers/${enc(ledgerId)}/transactions/${enc(id)}`, change),
 
+  /** Only the author may mark an expense as spontaneous (rule X20); nothing else changes. */
+  markSpontaneous: (ledgerId: string, id: string, spontaneous: boolean) =>
+    request<void>("PATCH", `/ledgers/${enc(ledgerId)}/transactions/${enc(id)}`, { is_spontaneous: spontaneous }),
+
   /** Soft delete; a transfer between ledgers loses both legs. */
   deleteTransaction: (ledgerId: string, id: string) =>
     request<void>("DELETE", `/ledgers/${enc(ledgerId)}/transactions/${enc(id)}`),
@@ -150,6 +158,13 @@ export const ledgers = {
       "GET",
       `/ledgers/${enc(ledgerId)}/purpose-report?date=${enc(date)}${month ? `&month=${enc(month)}` : ""}`,
     ),
+
+  /** The open review of the signed-in user, if any; date is the app's local today. */
+  weeklyReview: (ledgerId: string, date: string) =>
+    request<WeeklyReview>("GET", `/ledgers/${enc(ledgerId)}/weekly-review?date=${enc(date)}`),
+
+  completeWeeklyReview: (ledgerId: string, date: string) =>
+    request<void>("POST", `/ledgers/${enc(ledgerId)}/weekly-review?date=${enc(date)}`),
 };
 
 export const pots = {

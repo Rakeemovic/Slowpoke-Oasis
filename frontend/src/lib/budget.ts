@@ -76,6 +76,14 @@ export function budgetTotals(budget: Budget): BudgetTotals {
   return totals;
 }
 
+/**
+ * Expense categories that spent more than their plan. Categories without a
+ * plan are left out: there is nothing they could be over.
+ */
+export function overPlan(budget: Budget): BudgetCategory[] {
+  return budget.categories.filter((c) => !c.is_income && c.planned_cents > 0 && c.difference_cents < 0);
+}
+
 /** The two texts of a line below a category, and whether the status is a warning. */
 export interface SubLineText {
   progress: string;

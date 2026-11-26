@@ -88,6 +88,7 @@ function RootNavigator() {
           <Stack.Screen name="ledgers/[ledgerId]/transactions/[transactionId]" options={{ title: "Transaction" }} />
           <Stack.Screen name="ledgers/[ledgerId]/reconcile" options={{ title: "Reconcile" }} />
           <Stack.Screen name="ledgers/[ledgerId]/insights" options={{ title: "Insights" }} />
+          <Stack.Screen name="ledgers/[ledgerId]/review" options={{ title: "Weekly review" }} />
           <Stack.Screen name="households/[householdId]/members" options={{ title: "Members" }} />
         </Stack.Protected>
       </Stack>

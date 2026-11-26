@@ -19,6 +19,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Text } from "@/components/ui/text";
+import { WeeklyReviewCard } from "@/components/weekly-review-card";
 import { useLoader } from "@/hooks/use-loader";
 import { usePagedLoader } from "@/hooks/use-paged-loader";
 import { dayHeading } from "@/lib/dates";
@@ -71,6 +72,7 @@ export default function LedgerOverviewScreen() {
           />
         )}
       </View>
+      <WeeklyReviewCard ledgerId={ledgerId} />
       <DuePayments ledgerId={ledgerId} onChanged={() => setBalanceVersion((v) => v + 1)} />
       <ErrorMessage message={error ?? categoryList.error ?? potList.error} onRetry={reload} />
       {loading && !transactions && <Skeleton className="h-40 w-full rounded-2xl" />}

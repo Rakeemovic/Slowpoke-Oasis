@@ -9,6 +9,8 @@ export interface Me {
   display_name: string;
   /** Created at registration; null only for accounts older than that rule. */
   personal_ledger_id: string | null;
+  /** The day of the weekly review, 1 = Monday to 7 = Sunday (rule W1). */
+  review_weekday: number;
 }
 
 export interface Household {
@@ -515,3 +517,21 @@ export interface PurposeReport {
   /** need, want, saving and none, in this order. */
   lines: PurposeLine[];
 }
+
+/**
+ * The open weekly review of the signed-in user about one ledger (rule W2).
+ * Only `due` is sent when none is open.
+ */
+export type WeeklyReview =
+  | { due: false }
+  | {
+      due: true;
+      covered_from: string;
+      covered_until: string;
+      previous_from: string;
+      previous_until: string;
+      /** Like a purpose report, but only the own bookings and without shares. */
+      lines: PurposeLine[];
+      /** The own expenses of the covered days in categories with the purpose want. */
+      wants: Transaction[];
+    };
