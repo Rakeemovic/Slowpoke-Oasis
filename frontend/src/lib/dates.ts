@@ -24,6 +24,12 @@ export function formatMonth(month: string): string {
   return new Date(year, monthNumber - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
 }
 
+/** Just the name of a month given as YYYY-MM, in the user's locale, e.g. "October". */
+export function monthName(month: string): string {
+  const [year, monthNumber] = month.split("-").map(Number);
+  return new Date(year, monthNumber - 1, 1).toLocaleDateString(undefined, { month: "long" });
+}
+
 /** A date as YYYY-MM-DD in the short form of the user's locale. */
 export function formatDate(date: string): string {
   const [year, month, day] = date.split("-").map(Number);

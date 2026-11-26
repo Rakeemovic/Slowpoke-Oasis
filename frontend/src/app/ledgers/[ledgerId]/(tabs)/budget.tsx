@@ -1,4 +1,4 @@
-import { ChartPie, ChevronLeft, ChevronRight } from "lucide-react-native";
+import { ChartPie } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
 import { useCallback, useState } from "react";
 import { View } from "react-native";
@@ -10,17 +10,17 @@ import { ChoicePicker } from "@/components/choice-picker";
 import { ErrorMessage } from "@/components/error-message";
 import { EmptyState } from "@/components/empty-state";
 import { ListSection } from "@/components/list";
+import { MonthSwitcher } from "@/components/month-switcher";
 import { CircularProgress } from "@/components/magic/circular-progress";
 import { PlanAmountEditor } from "@/components/plan-amount-editor";
 import { Screen } from "@/components/screen";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Text } from "@/components/ui/text";
 import { useLoader } from "@/hooks/use-loader";
 import { type BudgetGroup, budgetGroups, budgetTotals } from "@/lib/budget";
-import { formatDate, formatMonth, shiftMonth, today } from "@/lib/dates";
+import { formatDate, shiftMonth, today } from "@/lib/dates";
 import { useLedger } from "@/lib/ledger-context";
 import { formatCents } from "@/lib/money";
 import { THEME } from "@/lib/theme";
@@ -73,41 +73,6 @@ export default function BudgetScreen() {
         />
       )}
     </Screen>
-  );
-}
-
-function MonthSwitcher({
-  month,
-  isCurrent,
-  disabled,
-  onShift,
-  onCurrent,
-}: {
-  month: string;
-  isCurrent: boolean;
-  disabled: boolean;
-  onShift: (delta: number) => void;
-  onCurrent: () => void;
-}) {
-  return (
-    <View className="gap-1">
-      <View className="flex-row items-center gap-2">
-        <Button variant="ghost" size="icon" onPress={() => onShift(-1)} disabled={disabled} aria-label="Previous month">
-          <Icon as={ChevronLeft} size={22} />
-        </Button>
-        <Text variant="h3" className="flex-1 text-center">
-          {formatMonth(month)}
-        </Text>
-        <Button variant="ghost" size="icon" onPress={() => onShift(1)} disabled={disabled} aria-label="Next month">
-          <Icon as={ChevronRight} size={22} />
-        </Button>
-      </View>
-      {!isCurrent && (
-        <Button variant="ghost" size="sm" onPress={onCurrent} disabled={disabled}>
-          <Text>Back to this month</Text>
-        </Button>
-      )}
-    </View>
   );
 }
 

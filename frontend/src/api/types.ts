@@ -486,3 +486,32 @@ export interface ReserveRate {
   /** The part of the rate not saved yet; never below zero. */
   open_cents: number;
 }
+
+/** What a purpose line of the report stands for; "none" is expenses of categories without one (rule L10). */
+export type PurposeKey = "need" | "want" | "saving" | "none";
+
+export interface PurposeLine {
+  purpose: PurposeKey;
+  /** Always positive. For saving it includes transfer_cents. */
+  cents: number;
+  /** The part of cents booked as spontaneous (rule X20). */
+  spontaneous_cents: number;
+  /** For saving: the part that moved into savings pots, net of what came back. */
+  transfer_cents: number;
+  /** cents of the period before. */
+  previous_cents: number;
+  /** Share of the income of the period, whole percent; null when no income is booked. */
+  share_percent: number | null;
+}
+
+/** What a ledger spent in one payday period, by purpose (rule L10). */
+export interface PurposeReport {
+  month: string;
+  current_month: string;
+  previous_month: string;
+  from: string;
+  to: string;
+  income_cents: number;
+  /** need, want, saving and none, in this order. */
+  lines: PurposeLine[];
+}

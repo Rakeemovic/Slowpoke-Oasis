@@ -8,6 +8,7 @@ import type {
   Household,
   Me,
   Member,
+  PurposeReport,
   ReconcileInput,
   ReconcileResult,
   NewCategory,
@@ -142,6 +143,13 @@ export const ledgers = {
    */
   budget: (ledgerId: string, date: string, month?: string) =>
     request<Budget>("GET", `/ledgers/${enc(ledgerId)}/budget?date=${enc(date)}${month ? `&month=${enc(month)}` : ""}`),
+
+  /** What the ledger spent in one payday period, by purpose; date is the app's local today (rule L10). */
+  purposeReport: (ledgerId: string, date: string, month?: string) =>
+    request<PurposeReport>(
+      "GET",
+      `/ledgers/${enc(ledgerId)}/purpose-report?date=${enc(date)}${month ? `&month=${enc(month)}` : ""}`,
+    ),
 };
 
 export const pots = {

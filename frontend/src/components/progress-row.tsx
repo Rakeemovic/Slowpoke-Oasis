@@ -20,17 +20,20 @@ const fillColour: Record<ProgressTone, string> = {
  * The fill is hidden from screen readers: they get the same facts from the
  * row's text, and a progress bar inside a button would only garble its name.
  * `label` names the bar in the DOM (aria-label), e.g. "Groceries", which also
- * lets the end-to-end tests read the value.
+ * lets the end-to-end tests read the value. `fillClassName` replaces the
+ * colour the tone would give, for rows with a colour of their own.
  */
 export function ProgressRow({
   progress,
   label,
   className,
+  fillClassName,
   children,
 }: {
   progress?: Progress;
   label: string;
   className?: string;
+  fillClassName?: string;
   children: ReactNode;
 }) {
   return (
@@ -44,7 +47,7 @@ export function ProgressRow({
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={percent(progress)}
-          className={cn("absolute inset-y-0 left-0", fillColour[progress.tone])}
+          className={cn("absolute inset-y-0 left-0", fillClassName ?? fillColour[progress.tone])}
           style={{ width: `${progress.fraction * 100}%` }}
         />
       )}
