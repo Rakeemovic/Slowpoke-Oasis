@@ -47,7 +47,10 @@ export function ChoicePicker({
               onPress={() => onSelect(c.id)}
               className={cn(
                 "h-10 flex-row items-center gap-1.5 rounded-full border px-3.5",
-                active ? "border-primary bg-primary" : "border-border bg-card active:bg-accent web:hover:bg-accent/60",
+                // Same pseudo-classes in both states, see KindButton.
+                active
+                  ? "border-primary bg-primary active:bg-primary web:hover:bg-primary"
+                  : "border-border bg-card active:bg-accent web:hover:bg-accent/60",
               )}>
               {active ? (
                 <Icon as={Check} size={16} className="text-primary-foreground" />
