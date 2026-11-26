@@ -39,6 +39,9 @@ type Transaction struct {
 	// RoundUpOf is the ID of the expense this transfer rounds up (rule X21),
 	// or empty.
 	RoundUpOf string
+	// RoundUpCents is the amount of the round-up that belongs to this expense
+	// (rule X21), or 0 if it has none.
+	RoundUpCents int64
 }
 
 // transactionColumns lists the columns of a Transaction for a query that
@@ -48,7 +51,9 @@ const transactionColumns = `
 	COALESCE(t.category_id, ''), t.pot_id, COALESCE(t.counterpart_pot_id, ''),
 	t.amount_cents, t.booked_on, COALESCE(t.note, ''), COALESCE(author.username, ''),
 	t.is_spontaneous, COALESCE(t.recurring_payment_id, ''), COALESCE(t.recurring_due_on, ''),
-	COALESCE(t.round_up_of, '')`
+	COALESCE(t.round_up_of, ''),
+	COALESCE((SELECT r.amount_cents FROM transactions r
+	          WHERE r.round_up_of = t.id AND r.deleted_at IS NULL), 0)`
 
 // transactionTables names the transactions table t and joins its author.
 const transactionTables = `transactions t LEFT JOIN user author ON author.id = t.user_id`
@@ -56,7 +61,7 @@ const transactionTables = `transactions t LEFT JOIN user author ON author.id = t
 func (t *Transaction) scanTargets() []any {
 	return []any{&t.ID, &t.LedgerID, &t.UserID, &t.Type, &t.CategoryID,
 		&t.PotID, &t.CounterpartPotID, &t.AmountCents, &t.BookedOn, &t.Note, &t.Username,
-		&t.IsSpontaneous, &t.RecurringPaymentID, &t.RecurringDueOn, &t.RoundUpOf}
+		&t.IsSpontaneous, &t.RecurringPaymentID, &t.RecurringDueOn, &t.RoundUpOf, &t.RoundUpCents}
 }
 
 // ListFilter selects transactions of one ledger. Empty optional fields mean

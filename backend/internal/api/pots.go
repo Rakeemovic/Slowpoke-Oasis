@@ -34,28 +34,37 @@ type plannedResponse struct {
 	AmountCents int64  `json:"amount_cents"`
 }
 
-// POST /ledgers/{ledger}/pots
+// POST /ledgers/{ledger}/pots?date=YYYY-MM-DD
+// round_up_multiplier (1, 2, 3 or 5) makes the new pot collect round-ups from
+// date (the app's local today) on, as in updatePot.
 func (s *Server) createPot(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireLedgerAccess(w, r); !ok {
 		return
 	}
 	var req struct {
-		Name             string `json:"name"`
-		TargetCents      int64  `json:"target_cents"`
-		TargetDate       string `json:"target_date"`
-		MonthlyRateCents int64  `json:"monthly_rate_cents"`
-		SeparateAccount  bool   `json:"is_separate_account"`
+		Name              string `json:"name"`
+		TargetCents       int64  `json:"target_cents"`
+		TargetDate        string `json:"target_date"`
+		MonthlyRateCents  int64  `json:"monthly_rate_cents"`
+		SeparateAccount   bool   `json:"is_separate_account"`
+		RoundUpMultiplier int    `json:"round_up_multiplier"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
 	}
+	today, ok := s.today(w, r)
+	if !ok {
+		return
+	}
 	id, err := s.store.CreatePot(r.Context(), ledger.NewPot{
-		LedgerID:         r.PathValue("ledger"),
-		Name:             req.Name,
-		TargetCents:      req.TargetCents,
-		TargetDate:       req.TargetDate,
-		MonthlyRateCents: req.MonthlyRateCents,
-		SeparateAccount:  req.SeparateAccount,
+		LedgerID:          r.PathValue("ledger"),
+		Name:              req.Name,
+		TargetCents:       req.TargetCents,
+		TargetDate:        req.TargetDate,
+		MonthlyRateCents:  req.MonthlyRateCents,
+		SeparateAccount:   req.SeparateAccount,
+		RoundUpMultiplier: req.RoundUpMultiplier,
+		Today:             today,
 	})
 	if err != nil {
 		fail(w, err)

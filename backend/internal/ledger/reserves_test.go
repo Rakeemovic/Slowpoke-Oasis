@@ -327,3 +327,69 @@ func TestReserveRates(t *testing.T) {
 		t.Fatalf("after paying: %+v", r)
 	}
 }
+
+func renamePayment(t *testing.T, s *Store, id, name string) {
+	t.Helper()
+	if err := updatePayment(s, id, RecurringPaymentUpdate{Name: &name}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestReserveFollowsPaymentName(t *testing.T) {
+	_, s := setup(t)
+	id := mustCreateRecurring(t, s, insurance())
+	renamePayment(t, s, id, "Home insurance")
+
+	p := loadPayment(t, s, id)
+	if got := potNames(t, s)[p.ReservePotID]; got != "Home insurance" {
+		t.Fatalf("reserve name = %q, want the new payment name", got)
+	}
+}
+
+func TestReserveWithOwnNameIsNotRenamed(t *testing.T) {
+	_, s := setup(t)
+	id := mustCreateRecurring(t, s, insurance())
+	p := loadPayment(t, s, id)
+	own := "Cushion for the car"
+	if err := s.UpdatePot(context.Background(), "l1", p.ReservePotID, PotUpdate{Name: &own}); err != nil {
+		t.Fatal(err)
+	}
+	renamePayment(t, s, id, "Home insurance")
+
+	if got := potNames(t, s)[p.ReservePotID]; got != own {
+		t.Fatalf("reserve name = %q, want the name the user chose", got)
+	}
+}
+
+func TestRenamedReserveAvoidsActivePots(t *testing.T) {
+	_, s := setup(t)
+	id := mustCreateRecurring(t, s, insurance())
+	renamePayment(t, s, id, "holiday") // the pot "Holiday" exists
+
+	p := loadPayment(t, s, id)
+	if got := potNames(t, s)[p.ReservePotID]; got != "holiday (reserve)" {
+		t.Fatalf("reserve name = %q", got)
+	}
+	renamePayment(t, s, id, "holiday") // same name again: nothing changes
+	if got := potNames(t, s)[p.ReservePotID]; got != "holiday (reserve)" {
+		t.Fatalf("reserve name after the same name = %q", got)
+	}
+}
+
+func TestIsGeneratedReserveName(t *testing.T) {
+	cases := []struct {
+		name, payment string
+		want          bool
+	}{
+		{"Car insurance", "Car insurance", true},
+		{"Car insurance (reserve)", "Car insurance", true},
+		{"Car insurance (reserve 12)", "Car insurance", true},
+		{"Cushion", "Car insurance", false},
+		{"Car insurance fund", "Car insurance", false},
+	}
+	for _, c := range cases {
+		if got := isGeneratedReserveName(c.name, c.payment); got != c.want {
+			t.Errorf("isGeneratedReserveName(%q, %q) = %v, want %v", c.name, c.payment, got, c.want)
+		}
+	}
+}

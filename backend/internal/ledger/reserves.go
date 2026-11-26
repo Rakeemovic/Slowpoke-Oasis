@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 )
@@ -77,7 +78,7 @@ func activeReserveOf(ctx context.Context, q queryer, paymentID string) (string, 
 // createReserve adds a one-time pot as the reserve of p and returns its ID.
 // Its target is the amount of the payment.
 func createReserve(ctx context.Context, tx *sql.Tx, ledgerID string, p RecurringPayment) (string, error) {
-	name, err := freeReserveName(ctx, tx, ledgerID, p.Name)
+	name, err := freeReserveName(ctx, tx, ledgerID, p.Name, "")
 	if err != nil {
 		return "", err
 	}
@@ -93,14 +94,16 @@ func createReserve(ctx context.Context, tx *sql.Tx, ledgerID string, p Recurring
 // freeReserveName returns a name for a new reserve that no active pot of the
 // ledger has (rule T1): the payment's name, else "<name> (reserve)", else
 // "<name> (reserve 2)" and so on. The payment's name is shortened to fit.
-func freeReserveName(ctx context.Context, q queryer, ledgerID, paymentName string) (string, error) {
+// The pot exceptPotID (a reserve being renamed, "" for none) does not count
+// as taking a name.
+func freeReserveName(ctx context.Context, q queryer, ledgerID, paymentName, exceptPotID string) (string, error) {
 	for n := 1; ; n++ {
 		name := reserveName(paymentName, n)
 		var taken bool
 		err := q.QueryRowContext(ctx, `
 			SELECT EXISTS (SELECT 1 FROM pot
-			               WHERE ledger_id = ? AND archived = 0 AND lower(name) = lower(?))`,
-			ledgerID, name,
+			               WHERE ledger_id = ? AND archived = 0 AND lower(name) = lower(?) AND id <> ?)`,
+			ledgerID, name, exceptPotID,
 		).Scan(&taken)
 		if err != nil {
 			return "", err
@@ -109,6 +112,39 @@ func freeReserveName(ctx context.Context, q queryer, ledgerID, paymentName strin
 			return name, nil
 		}
 	}
+}
+
+// reserveSuffix is the ending reserveName adds when the payment's name is taken.
+var reserveSuffix = regexp.MustCompile(` \(reserve( \d+)?\)$`)
+
+// isGeneratedReserveName reports whether name is one reserveName produces for
+// the payment name, so the user did not name the reserve themselves.
+func isGeneratedReserveName(name, paymentName string) bool {
+	suffix := reserveSuffix.FindString(name)
+	stem := strings.TrimSuffix(name, suffix)
+	return stem == truncateRunes(paymentName, maxNameLength-utf8.RuneCountInString(suffix))
+}
+
+// renameReserve gives the active reserve of a renamed payment the new name
+// (rule R10), unless the reserve no longer has the name made from the old
+// one: then the user named it themselves and the name stays.
+func renameReserve(ctx context.Context, tx *sql.Tx, ledgerID, paymentID, oldName, newName string) error {
+	var potID, current string
+	err := tx.QueryRowContext(ctx,
+		`SELECT id, name FROM pot WHERE reserve_for = ? AND archived = 0`, paymentID,
+	).Scan(&potID, &current)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && !isGeneratedReserveName(current, oldName)) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	name, err := freeReserveName(ctx, tx, ledgerID, newName, potID)
+	if err != nil || name == current {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE pot SET name = ? WHERE id = ?`, name, potID)
+	return err
 }
 
 // reserveName returns the n-th name to try for the reserve of a payment.

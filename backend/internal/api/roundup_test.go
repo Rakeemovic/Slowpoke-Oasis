@@ -88,3 +88,43 @@ func TestRoundUpErrorStatuses(t *testing.T) {
 		})
 	}
 }
+
+func TestNewPotWithRoundUpAndTheAmountOnTheExpense(t *testing.T) {
+	h := newTestHandler(t)
+	rec := do(t, h, http.MethodPost, "/ledgers/l1/pots?date=2026-11-01", "u1", map[string]any{"name": "Bike", "round_up_multiplier": 3})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create pot: status %d, body %s", rec.Code, rec.Body)
+	}
+	bike := decodeID(t, rec.Body.Bytes())
+
+	var pots []potResponse
+	rec = do(t, h, http.MethodGet, "/ledgers/l1/pots", "u1", nil)
+	if err := json.Unmarshal(rec.Body.Bytes(), &pots); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range pots {
+		if p.ID == bike && (p.RoundUpMultiplier != 3 || p.RoundUpFrom != "2026-11-01") {
+			t.Errorf("pot = %+v, want x3 from 2026-11-01", p)
+		}
+	}
+
+	// 9,75 € rounds up by 25 cents, times 3; the expense names the amount.
+	rec = do(t, h, http.MethodPost, "/ledgers/l1/transactions", "u1", map[string]any{
+		"type": "expense", "category_id": "c-food", "amount_cents": 975, "booked_on": "2026-11-16",
+	})
+	expense := decodeID(t, rec.Body.Bytes())
+	rec = do(t, h, http.MethodGet, "/ledgers/l1/transactions/"+expense, "u1", nil)
+	var got transactionResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.RoundUpCents != 75 {
+		t.Errorf("round_up_cents = %d, want 75 (body %s)", got.RoundUpCents, rec.Body)
+	}
+
+	// An invalid multiplier creates nothing.
+	rec = do(t, h, http.MethodPost, "/ledgers/l1/pots?date=2026-11-01", "u1", map[string]any{"name": "Bad", "round_up_multiplier": 4})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("multiplier 4: status %d, want 400 (body %s)", rec.Code, rec.Body)
+	}
+}

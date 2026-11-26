@@ -220,6 +220,11 @@ func (s *Store) UpdateRecurringPayment(ctx context.Context, ledgerID, id string,
 		if err := syncReserve(ctx, tx, ledgerID, &p); err != nil {
 			return err
 		}
+		if p.Name != old.Name {
+			if err := renameReserve(ctx, tx, ledgerID, id, old.Name, p.Name); err != nil {
+				return err
+			}
+		}
 		if !p.Schedule.sameDates(old.Schedule) || (old.Archived && !p.Archived) {
 			p.TrackedFrom = u.Today
 		}
