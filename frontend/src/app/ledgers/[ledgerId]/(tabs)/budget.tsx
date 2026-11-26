@@ -1,4 +1,4 @@
-import { ChartPie } from "lucide-react-native";
+import { ChartColumn, ChartPie } from "lucide-react-native";
 import { useColorScheme } from "nativewind";
 import { useCallback, useState } from "react";
 import { View } from "react-native";
@@ -9,7 +9,7 @@ import { BudgetCategoryRows, SavingsRow } from "@/components/budget-category-row
 import { ChoicePicker } from "@/components/choice-picker";
 import { ErrorMessage } from "@/components/error-message";
 import { EmptyState } from "@/components/empty-state";
-import { ListSection } from "@/components/list";
+import { ListRow, ListSection } from "@/components/list";
 import { MonthSwitcher } from "@/components/month-switcher";
 import { CircularProgress } from "@/components/magic/circular-progress";
 import { PlanAmountEditor } from "@/components/plan-amount-editor";
@@ -20,7 +20,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Text } from "@/components/ui/text";
 import { useLoader } from "@/hooks/use-loader";
 import { type BudgetGroup, budgetGroups, budgetTotals } from "@/lib/budget";
-import { formatDate, shiftMonth, today } from "@/lib/dates";
+import { formatDate, monthName, shiftMonth, today } from "@/lib/dates";
+import { hueFor } from "@/lib/hues";
 import { useLedger } from "@/lib/ledger-context";
 import { formatCents } from "@/lib/money";
 import { THEME } from "@/lib/theme";
@@ -150,6 +151,8 @@ function BudgetContent({
       )}
       {note && <Text variant="muted">{note}</Text>}
       <Totals budget={budget} />
+      {/* A month that has not begun has nothing to look back on. */}
+      {budget.month <= budget.current_month && <InsightsLink ledgerId={ledgerId} month={budget.month} />}
       {groups.length === 0 && budget.savings.length === 0 && (
         <EmptyState
           icon={ChartPie}
@@ -213,6 +216,22 @@ function BudgetContent({
         </View>
       )}
     </>
+  );
+}
+
+/** Leads to the purposes of the month shown here, so it need not be picked again. */
+function InsightsLink({ ledgerId, month }: { ledgerId: string; month: string }) {
+  return (
+    <ListSection>
+      <ListRow
+        title="Insights"
+        subtitle={`Needs, wants and savings in ${monthName(month)}`}
+        icon={ChartColumn}
+        hue={hueFor("insights")}
+        href={{ pathname: "/ledgers/[ledgerId]/insights", params: { ledgerId, month } }}
+        chevron
+      />
+    </ListSection>
   );
 }
 
