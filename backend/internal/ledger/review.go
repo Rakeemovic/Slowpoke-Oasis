@@ -97,7 +97,24 @@ func openReviewDays(ctx context.Context, q queryer, ledgerID, userID, today stri
 		return DayRange{}, false, err
 	}
 	days, due := reviewDays(day, weekday, lastUntil)
-	return days, due, nil
+	if !due {
+		return DayRange{}, false, nil
+	}
+	// Without own bookings there is nothing to look back on (rule W1).
+	booked, err := hasBookings(ctx, q, purposeScope{ledgerID, userID, days})
+	if err != nil || !booked {
+		return DayRange{}, false, err
+	}
+	return days, true, nil
+}
+
+// hasBookings says whether a scope contains any booking.
+func hasBookings(ctx context.Context, q queryer, sc purposeScope) (bool, error) {
+	var found bool
+	err := q.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM transactions t WHERE `+bookingsInScope+`)`, sc.args()...,
+	).Scan(&found)
+	return found, err
 }
 
 // reviewDays applies rules W1 and W2. A reflection is open from the latest
