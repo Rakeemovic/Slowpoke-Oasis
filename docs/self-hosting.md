@@ -68,6 +68,7 @@ All settings are environment variables. In Compose, set them in `.env` or in the
 | `CORS_ORIGINS` | empty | Comma-separated exact origins allowed to call the API from a browser. Only needed when a web app is hosted at another address. |
 | `DB_PATH` | `/data/slowpoke.db` | The SQLite database. `/data` is a Docker volume. |
 | `WEB_DIR` | `/web` | The exported web app. Empty means the server only serves the API. |
+| `BACKUP_DIR` | `/data/backups` | Where the daily backups go. Empty turns them off. |
 | `ADDR` | `:8080` | Address and port the server listens on inside the container. |
 
 ## Updating
@@ -77,20 +78,41 @@ git pull
 docker compose up -d --build
 ```
 
-Database migrations run automatically at startup. Make a backup first.
+Database migrations run automatically at startup. Write a backup first (see below).
 
 ## Backups
 
-The whole state is the database in the volume `<project>_slowpoke-data` (see `docker volume ls`; the project is the folder name, e.g. `slowpoke-oasis`). Stop the server while copying, so the database file is consistent:
+The whole state is one database. The server copies it to `/data/backups` once a day (UTC), while it keeps running, and keeps the newest 14 copies. To write the copy of today right now, for example before an update:
+
+```sh
+docker compose exec slowpoke /server backup
+```
+
+### Keep a copy elsewhere
+
+The backups sit on the same disk as the database, so they do not help if the machine is lost. Fetch them regularly to another computer. They contain everything, so store them somewhere only you can read.
+
+On your own computer, with `me@server` and the folder of the project adjusted:
+
+```sh
+ssh me@server "cd Slowpoke-Oasis && docker compose cp slowpoke:/data/backups/. ~/slowpoke-backups"
+scp -r me@server:slowpoke-backups .
+```
+
+### Restore
+
+Stop the server, put the chosen copy in place of the database and start it again. The helper container needs the name of the volume, `<project>_slowpoke-data` (see `docker volume ls`; the project is the folder name, e.g. `slowpoke-oasis`):
 
 ```sh
 docker compose stop slowpoke
-docker run --rm -v slowpoke-oasis_slowpoke-data:/data -v "$PWD":/backup alpine \
-  tar czf /backup/slowpoke-backup.tar.gz -C /data .
+docker run --rm -v slowpoke-oasis_slowpoke-data:/data alpine sh -c '
+  cp /data/backups/slowpoke-2026-12-01.db /data/slowpoke.db &&
+  rm -f /data/slowpoke.db-wal /data/slowpoke.db-shm /data/slowpoke.db-journal &&
+  chown 65532:65532 /data/slowpoke.db'
 docker compose start slowpoke
 ```
 
-To restore, stop the server, unpack the archive into the volume the same way (`tar xzf … -C /data`) and start it again.
+To restore a copy from another computer, copy it to the server first and mount its folder into the helper container: add `-v /home/me/slowpoke-backups:/import:ro` and copy from `/import/`.
 
 ## Forgotten passwords
 

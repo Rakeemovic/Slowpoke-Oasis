@@ -4,10 +4,12 @@
 //
 //	server                           start the API
 //	server reset-password <username> give a user a new password and recovery code
+//	server backup                    write a backup of the database now
 package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
@@ -39,6 +41,8 @@ func main() {
 		err = run()
 	case os.Args[1] == "reset-password":
 		err = runResetPassword(os.Args[2:], os.Stdout)
+	case os.Args[1] == "backup":
+		err = runBackup(os.Args[2:], os.Stdout)
 	default:
 		err = fmt.Errorf("unknown command %q\n%s", os.Args[1], usage)
 	}
@@ -49,7 +53,8 @@ func main() {
 
 const usage = `usage:
   server                            start the API
-  server reset-password <username>  give a user a new password and recovery code`
+  server reset-password <username>  give a user a new password and recovery code
+  server backup                     write a backup of the database to BACKUP_DIR`
 
 // run starts the server and blocks until it is stopped with Ctrl+C or SIGTERM.
 // Returning an error instead of exiting lets the deferred cleanup happen.
@@ -78,7 +83,8 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	go runCleanup(ctx, ledgers, accounts)
+	backupDir := os.Getenv("BACKUP_DIR")
+	go runMaintenance(ctx, ledgers, accounts, func(now time.Time) { backupDaily(ctx, db, backupDir, now) })
 
 	// Only the web build of the frontend needs CORS; native apps work without it.
 	corsOrigins := api.ParseOrigins(os.Getenv("CORS_ORIGINS"))
@@ -132,9 +138,9 @@ func run() error {
 	return srv.Shutdown(shutdownCtx)
 }
 
-// runCleanup removes expired data once right away and then at every
-// cleanupInterval, until ctx is cancelled.
-func runCleanup(ctx context.Context, ledgers *ledger.Store, accounts *auth.Service) {
+// runMaintenance removes expired data and then backs up the rest, once right
+// away and then at every cleanupInterval, until ctx is cancelled.
+func runMaintenance(ctx context.Context, ledgers *ledger.Store, accounts *auth.Service, backup func(time.Time)) {
 	ticker := time.NewTicker(cleanupInterval)
 	defer ticker.Stop()
 
@@ -150,12 +156,29 @@ func runCleanup(ctx context.Context, ledgers *ledger.Store, accounts *auth.Servi
 			log.Printf("purged %d expired sessions", n)
 		}
 
+		backup(time.Now())
+
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 		}
 	}
+}
+
+// openExisting opens the database the server uses, for commands that work on
+// it directly. Opening a missing file would create an empty database, which
+// only hides a wrong DB_PATH.
+func openExisting() (*sql.DB, error) {
+	dbPath := envOr("DB_PATH", "slowpoke.db")
+	if _, err := os.Stat(dbPath); err != nil {
+		return nil, fmt.Errorf("database %s not found, set DB_PATH to the file the server uses: %w", dbPath, err)
+	}
+	db, err := store.Open(dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("open database: %w", err)
+	}
+	return db, nil
 }
 
 // envOr returns the value of an environment variable, or fallback if it is not set.
