@@ -1,35 +1,22 @@
 import { useLocalSearchParams } from "expo-router";
-import { ArrowDown, ArrowUp, ChartPie, Equal, Zap, type LucideIcon } from "lucide-react-native";
+import { ChartPie } from "lucide-react-native";
 import { useCallback, useState } from "react";
 import { View } from "react-native";
 
 import { ledgers } from "@/api/endpoints";
-import type { PurposeLine, PurposeReport } from "@/api/types";
+import type { PurposeReport } from "@/api/types";
 import { Amount } from "@/components/amount";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorMessage } from "@/components/error-message";
-import { IconTile } from "@/components/icon-tile";
 import { MonthSwitcher } from "@/components/month-switcher";
-import { ProgressRow } from "@/components/progress-row";
+import { PurposeRow } from "@/components/purpose-row";
 import { Screen } from "@/components/screen";
 import { Card, CardContent } from "@/components/ui/card";
-import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Text } from "@/components/ui/text";
 import { useLoader } from "@/hooks/use-loader";
-import { formatDate, shiftMonth, today } from "@/lib/dates";
-import {
-  isEmptyReport,
-  purposeLook,
-  shareProgress,
-  shareText,
-  spontaneousText,
-  transferText,
-  trendOf,
-  type Trend,
-} from "@/lib/purposes";
-
-const trendIcon: Record<Trend["direction"], LucideIcon> = { up: ArrowUp, down: ArrowDown, same: Equal };
+import { formatDate, monthName, shiftMonth, today } from "@/lib/dates";
+import { isEmptyReport } from "@/lib/purposes";
 
 /**
  * Where the money of one payday period went, by purpose: needs, wants,
@@ -86,7 +73,7 @@ function ReportContent({ report }: { report: PurposeReport }) {
       <IncomeCard report={report} />
       <View className="gap-3">
         {report.lines.map((line) => (
-          <PurposeRow key={line.purpose} line={line} previousMonth={report.previous_month} />
+          <PurposeRow key={line.purpose} line={line} comparedWith={monthName(report.previous_month)} />
         ))}
       </View>
       <Text variant="muted" className="text-sm">
@@ -112,42 +99,5 @@ function IncomeCard({ report }: { report: PurposeReport }) {
         </Text>
       </CardContent>
     </Card>
-  );
-}
-
-/** One purpose: its amount, its share as the row's own bar, and what changed. */
-function PurposeRow({ line, previousMonth }: { line: PurposeLine; previousMonth: string }) {
-  const look = purposeLook[line.purpose];
-  const share = shareText(line);
-  const trend = trendOf(line, previousMonth);
-  const spontaneous = spontaneousText(line);
-  const transfer = transferText(line);
-  return (
-    <Card className="overflow-hidden py-0">
-      <ProgressRow progress={shareProgress(line)} label={look.name} fillClassName={look.fill} className="gap-2 p-4">
-        <View className="flex-row items-center gap-3">
-          <IconTile icon={look.icon} hue={look.hue} />
-          <View className="flex-1 gap-0.5">
-            <Text className="font-medium">{look.name}</Text>
-            {share && <Text variant="muted">{share}</Text>}
-          </View>
-          <Amount cents={line.cents} size="lg" />
-        </View>
-        {trend && <DetailLine icon={trendIcon[trend.direction]} text={trend.text} />}
-        {spontaneous && <DetailLine icon={Zap} text={spontaneous} />}
-        {transfer && <Text variant="muted" className="text-sm">{transfer}</Text>}
-      </ProgressRow>
-    </Card>
-  );
-}
-
-function DetailLine({ icon, text }: { icon: LucideIcon; text: string }) {
-  return (
-    <View className="flex-row items-center gap-1.5">
-      <Icon as={icon} size={14} className="text-muted-foreground" />
-      <Text variant="muted" className="text-sm">
-        {text}
-      </Text>
-    </View>
   );
 }

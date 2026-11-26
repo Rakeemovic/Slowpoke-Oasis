@@ -160,6 +160,22 @@ func TestChangingTheExpenseChangesItsRoundUp(t *testing.T) {
 	}
 }
 
+func TestOtherChangesLeaveTheRoundUpAlone(t *testing.T) {
+	_, s := setup(t)
+	roundUpOn(t, s, "p-holiday", 1, "2026-11-01")
+	id := expenseOf(t, s, 1250, "2026-11-16")
+	// With the round-up switched off, recomputing would remove the old one.
+	roundUpOn(t, s, "p-holiday", 0, "2026-11-17")
+
+	patch := TransactionPatch{IsSpontaneous: ptr(true), Note: ptr("late"), EditorID: "u1"}
+	if err := s.UpdateTransaction(context.Background(), "l1", id, patch, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if r, ok := roundUpOf(t, s, id); !ok || r.AmountCents != 50 {
+		t.Errorf("round-up = %+v (%v), want the old 50", r, ok)
+	}
+}
+
 func TestRoundUpFollowsTheExpenseWhenDeletedAndRestored(t *testing.T) {
 	_, s := setup(t)
 	ctx := context.Background()

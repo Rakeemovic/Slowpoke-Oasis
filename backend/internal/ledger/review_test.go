@@ -96,6 +96,8 @@ func TestWeeklyReviewShowsOnlyOwnSpending(t *testing.T) {
 
 func TestCompletingClosesTheReviewUntilTheNextDay(t *testing.T) {
 	_, s := setup(t)
+	spend(t, s, "c-food", "2026-11-20", 1000, false)
+	spend(t, s, "c-food", "2026-11-27", 1000, false)
 	if days := completeReview(t, s, "2026-11-25"); days != (DayRange{"2026-11-18", "2026-11-24"}) {
 		t.Errorf("covered = %+v", days)
 	}
@@ -112,11 +114,41 @@ func TestCompletingClosesTheReviewUntilTheNextDay(t *testing.T) {
 
 func TestWeeklyReviewUsesTheChosenWeekday(t *testing.T) {
 	db, s := setup(t)
+	spend(t, s, "c-food", "2026-11-17", 1000, false)
+	spend(t, s, "c-food", "2026-11-24", 1000, false)
 	completeReview(t, s, "2026-11-23")
 	mustExec(t, db, `UPDATE user SET review_weekday = 4 WHERE id = 'u1'`)
 	r := reviewOf(t, s, "u1", "2026-11-26") // a Thursday
 	if r.Covered != (DayRange{"2026-11-23", "2026-11-25"}) || r.Previous != (DayRange{"2026-11-20", "2026-11-22"}) {
 		t.Errorf("review = %+v", r)
+	}
+}
+
+func TestNoReviewWithoutOwnBookings(t *testing.T) {
+	db, s := setup(t)
+	ctx := context.Background()
+	mustExec(t, db, `INSERT INTO user (id, name, created_at) VALUES ('u2', 'Bob', '2026-01-01T00:00:00Z')`)
+	other := baseExpense()
+	other.UserID, other.BookedOn = "u2", "2026-11-17"
+	if _, err := s.CreateTransaction(ctx, other, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	spend(t, s, "c-food", "2026-11-10", 1000, false) // before the covered days
+	deleted := spend(t, s, "c-food", "2026-11-18", 1000, false)
+	if err := s.DeleteTransaction(ctx, "l1", deleted, "u1", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	spend(t, s, "c-food", "2026-11-23", 1000, false) // today is not covered
+
+	if reviewOf(t, s, "u1", "2026-11-23").Due {
+		t.Error("due without own bookings in the covered days")
+	}
+	if _, err := s.CompleteWeeklyReview(ctx, "l1", "u1", "2026-11-23", time.Now()); !errors.Is(err, ErrReviewNotDue) {
+		t.Errorf("complete: err = %v, want ErrReviewNotDue", err)
+	}
+	// The next day covers today's booking.
+	if !reviewOf(t, s, "u1", "2026-11-24").Due {
+		t.Error("not due once an own booking is covered")
 	}
 }
 
@@ -135,11 +167,9 @@ func TestLeavingAHouseholdRemovesTheReviews(t *testing.T) {
 	mustExec(t, db, `INSERT INTO household_member (household_id, user_id, role, joined_at) VALUES
 		('h1', 'u1', 'owner', '2026-01-01T00:00:00Z'), ('h1', 'u2', 'member', '2026-01-02T00:00:00Z')`)
 	mustExec(t, db, `INSERT INTO ledger (id, name, household_id, created_at) VALUES ('l-flat', 'Flat', 'h1', '2026-01-01T00:00:00Z')`)
-	for _, ledgerID := range []string{"l1", "l-flat"} {
-		if _, err := s.CompleteWeeklyReview(ctx, ledgerID, "u1", "2026-11-23", time.Now()); err != nil {
-			t.Fatal(err)
-		}
-	}
+	mustExec(t, db, `INSERT INTO weekly_review (ledger_id, user_id, covered_from, covered_until, completed_at) VALUES
+		('l1', 'u1', '2026-11-16', '2026-11-22', '2026-11-23T00:00:00Z'),
+		('l-flat', 'u1', '2026-11-16', '2026-11-22', '2026-11-23T00:00:00Z')`)
 	if err := s.LeaveHousehold(ctx, "h1", "u1"); err != nil {
 		t.Fatal(err)
 	}

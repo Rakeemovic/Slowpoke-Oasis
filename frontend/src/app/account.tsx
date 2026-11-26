@@ -3,13 +3,14 @@ import { useState } from "react";
 import { auth } from "@/api/endpoints";
 import { ErrorMessage } from "@/components/error-message";
 import { FormField } from "@/components/form-field";
+import { ReviewDayCard } from "@/components/review-day-card";
 import { Screen } from "@/components/screen";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Text } from "@/components/ui/text";
 import { errorMessage } from "@/lib/errors";
 
-/** Account settings. For now only the password can be changed here. */
+/** Account settings: the day of the weekly review and the password. */
 export default function AccountScreen() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -35,6 +36,7 @@ export default function AccountScreen() {
 
   return (
     <Screen>
+      <ReviewDayCard />
       <Card>
         <CardHeader>
           <CardTitle>Change password</CardTitle>

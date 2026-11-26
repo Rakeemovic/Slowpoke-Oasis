@@ -23,6 +23,12 @@ func TestWeeklyReviewOverHTTP(t *testing.T) {
 		t.Errorf("review weekday = %d, want 4", got)
 	}
 
+	booking := map[string]any{"type": "expense", "category_id": firstExpenseCategory(t, h, token, *me.PersonalLedgerID),
+		"amount_cents": 1000, "booked_on": "2026-11-25"}
+	if rec := doToken(t, h, http.MethodPost, "/ledgers/"+*me.PersonalLedgerID+"/transactions", token, booking); rec.Code != http.StatusCreated {
+		t.Fatalf("book: status %d, body %s", rec.Code, rec.Body)
+	}
+
 	rec := doToken(t, h, http.MethodGet, base+"?date=2026-11-26", token, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("review: status %d, body %s", rec.Code, rec.Body)
@@ -51,6 +57,25 @@ func TestWeeklyReviewOverHTTP(t *testing.T) {
 	if body := rec.Body.String(); body != "{\"due\":false}\n" {
 		t.Errorf("after completing: %s", body)
 	}
+}
+
+func firstExpenseCategory(t *testing.T, h http.Handler, token, ledgerID string) string {
+	t.Helper()
+	rec := doToken(t, h, http.MethodGet, "/ledgers/"+ledgerID+"/categories", token, nil)
+	var categories []struct {
+		ID       string `json:"id"`
+		IsIncome bool   `json:"is_income"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &categories); err != nil {
+		t.Fatalf("categories: %v (%s)", err, rec.Body)
+	}
+	for _, c := range categories {
+		if !c.IsIncome {
+			return c.ID
+		}
+	}
+	t.Fatal("no expense category")
+	return ""
 }
 
 func TestSetReviewWeekdayRejectsOtherNumbers(t *testing.T) {

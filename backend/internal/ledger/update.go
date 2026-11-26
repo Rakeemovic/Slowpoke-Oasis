@@ -58,6 +58,14 @@ func (p TransactionPatch) apply(in NewTransaction) NewTransaction {
 	return in
 }
 
+// affectsRoundUp says whether a change touches what a round-up is computed
+// from (rule X21). Other changes, such as the spontaneous mark, must leave it
+// alone: recomputing it would apply today's settings to an old expense.
+func affectsRoundUp(old, changed NewTransaction) bool {
+	return changed.AmountCents != old.AmountCents || changed.BookedOn != old.BookedOn ||
+		changed.PotID != old.PotID || changed.Type != old.Type
+}
+
 // UpdateTransaction applies a patch to a transaction that is not soft-deleted.
 //
 // The result is checked with the same rules as a new transaction. The author
@@ -145,8 +153,10 @@ func (s *Store) UpdateTransaction(ctx context.Context, ledgerID, id string, p Tr
 		if err := guard.check(ctx, tx); err != nil {
 			return err
 		}
-		if err := syncRoundUp(ctx, tx, ledgerID, id, now); err != nil {
-			return err
+		if affectsRoundUp(old, in) {
+			if err := syncRoundUp(ctx, tx, ledgerID, id, now); err != nil {
+				return err
+			}
 		}
 		if !p.CategoryScope.series() {
 			return nil

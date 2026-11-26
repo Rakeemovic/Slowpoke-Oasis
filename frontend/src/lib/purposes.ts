@@ -1,7 +1,6 @@
 import { CircleHelp, Gift, House, Sprout, type LucideIcon } from "lucide-react-native";
 
 import type { PurposeKey, PurposeLine, PurposeReport } from "@/api/types";
-import { monthName } from "@/lib/dates";
 import { type Hue, NEUTRAL_HUE } from "@/lib/hues";
 import { formatCents } from "@/lib/money";
 import type { Progress } from "@/lib/progress";
@@ -64,15 +63,14 @@ export interface Trend {
 }
 
 /**
- * Compares a line with the period before. Neutral on purpose: more spent on
+ * Compares a line with the span before, named by `before`. Neutral on purpose: more spent on
  * needs is no bad news in itself, so there is only a direction and an amount.
  * Nothing in both periods needs no line.
  */
-export function trendOf(line: PurposeLine, previousMonth: string): Trend | undefined {
+export function trendOf(line: PurposeLine, before: string): Trend | undefined {
   if (line.cents === 0 && line.previous_cents === 0) {
     return undefined;
   }
-  const before = monthName(previousMonth);
   const difference = line.cents - line.previous_cents;
   if (difference === 0) {
     return { direction: "same", text: `Same as in ${before}` };
