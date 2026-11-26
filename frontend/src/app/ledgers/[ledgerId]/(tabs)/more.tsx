@@ -1,4 +1,4 @@
-import { ArrowLeftRight, ArrowUpDown, Repeat, Scale, Tags, Trash2, Users } from "lucide-react-native";
+import { ArrowLeftRight, ArrowUpDown, ChartPie, Repeat, Scale, Tags, Trash2, Users } from "lucide-react-native";
 
 import { ListRow, ListSection } from "@/components/list";
 import { Screen } from "@/components/screen";
@@ -71,6 +71,14 @@ export default function MoreScreen() {
         )}
       </ListSection>
       <ListSection title="History">
+        <ListRow
+          title="Insights"
+          subtitle="Where the money went: needs, wants and savings"
+          icon={ChartPie}
+          hue={hueFor("insights")}
+          href={{ pathname: "/ledgers/[ledgerId]/insights", params: { ledgerId } }}
+          chevron
+        />
         <ListRow
           title="Deleted transactions"
           subtitle="Restore within 30 days"
