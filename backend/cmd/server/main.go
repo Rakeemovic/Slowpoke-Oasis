@@ -61,6 +61,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	registrationOpen, err := registrationOpenFromEnv()
+	if err != nil {
+		return err
+	}
 
 	db, err := store.Open(dbPath)
 	if err != nil {
@@ -83,6 +87,10 @@ func run() error {
 	}
 
 	server := api.NewServer(ledgers, accounts)
+	if !registrationOpen {
+		server.CloseRegistration()
+		log.Printf("registration is closed")
+	}
 	// With WEB_DIR the server also delivers the web app, so app and API share
 	// one origin and the web login needs no CORS.
 	webDir := os.Getenv("WEB_DIR")
@@ -159,16 +167,28 @@ func envOr(key, fallback string) string {
 }
 
 // cookieSecureFromEnv reads COOKIE_SECURE. It defaults to true; only an
-// explicit false turns the Secure flag off. Anything that is not a boolean is
-// an error, so a typo cannot silently weaken the cookie.
+// explicit false turns the Secure flag off.
 func cookieSecureFromEnv() (bool, error) {
-	v := os.Getenv("COOKIE_SECURE")
+	return boolFromEnv("COOKIE_SECURE", true)
+}
+
+// registrationOpenFromEnv reads REGISTRATION_OPEN. It defaults to true, so a
+// fresh installation can create its first account.
+func registrationOpenFromEnv() (bool, error) {
+	return boolFromEnv("REGISTRATION_OPEN", true)
+}
+
+// boolFromEnv reads a boolean environment variable, or fallback if it is not
+// set. Anything that is not a boolean is an error, so a typo cannot silently
+// weaken a setting.
+func boolFromEnv(key string, fallback bool) (bool, error) {
+	v := os.Getenv(key)
 	if v == "" {
-		return true, nil
+		return fallback, nil
 	}
-	secure, err := strconv.ParseBool(v)
+	value, err := strconv.ParseBool(v)
 	if err != nil {
-		return false, fmt.Errorf("COOKIE_SECURE must be true or false, got %q", v)
+		return false, fmt.Errorf("%s must be true or false, got %q", key, v)
 	}
-	return secure, nil
+	return value, nil
 }

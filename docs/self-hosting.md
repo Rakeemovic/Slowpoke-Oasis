@@ -39,7 +39,21 @@ COMPOSE_FILE=compose.yaml:compose.https.yaml
 
 Then `docker compose up -d --build` is enough.
 
+### Creating the accounts
+
+With `compose.https.yaml`, registration is closed, so strangers cannot create accounts on your server. Open it, register everyone, then close it again:
+
+```sh
+REGISTRATION_OPEN=true docker compose up -d
+# register the accounts in the web app, then:
+docker compose up -d
+```
+
+This assumes the `.env` file above, without a `REGISTRATION_OPEN` line.
+
 ## Behind your own reverse proxy
+
+Set `REGISTRATION_OPEN=false` once all accounts exist.
 
 If you already run nginx, Traefik or similar with HTTPS, use only `compose.yaml` and forward all requests for your domain to port 8080. Keep `COOKIE_SECURE` at its default (`true`). Do not publish port 8080 to the internet directly; change the port line in `compose.yaml` to `"127.0.0.1:8080:8080"` if the proxy runs on the same machine.
 
@@ -50,6 +64,7 @@ All settings are environment variables. In Compose, set them in `.env` or in the
 | Variable | Default (image) | Meaning |
 |---|---|---|
 | `COOKIE_SECURE` | `true` | Send the login cookie only over HTTPS. `false` only for a home network without HTTPS. Any other value stops the server. |
+| `REGISTRATION_OPEN` | `true`; `false` with `compose.https.yaml` | Whether new accounts can be registered. Existing accounts are not affected. Any value other than a boolean stops the server. |
 | `CORS_ORIGINS` | empty | Comma-separated exact origins allowed to call the API from a browser. Only needed when a web app is hosted at another address. |
 | `DB_PATH` | `/data/slowpoke.db` | The SQLite database. `/data` is a Docker volume. |
 | `WEB_DIR` | `/web` | The exported web app. Empty means the server only serves the API. |
