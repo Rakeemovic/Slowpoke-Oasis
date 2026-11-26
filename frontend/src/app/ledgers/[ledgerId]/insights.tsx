@@ -16,7 +16,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Text } from "@/components/ui/text";
 import { useLoader } from "@/hooks/use-loader";
 import { formatDate, monthName, shiftMonth, today } from "@/lib/dates";
-import { isEmptyReport } from "@/lib/purposes";
+import { formatCents } from "@/lib/money";
+import { isEmptyReport, leftOver } from "@/lib/purposes";
 
 /**
  * Where the money of one payday period went, by purpose: needs, wants,
@@ -24,10 +25,11 @@ import { isEmptyReport } from "@/lib/purposes";
  * by its share of the income, and says how it moved against the period before.
  */
 export default function InsightsScreen() {
-  const { ledgerId } = useLocalSearchParams<{ ledgerId: string }>();
+  const params = useLocalSearchParams<{ ledgerId: string; month?: string }>();
+  const { ledgerId } = params;
   // undefined means "the current period", which the server works out from the
-  // app's date and the payday.
-  const [month, setMonth] = useState<string>();
+  // app's date and the payday. Links from elsewhere may start at another one.
+  const [month, setMonth] = useState(params.month);
   const load = useCallback(() => ledgers.purposeReport(ledgerId, today(), month), [ledgerId, month]);
   const { data: report, error, loading, reload } = useLoader(load);
 
@@ -76,6 +78,7 @@ function ReportContent({ report }: { report: PurposeReport }) {
           <PurposeRow key={line.purpose} line={line} comparedWith={monthName(report.previous_month)} />
         ))}
       </View>
+      <LeftOverCard report={report} />
       <Text variant="muted" className="text-sm">
         Savings count what you moved into your pots, minus what you took back, and expenses in categories marked as
         savings. Money for reserves does not count.
@@ -97,6 +100,25 @@ function IncomeCard({ report }: { report: PurposeReport }) {
         <Text variant="muted" className="max-w-32 text-right text-xs">
           {report.income_cents > 0 ? "Shares below are of this income" : "No income booked, so there are no shares"}
         </Text>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** The result of the period: what the lines above leave of the income. */
+function LeftOverCard({ report }: { report: PurposeReport }) {
+  const cents = leftOver(report);
+  const label = report.month === report.current_month ? "Left over so far" : "Left over";
+  return (
+    <Card>
+      <CardContent className="flex-row items-center justify-between gap-3">
+        <Text className="font-medium">{label}</Text>
+        <Amount
+          cents={cents}
+          size="lg"
+          tone={cents < 0 ? "negative" : "default"}
+          aria-label={`${label}: ${formatCents(cents)}`}
+        />
       </CardContent>
     </Card>
   );

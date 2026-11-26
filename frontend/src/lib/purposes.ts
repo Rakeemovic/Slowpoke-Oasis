@@ -99,3 +99,13 @@ export function transferText(line: PurposeLine): string | undefined {
 export function isEmptyReport(report: PurposeReport): boolean {
   return report.income_cents === 0 && report.lines.every((l) => l.cents === 0 && l.previous_cents === 0);
 }
+
+/** What remains of the period's income after every line; negative when more went out than came in. */
+export function leftOver(report: PurposeReport): number {
+  return report.lines.reduce((rest, line) => rest - line.cents, report.income_cents);
+}
+
+/** Whether anything came in, went out or was saved in the period itself. */
+export function hasActivity(report: PurposeReport): boolean {
+  return report.income_cents !== 0 || report.lines.some((l) => l.cents !== 0);
+}
