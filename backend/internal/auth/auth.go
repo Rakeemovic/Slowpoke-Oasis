@@ -29,6 +29,7 @@ var (
 	ErrUnauthenticated    = errors.New("not logged in or session expired")
 	ErrWrongPassword      = errors.New("wrong password")
 	ErrUserNotFound       = errors.New("user not found")
+	ErrInvalidWeekday     = errors.New("weekday must be between 1 (Monday) and 7 (Sunday)")
 )
 
 // Service handles registration, login, sessions and password recovery.
@@ -227,18 +228,31 @@ type Profile struct {
 	UserID      string
 	Username    string
 	DisplayName string
+	// ReviewWeekday is the day of the weekly reflection, 1 (Monday) to 7 (rule W1).
+	ReviewWeekday int
 }
 
 // Profile returns the account details of a user.
 func (s *Service) Profile(ctx context.Context, userID string) (Profile, error) {
 	p := Profile{UserID: userID}
 	err := s.db.QueryRowContext(ctx,
-		`SELECT username, name FROM user WHERE id = ?`, userID,
-	).Scan(&p.Username, &p.DisplayName)
+		`SELECT username, name, review_weekday FROM user WHERE id = ?`, userID,
+	).Scan(&p.Username, &p.DisplayName, &p.ReviewWeekday)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Profile{}, ErrUnauthenticated
 	}
 	return p, err
+}
+
+// SetReviewWeekday chooses the day of the weekly reflection as an ISO
+// weekday, 1 (Monday) to 7 (Sunday).
+func (s *Service) SetReviewWeekday(ctx context.Context, userID string, weekday int) error {
+	if weekday < 1 || weekday > 7 {
+		return ErrInvalidWeekday
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE user SET review_weekday = ? WHERE id = ?`, weekday, userID)
+	return err
 }
 
 // PurgeExpired removes sessions that are no longer valid. It returns how many

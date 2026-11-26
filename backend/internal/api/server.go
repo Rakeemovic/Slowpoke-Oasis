@@ -49,6 +49,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PUT /auth/password", s.changePassword)
 	mux.HandleFunc("DELETE /auth/account", s.deleteAccount)
 	mux.HandleFunc("GET /me", s.me)
+	mux.HandleFunc("PUT /me/review-weekday", s.setReviewWeekday)
 
 	// Households
 	mux.HandleFunc("POST /households", s.createHousehold)
@@ -99,6 +100,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /ledgers/{ledger}/safe-to-spend", s.safeToSpend)
 	mux.HandleFunc("GET /ledgers/{ledger}/purpose-report", s.purposeReport)
 	mux.HandleFunc("POST /ledgers/{ledger}/reconciliations", s.reconcile)
+	mux.HandleFunc("GET /ledgers/{ledger}/weekly-review", s.weeklyReview)
+	mux.HandleFunc("POST /ledgers/{ledger}/weekly-review", s.completeWeeklyReview)
 	mux.HandleFunc("GET /ledgers/{ledger}/savings-goals", s.listSavingsGoals)
 
 	return mux

@@ -234,6 +234,15 @@ func leaveHousehold(ctx context.Context, tx *sql.Tx, householdID, userID string)
 		}
 	}
 
+	// Reflections are personal data and go with the membership (rule W3).
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM weekly_review
+		WHERE user_id = ? AND ledger_id IN (SELECT id FROM ledger WHERE household_id = ?)`,
+		userID, householdID,
+	); err != nil {
+		return err
+	}
+
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM household_member WHERE household_id = ? AND user_id = ?`,
 		householdID, userID,

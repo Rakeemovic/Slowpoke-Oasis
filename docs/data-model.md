@@ -13,7 +13,7 @@ This document records the decisions behind the data model. The schema lives in t
 ## Entities
 
 ### Users and households
-- `user`: id, name, username, password_hash, recovery_hash, created_at. The username is unique, ignoring case. `recovery_hash` is the Argon2id hash of the recovery code (rule A4); it is empty for accounts created before migration `0011`. The placeholder user `former-member` has no username and no password and cannot log in. No email address is stored.
+- `user`: id, name, username, password_hash, recovery_hash, review_weekday, created_at. `review_weekday` is the day of the weekly review (rule W1). The username is unique, ignoring case. `recovery_hash` is the Argon2id hash of the recovery code (rule A4); it is empty for accounts created before migration `0011`. The placeholder user `former-member` has no username and no password and cannot log in. No email address is stored.
 - `session`: token_hash, user_id, created_at, expires_at. A login is valid for 30 days. Only the SHA-256 hash of the token is stored.
 - `household`: id, name, created_at
 - `household_member`: household_id, user_id (primary key: both fields), role (`owner` or `member`), joined_at. The creator is the owner. A household has exactly one owner: the owner can hand the role to another member and becomes a regular member. When the owner leaves, the longest-standing member (earliest `joined_at`) becomes owner. When the last member leaves, the household and its ledger are deleted.
@@ -75,6 +75,9 @@ A pot groups planned amounts and collects transactions.
 - A background job permanently removes transactions once `deleted_at` is more than 30 days old. Until then they can be restored.
 - The two legs of a transfer between ledgers are deleted and restored together.
 - If a whole ledger is deleted, the leg in the other ledger stays, because the money did arrive there or leave from there. It loses its link.
+
+### Weekly reviews
+- `weekly_review`: ledger_id, user_id, covered_from, covered_until, completed_at (primary key: ledger_id, user_id, covered_until). One row per completed review of a member about a ledger; it only records which days are done (rules W1 to W3). What a review shows is calculated, never stored.
 
 ## Calculations
 

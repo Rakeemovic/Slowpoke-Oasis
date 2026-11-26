@@ -2,6 +2,8 @@ package api
 
 import (
 	"net/http"
+
+	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/ledger"
 )
 
 // purposeLineResponse is one purpose of the report. purpose is "need",
@@ -33,13 +35,25 @@ func (s *Server) purposeReport(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	lines := make([]purposeLineResponse, 0, len(report.Lines))
-	for _, l := range report.Lines {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"month":          report.Month,
+		"current_month":  report.Current,
+		"previous_month": report.PreviousMonth,
+		"from":           report.From,
+		"to":             report.To,
+		"income_cents":   report.IncomeCents,
+		"lines":          newPurposeLines(report.Lines),
+	})
+}
+
+func newPurposeLines(lines []ledger.PurposeLine) []purposeLineResponse {
+	out := make([]purposeLineResponse, 0, len(lines))
+	for _, l := range lines {
 		purpose := string(l.Purpose)
 		if purpose == "" {
 			purpose = "none"
 		}
-		lines = append(lines, purposeLineResponse{
+		out = append(out, purposeLineResponse{
 			Purpose:          purpose,
 			Cents:            l.Cents,
 			SpontaneousCents: l.SpontaneousCents,
@@ -48,13 +62,5 @@ func (s *Server) purposeReport(w http.ResponseWriter, r *http.Request) {
 			SharePercent:     l.SharePercent,
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"month":          report.Month,
-		"current_month":  report.Current,
-		"previous_month": report.PreviousMonth,
-		"from":           report.From,
-		"to":             report.To,
-		"income_cents":   report.IncomeCents,
-		"lines":          lines,
-	})
+	return out
 }
