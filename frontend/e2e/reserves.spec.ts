@@ -22,7 +22,8 @@ async function createYearlyDueToday(page: Page, name: string, amount: string): P
   await expect(page.getByText("It is paid from its own reserve pot.", { exact: false })).toBeVisible();
   await page.getByLabel("Due day (1–31)").fill(String(new Date().getDate()));
   await page.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByText(`Yearly on day ${new Date().getDate()}`)).toBeVisible();
+  // The row of the new payment; earlier payments show the same schedule.
+  await expect(page.getByRole("link", { name: new RegExp(`^${name} Yearly on day`) })).toBeVisible();
   await backToOverview(page);
 }
 
@@ -83,6 +84,33 @@ test("archiving a payment offers to archive its reserve", async ({ page }) => {
   await expect(page.getByText("Reserves", { exact: true })).toBeHidden();
   await expect(linkRow(page, "Bike")).toContainText(euros("0,00"));
   await expect(linkRow(page, "Main")).toContainText(euros("0,00"));
+});
+
+test("renaming a payment renames its reserve, unless the user named it", async ({ page }) => {
+  await createYearlyDueToday(page, "Car", "600");
+  await createYearlyDueToday(page, "Bike", "120");
+
+  // The user names the reserve of the bike themselves.
+  await openSection(page, "Pots");
+  await linkRow(page, "Bike").click();
+  await page.getByLabel("Name", { exact: true }).fill("Bike cushion");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(linkRow(page, "Bike cushion")).toBeVisible();
+
+  // Both payments get new names; only the reserve with its automatic name follows.
+  for (const [from, to] of [["Car", "Family car"], ["Bike", "City bike"]]) {
+    await openSection(page, "Recurring");
+    await linkRow(page, from).click();
+    await page.getByLabel("Name", { exact: true }).fill(to);
+    await page.getByRole("button", { name: "Save" }).click();
+    // The app goes back to the list by itself once the change is saved.
+    await expect(page).toHaveURL(/\/recurring$/);
+    await backToOverview(page);
+  }
+  await openSection(page, "Pots");
+  await expect(linkRow(page, "Family car")).toBeVisible();
+  await expect(linkRow(page, "Bike cushion")).toBeVisible();
+  await expect(linkRow(page, "City bike")).toHaveCount(0);
 });
 
 /** A row on a list of payments or pots; earlier screens stay hidden in the DOM. */

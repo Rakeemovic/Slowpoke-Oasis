@@ -17,6 +17,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Text } from "@/components/ui/text";
 import { useLoader } from "@/hooks/use-loader";
 import { errorMessage } from "@/lib/errors";
+import { formatCents } from "@/lib/money";
 import { loadMyLedgers } from "@/lib/ledgers";
 import { isLinkedTransfer, transactionTitle } from "@/lib/transactions";
 
@@ -207,7 +208,8 @@ function DeleteSection({ tx, categories }: { tx: Transaction; categories: Catego
 
   // Name every consequence before an action that cannot be undone in the app yet.
   const linkedNote = isLinkedTransfer(tx) ? " The other side of the transfer is deleted too." : "";
-  const message = `Delete “${transactionTitle(tx, categories)}”?${linkedNote} It is removed for good after 30 days.`;
+  const roundUpNote = tx.round_up_cents ? ` Its round-up of ${formatCents(tx.round_up_cents)} is deleted too.` : "";
+  const message = `Delete “${transactionTitle(tx, categories)}”?${linkedNote}${roundUpNote} It is removed for good after 30 days.`;
 
   return (
     <View className="gap-2">

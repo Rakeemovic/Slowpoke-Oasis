@@ -334,3 +334,79 @@ func potNamed(pots []Pot, name string) Pot {
 	}
 	return Pot{}
 }
+
+func TestExpenseShowsTheAmountOfItsRoundUp(t *testing.T) {
+	_, s := setup(t)
+	ctx := context.Background()
+	roundUpOn(t, s, "p-holiday", 2, "2026-11-01")
+	rounded := expenseOf(t, s, 975, "2026-11-16") // 25 to the euro, doubled: 50
+	whole := expenseOf(t, s, 1000, "2026-11-16")  // a whole euro: nothing to round up
+	before := expenseOf(t, s, 975, "2026-10-31")  // before the round-up was switched on
+
+	for id, want := range map[string]int64{rounded: 50, whole: 0, before: 0} {
+		got, err := s.GetTransaction(ctx, "l1", id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.RoundUpCents != want {
+			t.Errorf("expense %s: RoundUpCents = %d, want %d", id, got.RoundUpCents, want)
+		}
+	}
+	// The round-up itself belongs to the expense and has none of its own.
+	r, _ := roundUpOf(t, s, rounded)
+	if r.RoundUpCents != 0 {
+		t.Errorf("the round-up reports RoundUpCents = %d, want 0", r.RoundUpCents)
+	}
+}
+
+func TestNewPotCanCollectRoundUpsFromTheStart(t *testing.T) {
+	_, s := setup(t)
+	ctx := context.Background()
+	roundUpOn(t, s, "p-holiday", 2, "2026-11-01")
+
+	id, err := s.CreatePot(ctx, NewPot{LedgerID: "l1", Name: "Bike", RoundUpMultiplier: 3, Today: "2026-11-10"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pots, _ := s.ListPots(ctx, "l1")
+	bike, holiday := potNamed(pots, "Bike"), potNamed(pots, "Holiday")
+	if bike.ID != id || bike.RoundUpMultiplier != 3 || bike.RoundUpFrom != "2026-11-10" {
+		t.Errorf("Bike: round-up x%d from %q, want x3 from 2026-11-10", bike.RoundUpMultiplier, bike.RoundUpFrom)
+	}
+	if holiday.RoundUpMultiplier != 0 {
+		t.Errorf("Holiday still collects (x%d); only one pot per ledger may", holiday.RoundUpMultiplier)
+	}
+}
+
+func TestNewPotWithoutRoundUpKeepsTheCollectingPot(t *testing.T) {
+	_, s := setup(t)
+	ctx := context.Background()
+	roundUpOn(t, s, "p-holiday", 2, "2026-11-01")
+	if _, err := s.CreatePot(ctx, NewPot{LedgerID: "l1", Name: "Bike"}); err != nil {
+		t.Fatal(err)
+	}
+	pots, _ := s.ListPots(ctx, "l1")
+	if got := potNamed(pots, "Holiday").RoundUpMultiplier; got != 2 {
+		t.Errorf("Holiday round-up = x%d, want x2 to stay", got)
+	}
+}
+
+func TestNewPotInAHouseholdWithRoundUpIsNotCreated(t *testing.T) {
+	_, s := setup(t)
+	ctx := context.Background()
+	_, ledgerID, err := s.CreateHousehold(ctx, "u1", "Flat", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.CreatePot(ctx, NewPot{LedgerID: ledgerID, Name: "Holiday", RoundUpMultiplier: 1, Today: "2026-11-01"})
+	if !errors.Is(err, ErrRoundUpNotAllowed) {
+		t.Fatalf("err = %v, want ErrRoundUpNotAllowed", err)
+	}
+	pots, _ := s.ListPots(ctx, ledgerID)
+	if potNamed(pots, "Holiday").ID != "" {
+		t.Error("the pot exists although its creation failed")
+	}
+	if _, err := s.CreatePot(ctx, NewPot{LedgerID: "l1", Name: "Bad", RoundUpMultiplier: 4, Today: "2026-11-01"}); !errors.Is(err, ErrInvalidMultiplier) {
+		t.Errorf("multiplier 4: err = %v, want ErrInvalidMultiplier", err)
+	}
+}

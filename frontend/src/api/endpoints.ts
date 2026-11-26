@@ -148,7 +148,9 @@ export const pots = {
   /** The default pot comes first. Archived pots are included. */
   list: (ledgerId: string) => request<Pot[]>("GET", `/ledgers/${enc(ledgerId)}/pots`),
 
-  create: (ledgerId: string, pot: NewPot) => request<{ id: string }>("POST", `/ledgers/${enc(ledgerId)}/pots`, pot),
+  /** date is the app's local today: a round-up chosen for the new pot starts with it (rule T10). */
+  create: (ledgerId: string, pot: NewPot, date: string) =>
+    request<{ id: string }>("POST", `/ledgers/${enc(ledgerId)}/pots?date=${enc(date)}`, pot),
 
   /**
    * Only the fields sent are changed. date is the app's local today: a

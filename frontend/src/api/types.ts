@@ -80,6 +80,8 @@ export interface Transaction {
   recurring_due_on?: string;
   /** Set on the transfer that rounds up this expense (rule X21); it only changes together with the expense. */
   round_up_of?: string;
+  /** On an expense: the amount of its round-up, which is deleted with it (rule X21). */
+  round_up_cents?: number;
   /** Only for transfers between ledgers (rule X17). */
   counterpart?: Counterpart;
   /** What the signed-in user may do with it (rule X19). The server checks again. */
@@ -357,6 +359,8 @@ export interface NewPot {
   target_date?: string;
   monthly_rate_cents?: number;
   is_separate_account?: boolean;
+  /** 1, 2, 3 or 5 makes the new pot collect round-ups from today on (rule T10). */
+  round_up_multiplier?: number;
 }
 
 /**
