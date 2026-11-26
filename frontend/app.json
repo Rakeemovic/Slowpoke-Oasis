@@ -8,6 +8,7 @@
     "scheme": "slowpoke-oasis",
     "userInterfaceStyle": "automatic",
     "android": {
+      "package": "io.github.rakeemovic.slowpokeoasis",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

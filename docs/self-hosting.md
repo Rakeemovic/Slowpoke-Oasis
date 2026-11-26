@@ -140,4 +140,15 @@ WEB_DIR=./web DB_PATH=./slowpoke.db ./slowpoke
 
 ## The Android app
 
-The Android app talks to the API directly and does not need the cookie. Its server address is set when the app is built: `EXPO_PUBLIC_API_URL=https://money.example.org/api`.
+The Android app talks to the API directly and does not need the cookie. Its server address is set when the app is built.
+
+To build an installable APK with [EAS Build](https://docs.expo.dev/build-reference/apk/), Expo's cloud service, you need an Expo account. The source is uploaded to Expo for the build. If you publish your own version, change `android.package` in `frontend/app.json` first. In `frontend/`:
+
+```sh
+npx eas-cli@latest login
+npx eas-cli@latest init
+npx eas-cli@latest env:set --name EXPO_PUBLIC_API_URL --value https://money.example.org/api --environment preview --visibility plaintext
+npx eas-cli@latest build --platform android --profile preview
+```
+
+`init` links the folder to your Expo project and is needed once. The build ends with a link to the APK; open it on the phone to install.
