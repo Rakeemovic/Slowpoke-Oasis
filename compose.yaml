@@ -14,6 +14,8 @@ services:
       # true (default) sends the login cookie only over HTTPS. Set to false
       # only in a trusted home network without HTTPS.
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      # false refuses new accounts; existing ones keep working.
+      REGISTRATION_OPEN: ${REGISTRATION_OPEN:-true}
       # Only needed when the web app is hosted somewhere else (comma-separated).
       CORS_ORIGINS: ${CORS_ORIGINS:-}
     volumes:

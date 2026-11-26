@@ -23,6 +23,9 @@ type Server struct {
 	// insecureCookies drops the Secure flag from the session cookie. The zero
 	// value keeps it, so a server is safe unless told otherwise.
 	insecureCookies bool
+	// registrationClosed refuses new accounts. The zero value leaves
+	// registration open.
+	registrationClosed bool
 }
 
 // NewServer returns a Server that uses the given stores.
@@ -35,6 +38,12 @@ func NewServer(store *ledger.Store, accounts *auth.Service) *Server {
 // without HTTPS: anyone on the network can then read the cookie.
 func (s *Server) AllowInsecureCookies() {
 	s.insecureCookies = true
+}
+
+// CloseRegistration refuses new accounts, for a server on the internet whose
+// users all have one. Everything else keeps working.
+func (s *Server) CloseRegistration() {
+	s.registrationClosed = true
 }
 
 // Routes returns the HTTP handler with all endpoints registered.

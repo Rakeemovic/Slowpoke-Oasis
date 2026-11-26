@@ -9,6 +9,8 @@ services:
     ports: !reset []
     environment:
       COOKIE_SECURE: "true"
+      # On the internet registration is closed unless opened on purpose.
+      REGISTRATION_OPEN: ${REGISTRATION_OPEN:-false}
 
   caddy:
     image: caddy:2-alpine

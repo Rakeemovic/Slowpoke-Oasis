@@ -5,10 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/auth"
-	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/store"
 )
 
 // runResetPassword handles "server reset-password <username>". It is the way
@@ -20,15 +18,9 @@ func runResetPassword(args []string, out io.Writer) error {
 	if len(args) != 1 {
 		return errors.New(usage)
 	}
-	dbPath := envOr("DB_PATH", "slowpoke.db")
-	// Opening a missing file would create an empty database, which only hides
-	// a wrong DB_PATH behind a confusing "user not found".
-	if _, err := os.Stat(dbPath); err != nil {
-		return fmt.Errorf("database %s not found, set DB_PATH to the file the server uses: %w", dbPath, err)
-	}
-	db, err := store.Open(dbPath)
+	db, err := openExisting()
 	if err != nil {
-		return fmt.Errorf("open database: %w", err)
+		return err
 	}
 	defer db.Close()
 

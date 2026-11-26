@@ -10,6 +10,10 @@ import (
 	"github.com/Rakeemovic/slowpoke-oasis/backend/internal/store"
 )
 
+// errRegistrationClosed answers a registration on a server that takes no new
+// accounts.
+var errRegistrationClosed = errors.New("registration is closed on this server")
+
 // statusByError lists the errors a client may see, grouped by the HTTP status
 // they map to. The text of these errors is sent to the client, so only errors
 // that are safe to show belong here. Everything else answers 500.
@@ -71,6 +75,7 @@ var statusByError = []struct {
 	}},
 	// The user is known but may not do this.
 	{http.StatusForbidden, []error{
+		errRegistrationClosed,
 		ledger.ErrNotAllowed,
 		ledger.ErrNotOwner,
 		auth.ErrWrongPassword,

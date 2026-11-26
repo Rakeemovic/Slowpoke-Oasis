@@ -63,6 +63,12 @@ func (s *Server) canAccessLedger(w http.ResponseWriter, r *http.Request, userID,
 // The answer carries the recovery code. It is shown only this once; the
 // server keeps nothing but its hash.
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
+	// Refused before the body is read: no password is hashed, and the answer
+	// is the same for taken and free usernames.
+	if s.registrationClosed {
+		fail(w, errRegistrationClosed)
+		return
+	}
 	var req struct {
 		Username    string `json:"username"`
 		Password    string `json:"password"`

@@ -31,7 +31,7 @@ COPY --from=web /web /web
 # The database lives in a volume; the directory must belong to the user the
 # server runs as, or SQLite cannot create its files there.
 COPY --from=server --chown=nonroot:nonroot /data /data
-ENV ADDR=:8080 DB_PATH=/data/slowpoke.db WEB_DIR=/web
+ENV ADDR=:8080 DB_PATH=/data/slowpoke.db WEB_DIR=/web BACKUP_DIR=/data/backups
 EXPOSE 8080
 VOLUME /data
 ENTRYPOINT ["/server"]

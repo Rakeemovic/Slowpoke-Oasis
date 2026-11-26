@@ -90,3 +90,28 @@ func TestResetPasswordCommandNeedsAnExistingDatabase(t *testing.T) {
 		t.Fatal("the command created a database file")
 	}
 }
+
+func TestRegistrationOpenFromEnv(t *testing.T) {
+	tests := []struct {
+		value   string
+		want    bool
+		wantErr bool
+	}{
+		{value: "", want: true},
+		{value: "true", want: true},
+		{value: "false", want: false},
+		{value: "closed", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.value, func(t *testing.T) {
+			t.Setenv("REGISTRATION_OPEN", tt.value)
+			got, err := registrationOpenFromEnv()
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
