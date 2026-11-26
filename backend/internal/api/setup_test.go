@@ -10,11 +10,12 @@ import (
 // decodeField reads one string field from a JSON object response.
 func decodeField(t *testing.T, body []byte, field string) string {
 	t.Helper()
-	var m map[string]string
+	var m map[string]any
 	if err := json.Unmarshal(body, &m); err != nil {
 		t.Fatalf("decode response %s: %v", body, err)
 	}
-	return m[field]
+	value, _ := m[field].(string)
+	return value
 }
 
 // decodeID is shorthand for decodeField(..., "id").

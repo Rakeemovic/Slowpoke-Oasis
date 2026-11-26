@@ -62,6 +62,7 @@ var statusByError = []struct {
 		ledger.ErrTopUpNeedsReserve,
 		auth.ErrInvalidUsername,
 		auth.ErrInvalidPassword,
+		auth.ErrInvalidWeekday,
 	}},
 	{http.StatusUnauthorized, []error{
 		auth.ErrInvalidCredentials,
@@ -110,6 +111,7 @@ var statusByError = []struct {
 		ledger.ErrOccurrenceSkipped,
 		ledger.ErrReserveShort,
 		ledger.ErrReserveInUse,
+		ledger.ErrReviewNotDue,
 		auth.ErrUsernameTaken,
 	}},
 	{http.StatusTooManyRequests, []error{

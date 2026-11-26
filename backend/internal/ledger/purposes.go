@@ -77,15 +77,28 @@ func (s *Store) PurposeReport(ctx context.Context, ledgerID, month, today string
 		return PurposeReport{}, err
 	}
 
-	now, err := sumPurposes(ctx, s.db, ledgerID, out.From, out.To)
+	now, err := sumPurposes(ctx, s.db, purposeScope{ledgerID: ledgerID, days: DayRange{out.From, out.To}})
 	if err != nil {
 		return PurposeReport{}, err
 	}
-	before, err := sumPurposes(ctx, s.db, ledgerID, prevFrom, prevTo)
+	before, err := sumPurposes(ctx, s.db, purposeScope{ledgerID: ledgerID, days: DayRange{prevFrom, prevTo}})
 	if err != nil {
 		return PurposeReport{}, err
 	}
 	out.IncomeCents = now.incomeCents
+	out.Lines = purposeLines(now, before)
+	if now.incomeCents > 0 {
+		for i := range out.Lines {
+			share := int((out.Lines[i].Cents*100 + now.incomeCents/2) / now.incomeCents)
+			out.Lines[i].SharePercent = &share
+		}
+	}
+	return out, nil
+}
+
+// purposeLines builds the lines of a period and compares each with an earlier one.
+func purposeLines(now, before purposeTotals) []PurposeLine {
+	lines := make([]PurposeLine, 0, len(purposeOrder))
 	for _, p := range purposeOrder {
 		line := PurposeLine{
 			Purpose:          p,
@@ -98,13 +111,9 @@ func (s *Store) PurposeReport(ctx context.Context, ledgerID, month, today string
 			line.Cents += now.transferCents
 			line.PreviousCents += before.transferCents
 		}
-		if now.incomeCents > 0 {
-			share := int((line.Cents*100 + now.incomeCents/2) / now.incomeCents)
-			line.SharePercent = &share
-		}
-		out.Lines = append(out.Lines, line)
+		lines = append(lines, line)
 	}
-	return out, nil
+	return lines
 }
 
 // monthBefore returns the month before a valid month (YYYY-MM).
@@ -113,9 +122,26 @@ func monthBefore(month string) string {
 	return first.AddDate(0, -1, 0).Format(monthLayout)
 }
 
-// sumPurposes adds up a period: the expenses by the purpose of their
+// purposeScope selects the bookings to add up: a ledger and a span of days,
+// and only those of one user if userID is set.
+type purposeScope struct {
+	ledgerID string
+	userID   string
+	days     DayRange
+}
+
+// bookingsInScope is the WHERE part that selects the bookings t of a
+// purposeScope; scope.args returns its arguments.
+const bookingsInScope = `t.ledger_id = ? AND (? = '' OR t.user_id = ?)
+		  AND t.deleted_at IS NULL AND t.booked_on BETWEEN ? AND ?`
+
+func (sc purposeScope) args() []any {
+	return []any{sc.ledgerID, sc.userID, sc.userID, sc.days.From, sc.days.Until}
+}
+
+// sumPurposes adds up a scope: the expenses by the purpose of their
 // category, the income, and the money that moved into savings pots.
-func sumPurposes(ctx context.Context, q queryer, ledgerID, from, to string) (purposeTotals, error) {
+func sumPurposes(ctx context.Context, q queryer, sc purposeScope) (purposeTotals, error) {
 	out := purposeTotals{cents: map[Purpose]int64{}, spontaneous: map[Purpose]int64{}}
 
 	// Expenses of every pot count on the day they are booked, whether they
@@ -125,9 +151,8 @@ func sumPurposes(ctx context.Context, q queryer, ledgerID, from, to string) (pur
 		       -SUM(CASE WHEN t.is_spontaneous = 1 THEN t.amount_cents ELSE 0 END)
 		FROM transactions t
 		JOIN category c ON c.id = t.category_id AND c.ledger_id = t.ledger_id
-		WHERE t.ledger_id = ? AND t.deleted_at IS NULL AND t.type = 'expense'
-		  AND t.booked_on BETWEEN ? AND ?
-		GROUP BY COALESCE(c.purpose, '')`, ledgerID, from, to)
+		WHERE `+bookingsInScope+` AND t.type = 'expense'
+		GROUP BY COALESCE(c.purpose, '')`, sc.args()...)
 	if err != nil {
 		return out, err
 	}
@@ -146,9 +171,8 @@ func sumPurposes(ctx context.Context, q queryer, ledgerID, from, to string) (pur
 	rows.Close() // the store has one connection: finish this query before the next
 
 	if err := q.QueryRowContext(ctx, `
-		SELECT COALESCE(SUM(amount_cents), 0) FROM transactions
-		WHERE ledger_id = ? AND deleted_at IS NULL AND type = 'income'
-		  AND booked_on BETWEEN ? AND ?`, ledgerID, from, to,
+		SELECT COALESCE(SUM(t.amount_cents), 0) FROM transactions t
+		WHERE `+bookingsInScope+` AND t.type = 'income'`, sc.args()...,
 	).Scan(&out.incomeCents); err != nil {
 		return out, err
 	}
@@ -163,8 +187,7 @@ func sumPurposes(ctx context.Context, q queryer, ledgerID, from, to string) (pur
 		FROM transactions t
 		LEFT JOIN pot tp ON tp.id = t.counterpart_pot_id AND tp.is_default = 0 AND tp.reserve_for IS NULL
 		LEFT JOIN pot fp ON fp.id = t.pot_id AND fp.is_default = 0 AND fp.reserve_for IS NULL
-		WHERE t.ledger_id = ? AND t.deleted_at IS NULL AND t.type = 'transfer'
-		  AND t.booked_on BETWEEN ? AND ?`, ledgerID, from, to,
+		WHERE `+bookingsInScope+` AND t.type = 'transfer'`, sc.args()...,
 	).Scan(&net); err != nil {
 		return out, err
 	}

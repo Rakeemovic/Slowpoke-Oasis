@@ -197,6 +197,8 @@ type meResponse struct {
 	Username         string  `json:"username"`
 	DisplayName      string  `json:"display_name"`
 	PersonalLedgerID *string `json:"personal_ledger_id"`
+	// ReviewWeekday is the day of the weekly reflection, 1 (Monday) to 7.
+	ReviewWeekday int `json:"review_weekday"`
 }
 
 // GET /me
@@ -215,7 +217,12 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	resp := meResponse{UserID: profile.UserID, Username: profile.Username, DisplayName: profile.DisplayName}
+	resp := meResponse{
+		UserID:        profile.UserID,
+		Username:      profile.Username,
+		DisplayName:   profile.DisplayName,
+		ReviewWeekday: profile.ReviewWeekday,
+	}
 	if ledgerID != "" {
 		resp.PersonalLedgerID = &ledgerID
 	}
