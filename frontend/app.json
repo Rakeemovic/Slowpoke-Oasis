@@ -32,11 +32,18 @@
           "imageWidth": 76
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "9bfdef76-939e-4437-bab2-b72b0f551d6c"
+      }
+    },
+    "owner": "slowpoke-oasis"
   }
 }
